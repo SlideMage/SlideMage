@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Advisory clusters, their usage and source differences."""
+"""Similar clusters, source differences and approved exact-copy actions."""
 from __future__ import annotations
 
 import difflib
@@ -10,14 +10,16 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
-from PySide6.QtWidgets import QButtonGroup, QGridLayout, QHBoxLayout, QScrollArea, QVBoxLayout
+from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QDialog, QGridLayout, QHBoxLayout,
+                               QMessageBox, QScrollArea, QVBoxLayout)
 
 from .... import (alt_blocks, deck_context, languages, library_data, preview_target, render_key,
-                  render_lookup, slide_language)
+                  render_lookup, slide_language, slide_similarity)
 from ....slide_similarity import Cluster, normalise, uncomment
+from ...background import run_in_background
 from ...kit.flow import FlowLayout
 from ...kit.tokens import RADIUS_LG, SPACE
-from ...kit.widgets import Button, Card, Chip, Surface, ToggleChip, caption, text_label
+from ...kit.widgets import Button, Card, Chip, ModalSheet, Surface, ToggleChip, caption, text_label
 
 
 CLASSES = {"all": "All", "exact": "Exact copies", "same_words": "Same words", "similar": "Similar text"}
@@ -115,6 +117,7 @@ class SimilarView(Surface):
     def __init__(self, app) -> None:
         super().__init__()
         self.app = app
+        self._work = None
         self._dismissed = set()
         self._cards = []
         self._diff_labels = []
@@ -185,6 +188,7 @@ class SimilarView(Surface):
                 head.addWidget(caption(f"overlap {cluster.overlap:.0%}"))
             card.layout().addLayout(head)
             members = QGridLayout()
+            used = [m for m in prepared.members if m.usage]
             for index, data in enumerate(prepared.members):
                 member = Surface()
                 column = QVBoxLayout(member)
@@ -202,6 +206,22 @@ class SimilarView(Surface):
                 usage = caption(data.usage or "in no deck", "" if data.usage else "warning")
                 usage.setTextFormat(Qt.TextFormat.PlainText)
                 column.addWidget(usage)
+                if cluster.kind == "exact":
+                    if not data.usage:
+                        archive = Button("Archive the unused copy")
+                        twin = next(m.id for m in prepared.members if m.id != data.id)
+                        archive.clicked.connect(lambda _checked=False, kept=twin, other=data.id:
+                                                self._archive(kept, other))
+                        column.addWidget(archive)
+                    for other in used:
+                        if other.id == data.id or not data.usage:
+                            continue
+                        if len(used) > 2:
+                            column.addWidget(caption(f"Replace {other.id}'s calls:"))
+                        use = Button("Use this one instead")
+                        use.clicked.connect(lambda _checked=False, kept=data.id, other=other.id:
+                                            self._replace(kept, other))
+                        column.addWidget(use)
                 members.addWidget(member, index // 2, index % 2, Qt.AlignmentFlag.AlignTop)
             card.layout().addLayout(members)
             if cluster.sequence_deck:
@@ -245,6 +265,89 @@ class SimilarView(Surface):
         self.cards.addWidget(self.sequences)
         self._style_diffs()
         self._filter(self._kind)
+
+    def _archive(self, kept, other):
+        if self._work is not None:
+            return
+        if QMessageBox.question(self, "Archive the unused copy",
+                                f"Move {other}'s current slide to slides/archive/? Keep {kept}. "
+                                "Frozen versions stay in place.",
+                                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+                                QMessageBox.StandardButton.Cancel) == QMessageBox.StandardButton.Yes:
+            ctx = self.app.project
+            self._act(lambda: slide_similarity.archive_unused_copy(ctx, kept, other), {})
+
+    def _replace(self, kept, other):
+        if self._work is not None:
+            return
+        ctx = self.app.project
+
+        def approve(files, error):
+            self._work = None
+            if ctx != self.app.project:
+                return
+            if error is not None:
+                QMessageBox.warning(self, "Cannot replace this copy", str(error))
+                return
+            if not files:
+                QMessageBox.information(self, "Use this one instead", "There are no unpinned calls to change.")
+                return
+            sheet = ModalSheet("Use this one instead", self)
+            content = Surface()
+            layout = QVBoxLayout(content)
+            note = caption(f"Replace {other} with {kept} in the checked files. Pinned calls stay unchanged. "
+                           "This action cannot be undone (it can change several files).")
+            note.setWordWrap(True)
+            layout.addWidget(note)
+            checks = {}
+            for path in files:
+                check = QCheckBox(path.relative_to(ctx.root).as_posix())
+                check.setChecked(True)
+                checks[path] = check
+                layout.addWidget(check)
+            sheet.add_tab("Files", content, scroll=True)
+            sheet.add_button("Cancel", role="reject")
+            sheet.add_button("Replace calls", kind="primary", role="accept")
+            if sheet.exec() == QDialog.DialogCode.Accepted:
+                selected = {path: deck for path, deck in files.items() if checks[path].isChecked()}
+                if selected:
+                    self._act(lambda: slide_similarity.replace_exact_copy(ctx, kept, other, selected), selected)
+            sheet.deleteLater()
+
+        self._work = run_in_background(lambda: slide_similarity.replacement_files(ctx, kept, other),
+                                       approve, parent=self)
+
+    def _act(self, action, files):
+        ctx = self.app.project
+        language = self.app.state.language
+        try:
+            resolver = self.app.background.renderer.resolver
+        except AttributeError:
+            resolver = None
+
+        def work():
+            action()
+            usage = slide_similarity.usage_index(ctx)
+            return prepare_clusters(ctx, slide_similarity.find_clusters(ctx, usage=usage), usage, resolver, language)
+
+        def done(clusters, error):
+            self._work = None
+            if ctx != self.app.project:
+                return
+            # Earlier snapshots must not undo part of a change across several files,
+            # even if a later write or the refresh failed.
+            if files:
+                slide_list = self.app.slide_list
+                for path in files:
+                    slide_list._undo.pop(path, None)
+                slide_list._undo_order = [(owner, path) for owner, path in slide_list._undo_order if path not in files]
+            self.app.refresh_open_deck_editors()
+            if error is not None:
+                QMessageBox.warning(self, "Similar slides action failed", str(error))
+            else:
+                self.set_clusters(clusters)
+
+        self._work = run_in_background(work, done, parent=self)
 
     def _style_diffs(self) -> None:
         t = self.app.theme.tokens

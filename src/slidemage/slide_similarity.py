@@ -1,10 +1,11 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Find advisory similarities among the user's current slides, without a cache."""
+"""Find similar slides and act on exact copies, without a cache."""
 from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass
@@ -12,8 +13,10 @@ from itertools import combinations
 from pathlib import Path
 from typing import Literal
 
-from . import bundled_copies, deck_context, deck_language, deck_scan, languages, slide_language
-from .project import ProjectContext
+from . import (alt_images, bundled_copies, deck_context, deck_editor, deck_language, deck_scan,
+               languages, slide_language)
+from .fileio import StaleFileError
+from .project import ProjectContext, call_files
 from .tex_source import VERBATIM_ENV_RE, VERB_RE, blanked_verbatim, comment_start
 
 # Plan §6, 2026-11-15: fixed thresholds, deliberately not settings.
@@ -73,20 +76,99 @@ def tokens(text: str) -> list[str]:
 def usage_index(ctx: ProjectContext) -> dict[str, list[deck_scan.Deck]]:
     """Index expanded active calls once, shared by sequence detection and usage labels."""
     usage = defaultdict(list)
-    decks = deck_scan.scan_decks(ctx)
-    for path in sorted((ctx.root / "blocks").glob("*.tex")):
+    for path in call_files(ctx):
         try:
-            decks.append(deck_scan.read_deck(path))
+            deck = deck_scan.read_deck(path)
+            calls = deck_language.active_calls(deck)
         except OSError:
             continue
-    for deck in decks:
-        try:
-            expanded, _ = deck_language.expand_fragments(deck)
-        except OSError:
-            continue
-        for slide_id in dict.fromkeys(call.id for call in deck_language.active_calls(expanded)):
+        for slide_id in dict.fromkeys(call.id for call in calls):
             usage[slide_id].append(deck)
     return usage
+
+
+def _exact_paths(ctx: ProjectContext, kept: str, other: str) -> tuple[Path, Path]:
+    paths = [slide_language.current_path_for_bare_id(ctx, i) for i in (kept, other)]
+    if kept == other or any(p is None for p in paths):
+        raise ValueError("Both copies must still exist.")
+    if normalise(paths[0].read_text(encoding="utf-8")) != normalise(paths[1].read_text(encoding="utf-8")):
+        raise ValueError("The slides are no longer exact copies. Reopen the Library.")
+    return tuple(paths)
+
+
+def archive_unused_copy(ctx: ProjectContext, kept: str, other: str) -> None:
+    """Archive the unused current copy through Housekeeping, keeping pinned history intact."""
+    from . import unused_content
+
+    _kept, path = _exact_paths(ctx, kept, other)
+    if usage_index(ctx).get(other) or path not in unused_content.find_unused_slides(ctx):
+        raise ValueError(f"{other} is used by a deck, a block, a translation or the pool.")
+    if unused_content.archive_files(ctx, [], [path], logging.getLogger(__name__).info)[1] != 1:
+        raise ValueError(f"Could not archive {path.name}; check slides/archive/ for an existing copy.")
+
+
+def _unpinned_calls(deck: deck_scan.Deck, slide_id: str) -> list[deck_editor.SlideCall]:
+    mask = deck_language.masked(deck.text)
+    return [c for c in deck_editor.parse_slide_calls(deck)
+            if c.id == slide_id and c.version is None and mask[c.call_start] == "\\"]
+
+
+def replacement_files(ctx: ProjectContext, kept: str, other: str) -> dict[Path, deck_scan.Deck]:
+    """Validate an exact-copy replacement and snapshot physical files with unpinned calls."""
+    kept_path, other_path = _exact_paths(ctx, kept, other)
+    links = slide_language.TranslationLinks(ctx.slides_dir, languages.project_languages(ctx).codes)
+    groups = [links.group(p.name[:-len(slide_language.CURRENT_SUFFIX)]) for p in (kept_path, other_path)]
+    if not all(g.valid for g in groups):
+        raise ValueError("The translation links are ambiguous; repair them before replacing calls.")
+    missing = groups[1].members.keys() - groups[0].members.keys()
+    if missing:
+        raise ValueError(f"{other} has a translation ({', '.join(sorted(missing))}) that {kept} lacks.")
+    notes = alt_images.load_slide_notes(ctx)
+    if other in notes and notes[other].summary and notes[other] != notes.get(kept):
+        raise ValueError(f"{other} has alt-text slide notes that {kept} lacks.")
+    for entry in alt_images.load_store(ctx).values():
+        use, kept_use = entry.used_on.get(other), entry.used_on.get(kept)
+        if use is not None and (kept_use is None or any(
+                text != kept_use.takeaways.get(code) for code, text in use.takeaways.items())):
+            raise ValueError(f"{other} has alt-text for {entry.image} that {kept} lacks.")
+    # The plugin API has no link registry. Treat unknown .slidemage data as plugin data;
+    # refuse any ID reference there rather than guessing a plugin's link format.
+    core = {"library.json", "ai-review.json", "ai-review.lock", "ai-before", "claude-hooks",
+            "bundled_copies.json", "project.json", "app_settings.json", "compile_passes.json",
+            "translation_prompts.json", "draft_prompts.json", "backups", "compat-report.json",
+            "compat-report.md", "timing.jsonl"}
+    reference = re.compile(rb"(?<![A-Za-z0-9])" + re.escape(other.encode()) + rb"(?![A-Za-z0-9])")
+    for path in sorted(ctx.settings_dir.rglob("*")):
+        relative = path.relative_to(ctx.settings_dir)
+        if (not path.is_file() or relative.parts[0] in core
+                or relative.parts[0].startswith("library (conflict")):
+            continue
+        if reference.search(relative.as_posix().encode() + b"\0" + path.read_bytes()):
+            raise ValueError(f"{other} is referenced by plugin data in .slidemage/{relative}. "
+                             "SlideMage cannot verify or transfer these links.")
+    files = {}
+    for path in call_files(ctx):
+        deck = deck_scan.read_deck(path)
+        if _unpinned_calls(deck, other):
+            files[path] = deck
+    return files
+
+
+def replace_exact_copy(ctx: ProjectContext, kept: str, other: str, files: dict[Path, deck_scan.Deck]) -> None:
+    """Retarget approved files only; validate all snapshots before the first write."""
+    current = replacement_files(ctx, kept, other)
+    calls_by_path = {}
+    for path, deck in files.items():
+        if path not in current or current[path].text != deck.text:
+            raise StaleFileError(f"{path.name} changed on disk -- reopen the replacement dialog.")
+        calls = _unpinned_calls(current[path], other)
+        for call in calls:
+            if not call.editable:
+                raise ValueError(f"Cannot replace calls in {path.name}: {call.readonly_reason}")
+        calls_by_path[path] = calls
+    slug = slide_language.current_id_slug_for_bare_id(ctx, kept)
+    for path, calls in calls_by_path.items():
+        deck_editor.retarget_slide_calls(path, current[path].text, calls, slug)
 
 
 def find_clusters(ctx: ProjectContext, *, usage=None) -> list[Cluster]:
