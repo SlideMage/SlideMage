@@ -76,6 +76,13 @@ def test_cluster_cards_and_counts(qapp, tmp_path, monkeypatch):
         # Restyling while the view is open must retain the cards and counts in both themes.
         theme.set_dark(True)
         assert view.chips["all"].text() == "All · 4"
+        view._dismiss(view._cards[0][0])
+        assert view._work.wait(5000)
+        qapp.processEvents()
+        assert view.chips["all"].text() == "All · 3"
+        import json
+        saved = json.loads((ctx.settings_dir / "library.json").read_bytes())
+        assert saved["different_on_purpose"] == [{"ids": ["aaa", "bbb"], "fingerprint": "0"}]
         page._on_loaded(None, OSError("scan failed"))
         assert page.status.isVisible()
         assert page.status.text() == "Could not find similar slides: scan failed"

@@ -7,20 +7,21 @@ from dataclasses import dataclass, field
 
 from PySide6.QtCore import (QAbstractListModel, QEvent, QItemSelectionModel, QModelIndex,
                             QRect, QSize, Qt, QTimer, Signal)
-from PySide6.QtGui import QColor, QImage, QPainter, QPixmap
+from PySide6.QtGui import QColor, QPainter, QPixmap
 from PySide6.QtWidgets import (QAbstractItemView, QHBoxLayout, QLineEdit, QListView,
                                QScrollArea, QStyle, QStyledItemDelegate, QVBoxLayout)
 
-from .... import (alt_blocks, bundled_copies, deck_context, deck_editor, deck_scan, languages,
-                  library_data, preview_target, render_key, render_lookup, slide_language,
+from .... import (alt_blocks, bundled_copies, deck_context, deck_editor, deck_scan,
+                  library_data, preview_target, slide_language,
                   slide_usage, slide_versioning, unused_content)
 from ...background import run_in_background
 from ...kit.flow import FlowLayout
-from ...kit.tokens import RADIUS_LG, SPACE
+from ...kit.tokens import RADIUS_LG
 from ...kit.widgets import (Button, Card, Chip, Field, ModalSheet, Surface, ToggleChip,
                             RowButton, caption, clear_layout, text_label)
 from ...workspace.palette import matches, words_of
 from .similar import CLASSES
+from .pictures import load_picture
 
 
 @dataclass
@@ -64,31 +65,6 @@ def prepare_groups(ctx, usage, language):
                                sorted({d.path.stem for s in members for d in usage.get(slide_language.bare_id(s), [])
                                        if d.path.parent == ctx.blocks_dir})))
     return sorted(rows, key=lambda row: (row.title.casefold(), row.id))
-
-
-def load_picture(ctx, row, resolver, language, *, large=False):
-    """The same Instructor-reference route as Similar; decode off the GUI thread."""
-    if resolver is None:
-        return QImage()
-    try:
-        own = slide_language.own_language(row.slug, languages.project_languages(ctx).codes)
-        target = preview_target.PreviewTarget(ctx, "slide", row.slug, None, None, None, None,
-                                              row.decks[-1].preamble_text if row.decks else None)
-        unit = render_key.unit_for(target, "instructor", own if own not in (None, "mult") else language)
-        record = render_lookup.instructor_reference(dict(resolver=resolver, unit=unit), strict=True)
-        if record is None:
-            return QImage()
-        if large:
-            data = resolver.store.page(record, record["pages"])
-        else:
-            path = resolver.store.thumbnail_path(record)
-            data = path.read_bytes() if path is not None else None
-        image = QImage.fromData(data) if data else QImage()
-        return image if image.isNull() else image.scaled(
-            608 if large else 256, 342 if large else 144,
-            Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-    except Exception:  # Rendering can be disabled; publications can disappear during a read.
-        return QImage()
 
 
 class SlideModel(QAbstractListModel):
@@ -235,7 +211,8 @@ class SlidesView(Surface):
         self.grid.setItemDelegate(SlideDelegate(self))
         self.grid.selectionModel().selectionChanged.connect(self._selection_changed)
         self.grid.selectionModel().currentChanged.connect(self._show_details)
-        self.grid.viewport().installEventFilter(self)
+        self._viewport = self.grid.viewport()
+        self._viewport.installEventFilter(self)
         self.grid.verticalScrollBar().valueChanged.connect(self._queue_pictures)
         self._picture_timer = QTimer(self)
         self._picture_timer.setSingleShot(True)
@@ -308,10 +285,9 @@ class SlidesView(Surface):
         self.grid.viewport().update()
 
     def set_groups(self, groups, library, clusters):
-        for handle in (self._thumbs, self._detail):
-            if handle is not None:
-                handle.stop(wait_ms=0)
-        self._thumbs = self._detail = None
+        if self._thumbs is not None:
+            self._thumbs.stop(wait_ms=0)
+        self._thumbs = None
         self._pictures, self._visible = {}, ()
         self._current = None
         self.details.hide()
@@ -350,9 +326,6 @@ class SlidesView(Surface):
         if current not in {row.id for row in self.model.rows}:
             self._current = None
             self.details.hide()
-            if self._detail:
-                self._detail.stop(wait_ms=0)
-                self._detail = None
         self.status.setText("No slides match." if not self.model.rows else "")
         self.status.setVisible(not self.model.rows)
         self._selection_changed()
@@ -365,7 +338,7 @@ class SlidesView(Surface):
         self.selection_count.setText(f"{count} selected")
 
     def eventFilter(self, watched, event):
-        if watched is self.grid.viewport() and event.type() in (QEvent.Type.Paint, QEvent.Type.Resize, QEvent.Type.Show):
+        if watched is self._viewport and event.type() in (QEvent.Type.Paint, QEvent.Type.Resize, QEvent.Type.Show):
             self._queue_pictures()
         return super().eventFilter(watched, event)
 
@@ -410,8 +383,6 @@ class SlidesView(Surface):
         if row is None:
             return
         self._current = row
-        if self._detail:
-            self._detail.stop(wait_ms=0)
         self.details.show()
         self.detail_title.setText(row.title)
         self.preview.clear()
@@ -457,6 +428,8 @@ class SlidesView(Surface):
             self.similar.addWidget(button)
         if not related:
             self.similar.addWidget(caption("No similar slides."))
+        if self._detail:
+            return
         ctx, language = self.app.project, self.app.state.language
         resolver = getattr(self.app.background.renderer, "resolver", None)
 
@@ -474,6 +447,10 @@ class SlidesView(Surface):
 
         def done(result, error):
             self._detail = None
+            if self._current is not row:
+                if self._current in self.model.rows:
+                    self._show_details(self.model.index(self.model.rows.index(self._current)))
+                return
             if error is not None:
                 self.detail_status.setText(f"Could not load details: {error}")
                 return
@@ -484,9 +461,15 @@ class SlidesView(Surface):
                     self.preview.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
                 self.render_button.hide()
             for usage in usages:
-                button = RowButton(None, usage.deck.name, usage.state_text(), elide_title=True)
-                button.clicked.connect(lambda _checked=False, deck=usage.deck: self._open_deck(deck))
-                self.used_in.addWidget(button)
+                for deck in usage.decks if usage.block else [usage.deck]:
+                    button = RowButton(None, deck.name, usage.state_text() + (
+                        f" · via block {usage.block}" if usage.block else ""), elide_title=True)
+                    button.clicked.connect(lambda _checked=False, deck=deck, block=usage.block: self._open_deck(deck, block))
+                    self.used_in.addWidget(button)
+                if usage.block and not usage.decks:
+                    button = Button(f"Block {usage.block} · in no deck · Open in Source", "ghost")
+                    button.clicked.connect(lambda _checked=False, path=usage.deck.path: self.app.open_slide_editor(path, tab=True))
+                    self.used_in.addWidget(button)
             if not usages:
                 self.used_in.addWidget(caption("In no deck", "warning"))
 
@@ -501,13 +484,14 @@ class SlidesView(Surface):
             self.grid.setCurrentIndex(index)
             self.grid.scrollTo(index)
 
-    def _open_deck(self, deck):
+    def _open_deck(self, deck, block=None):
         row = self._current
         self.app.stack.setCurrentWidget(self.app.centre)
-        self.app.state.set_deck(deck)
+        self.app.state.set_deck(deck_scan.read_deck(deck.path))
         ids = {slide_language.bare_id(s) for s in row.members}
         target = next((r for r in self.app.slide_list.rows()
-                       if r.call.id in ids or r.deck_call.id in ids or ids.intersection(r.related_ids)), None)
+                       if (block is None or getattr(r.deck_call, "block", None) == block)
+                       and (r.call.id in ids or r.deck_call.id in ids or ids.intersection(r.related_ids))), None)
         if target is not None:
             self.app.state.set_focused_slide(target.call.id, occurrence_key=target.key)
         self.app.state.set_mode("preview")
@@ -518,8 +502,11 @@ class SlidesView(Surface):
         sheet.add_tab("", Field("Topic", name))
         sheet.add_button("Cancel", role="reject")
         sheet.add_button("Add topic", kind="primary", role="accept")
-        if sheet.exec() and name.text().strip():
-            self.update_library("topic", name.text().strip(), detail=detail)
+        try:
+            if sheet.exec() and name.text().strip():
+                self.update_library("topic", name.text().strip(), detail=detail)
+        finally:
+            sheet.deleteLater()
 
     def update_library(self, action, value=True, *, detail=False):
         if self._write is not None:
@@ -534,21 +521,7 @@ class SlidesView(Surface):
         self.pool_switch.setEnabled(False)
 
         def write():
-            data = library_data.read(ctx)
-            if action == "pool":
-                if value:
-                    data.pool.update(ids)
-                    data.not_reusable.difference_update(ids)
-                else:
-                    data.pool.difference_update(ids)
-            elif action == "not_reusable":
-                data.not_reusable.update(ids)
-                data.pool.difference_update(ids)
-            else:
-                for bare in ids:
-                    topics = data.topics.setdefault(bare, set())
-                    topics.discard(value) if action == "remove_topic" else topics.add(value)
-            library_data.write(ctx, data)
+            data = library_data.update(ctx, lambda data: library_data.change_members(data, ids, action, value))
             unused = {p.name for p in unused_content.find_unused_slides(ctx)}
             return data, unused
 
@@ -604,6 +577,9 @@ class SlidesView(Surface):
         self._render = run_in_background(render, done, parent=self)
 
     def shutdown(self):
+        if self._viewport is not None:
+            self._viewport.removeEventFilter(self)
+            self._viewport = None
         self._picture_timer.stop()
         for name in ("_thumbs", "_detail", "_write", "_render"):
             handle = getattr(self, name)

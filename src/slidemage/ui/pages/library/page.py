@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QHBoxLayout, QInputDialog, QLi
                                QListWidgetItem, QMessageBox, QScrollArea, QStackedWidget, QVBoxLayout)
 
 from .... import deck_editor, library_data, topic_blocks
-from ....fileio import read_text_exact, write_text_exact
+from ....fileio import read_text_exact
 from ....slide_similarity import find_clusters, usage_index
 from ...background import run_in_background
 from ...kit.tokens import SPACE
@@ -27,6 +27,8 @@ class LibraryPage(Surface):
         super().__init__()
         self.app = app
         self._scan = None
+        self._rescan = False
+        self._write = None
         self._choose_initial = True
         self._block_key = ""
         self.blocks = {}
@@ -84,6 +86,7 @@ class LibraryPage(Surface):
 
         self.views = QStackedWidget()
         self.similar_view = SimilarView(app)
+        self.similar_view.changed.connect(self.ensure_loaded)
         self.slides_view = SlidesView(app)
         self.suggestions_view = SuggestionsView(app)
         self.block_view = BlockView(app)
@@ -93,7 +96,7 @@ class LibraryPage(Surface):
         self.slides_view.add_to_block_requested.connect(self._add_to_block)
         self.suggestions_view.changed.connect(self.ensure_loaded)
         self.slides_view.library_changed.connect(self._update_rail)
-        self.slides_view.library_changed.connect(lambda _data: self.ensure_loaded(suggestions_only=True))
+        self.slides_view.library_changed.connect(lambda _data: self.ensure_loaded())
         self.slides_view.scope_changed.connect(self._select_row)
         self.status = self.similar_view.status
         self.similar_view.count_changed.connect(lambda count: self.similar_row.chip.set_text(str(count)))
@@ -141,6 +144,7 @@ class LibraryPage(Surface):
             row.sub.hide()
             row.clicked.connect(lambda topic=topic: self._show_view("all", topic))
             self.topics.addWidget(row)
+            row.show()
             self.topic_rows[topic] = row
         self.topics.addStretch(1)
         clear_layout(self.block_list)
@@ -151,6 +155,7 @@ class LibraryPage(Surface):
                             chip=(str(len(block.calls)), "neutral"), selectable=True, elide_title=True)
             row.clicked.connect(lambda key=key: self.show_block(key))
             self.block_list.addWidget(row)
+            row.show()
             self.block_rows[key] = row
         self.block_list.addStretch(1)
         scope = ("block" if self.views.currentWidget() is self.block_view else
@@ -158,35 +163,34 @@ class LibraryPage(Surface):
                  "suggestions" if self.views.currentWidget() is self.suggestions_view else self.slides_view._scope)
         self._select_row(scope, self.slides_view._topic if self.views.currentWidget() is self.slides_view else "")
 
-    def ensure_loaded(self, *, suggestions_only=False) -> None:
+    def ensure_loaded(self) -> None:
         """Rescan on every opening: workspace state has no project/slide-changed signal."""
         if self._scan is not None:
-            self._scan.stop(wait_ms=0)
+            self._rescan = True
+            return
         ctx = self.app.project
         self._scan_project = ctx
-        if not suggestions_only:
-            self.status.setText("Finding similar slides…")
-            self.status.show()
-            self.slides_view.status.setText("Loading slides…")
-            self.slides_view.status.show()
+        self.status.setText("Finding similar slides…")
+        self.status.show()
+        self.slides_view.status.setText("Loading slides…")
+        self.slides_view.status.show()
         self.suggestions_view.status.setText("Finding suggestions…")
         self.suggestions_view.status.show()
         language = self.app.state.language
-        current_groups = self.slides_view.model.groups
 
         def scan():
-            usage = None if suggestions_only else usage_index(ctx)
-            clusters = None if suggestions_only else find_clusters(ctx, usage=usage)
+            usage = usage_index(ctx)
+            clusters = find_clusters(ctx, usage=usage)
             try:
                 resolver = self.app.background.renderer.resolver
             except Exception:  # Rendering may be disabled or its store unavailable.
                 resolver = None
-            groups = current_groups if suggestions_only else prepare_groups(ctx, usage, language)
+            groups = prepare_groups(ctx, usage, language)
             blocks = topic_blocks.read_blocks(ctx)
-            for group in groups if not suggestions_only else ():
+            for group in groups:
                 group.block_topics = {t for key in group.blocks if key in blocks for t in blocks[key].topics}
             return (groups, library_data.read(ctx),
-                    None if suggestions_only else prepare_clusters(ctx, clusters, usage, resolver, language),
+                    prepare_clusters(ctx, clusters, usage, resolver, language),
                     prepare_suggestions(ctx, library_data.suggestions(ctx), groups, resolver, language),
                     blocks)
 
@@ -194,6 +198,10 @@ class LibraryPage(Surface):
 
     def _on_loaded(self, result, error) -> None:
         self._scan = None
+        if self._rescan:
+            self._rescan = False
+            self.ensure_loaded()
+            return
         if self._scan_project != self.app.project:
             self.ensure_loaded()
             return
@@ -201,9 +209,8 @@ class LibraryPage(Surface):
             if error is not None:
                 raise error
             groups, library, clusters, suggestions, self.blocks = result
-            if clusters is not None:
-                self.similar_view.set_clusters(clusters)
-                self.slides_view.set_groups(groups, library, [c.cluster for c in clusters])
+            self.similar_view.set_clusters(clusters)
+            self.slides_view.set_groups(groups, library, [c.cluster for c in clusters])
             pool_empty = not any(row.id in library.pool or row.blocks for row in groups)
             self.suggestions_view.set_suggestions(suggestions, pool_empty=pool_empty)
             self.rows["suggestions"].chip.set_text(str(len(suggestions)))
@@ -239,6 +246,8 @@ class LibraryPage(Surface):
         self._select_row("block")
 
     def _new_block(self, selected=None):
+        if self._write is not None:
+            return
         sheet = ModalSheet("New topic block", self, width=560)
         body = Surface()
         column = QVBoxLayout(body)
@@ -258,20 +267,30 @@ class LibraryPage(Surface):
         title.textChanged.connect(lambda: create.setEnabled(bool(title.text().strip() and slides.selectedItems())))
         slides.itemSelectionChanged.connect(lambda: create.setEnabled(bool(title.text().strip() and slides.selectedItems())))
         create.setEnabled(False)
-        if not sheet.exec():
-            return
-        slugs = [slides.item(n).data(Qt.ItemDataRole.UserRole) for n in range(slides.count())
-                 if slides.item(n).isSelected()]
         try:
+            if not sheet.exec():
+                return
+            slugs = [slides.item(n).data(Qt.ItemDataRole.UserRole) for n in range(slides.count())
+                     if slides.item(n).isSelected()]
+            name = title.text()
+        finally:
+            sheet.deleteLater()
+        ctx = self.app.project
+
+        def work():
             target, text = topic_blocks.prepare_calls_block(
-                self.app.project, [deck_editor.format_call("slide", slug) for slug in slugs], title.text())
-            if not target.exists():
-                write_text_exact(target, text)
-        except (OSError, ValueError) as exc:
-            QMessageBox.critical(self, "Create block failed", str(exc))
-            return
-        self.show_block(target.stem)
-        self.ensure_loaded()
+                ctx, [deck_editor.format_call("slide", slug) for slug in slugs], name)
+            return topic_blocks.commit_block(ctx, target, text)
+
+        def done(target, error):
+            self._write = None
+            if error is not None:
+                QMessageBox.critical(self, "Create block failed", str(error))
+                return
+            self.show_block(target.stem)
+            self.ensure_loaded()
+
+        self._write = run_in_background(work, done, parent=self)
 
     def _add_to_block(self, slugs):
         if not self.blocks:
@@ -304,6 +323,12 @@ class LibraryPage(Surface):
     def shutdown(self) -> None:
         if self._scan is not None:
             self._scan.stop(wait_ms=0)
+        if self._write is not None:
+            self._write.stop(wait_ms=0)
+        if self.similar_view._work is not None:
+            self.similar_view._work.stop(wait_ms=0)
+        if self.block_view._write is not None:
+            self.block_view._write.stop(wait_ms=0)
         self.block_view.shutdown()
         self.slides_view.shutdown()
         self.suggestions_view.shutdown()

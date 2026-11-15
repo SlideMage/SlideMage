@@ -103,6 +103,9 @@ def make(project, qapp):
         sheet = AddSlideSheet(window, deck, insert_at, indent, where="at the end of the deck", is_dirty=window.centre.unsaved, **start)
         keep.append((window, sheet))
         sheet.show()
+        if sheet._picker_work is not None:
+            assert sheet._picker_work.wait(5000)
+            qapp.processEvents()
         return sheet, window
 
     yield make
@@ -121,6 +124,10 @@ def deck_text(project):
 def pick(sheet, id_slug):
     sheet.search.setText("")
     sheet._select(id_slug)
+    if sheet._picker_work is not None:
+        assert sheet._picker_work.wait(5000)
+        QCoreApplication.processEvents()
+        sheet._select(id_slug)
     assert sheet.picked() == id_slug
 
 
@@ -198,7 +205,10 @@ def test_an_existing_slide_is_found_by_id_or_title_and_added_live(make, project)
     renderer.store.put("reference", pdf, [pixels.getvalue()],
                        dict(unit=unit.label, template=unit.template, inventory=[],
                             manifest=[["project", "slides/xyz-EN-Other-current.tex", text_sha256(target.source_path.read_text())]]))
-    sheet._fill_list()
+    sheet._picker_ready = False
+    sheet._ensure_picker()
+    assert sheet._picker_work.wait(5000)
+    QCoreApplication.processEvents()
     sheet._select("xyz-EN-Other")
     assert not sheet.listbox.currentItem().icon().isNull()
     assert "Instructor reference" in sheet.listbox.currentItem().toolTip()
@@ -487,7 +497,16 @@ def test_inserting_a_block_writes_its_heading_and_call_at_the_chosen_position(ma
     assert "\\section{Literature search} and \\slideblock{Literature}" in sheet.call_preview.text()
     sheet.insert_at = original.index("\\slide{abc-EN-Demo}")
     sheet.indent = "  "
+    block_text = block.read_bytes()
+    block.unlink()
     sheet.ok.click()
+    assert sheet._worker.wait(5000)
+    QCoreApplication.processEvents()
+    assert "disappeared" in sheet.status.text() and deck_text(project) == original
+    block.write_bytes(block_text)
+    sheet.ok.click()
+    assert sheet._worker.wait(5000)
+    QCoreApplication.processEvents()
     inserted = f"  \\section{{Literature search}}{newline}  \\slideblock{{Literature}}{newline}"
     expected = original[:sheet.insert_at] + inserted + original[sheet.insert_at:]
     assert deck_text(project) == expected

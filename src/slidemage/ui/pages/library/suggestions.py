@@ -14,7 +14,7 @@ from ...background import run_in_background
 from ...kit.flow import FlowLayout
 from ...kit.tokens import SPACE
 from ...kit.widgets import Button, Card, Chip, Surface, caption, clear_layout, text_label
-from .slides import load_picture
+from .pictures import load_picture
 
 
 @dataclass
@@ -146,14 +146,8 @@ class SuggestionsView(Surface):
         ctx = self.app.project
 
         def write():
-            data = library_data.read(ctx)
-            if reusable:
-                data.pool.add(slide_id)
-                data.not_reusable.discard(slide_id)
-            else:
-                data.not_reusable.add(slide_id)
-                data.pool.discard(slide_id)
-            library_data.write(ctx, data)
+            return library_data.update(ctx, lambda data: library_data.change_members(
+                data, {slide_id}, "pool" if reusable else "not_reusable"))
 
         def done(_result, error):
             self._write = None

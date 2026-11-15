@@ -1,7 +1,10 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 """A section becomes a block; another deck links to those exact calls."""
-from slidemage import deck_scan, topic_blocks
+import pytest
+
+from slidemage import deck_scan, fileio, topic_blocks
+from slidemage.project import ProjectContext
 from slidemage.fileio import read_text_exact as read
 from slidemage.ui.workspace import slide_list as module
 from test_slide_list_gui import choose_section, make_list  # noqa: F401 -- fixture
@@ -44,6 +47,11 @@ def test_section_becomes_a_block_and_another_deck_reuses_it(make_list, ctx, monk
     menu = slide_list._section_menu()
     assert "Make this section a block" in [entry[2] for entry in menu._entries if entry[0] == "item"]
     menu.triggered.emit("make_block")
+    assert slide_list._block_work.wait(5000)
+    from PySide6.QtWidgets import QApplication
+    QApplication.processEvents()
+    assert slide_list._block_work.wait(5000)
+    QApplication.processEvents()
     block = ctx.blocks_dir / "Literaturrecherche-2.tex"
     block_before = block.read_bytes()
     assert block_before.decode() == "\r\n".join(["%% SlideMage block: Literaturrecherche", *calls, ""])
@@ -65,3 +73,30 @@ def test_section_becomes_a_block_and_another_deck_reuses_it(make_list, ctx, monk
     assert block.read_bytes() == block_before
     assert sorted(path.name for path in ctx.blocks_dir.glob("*.tex")) == [block.name, collision.name]
     assert not make_list.errors
+
+
+def test_block_commit_rolls_back_and_refuses_case_collisions(tmp_path, monkeypatch):
+    ctx = ProjectContext.at(tmp_path)
+    ctx.decks_dir.mkdir()
+    deck = ctx.decks_dir / "course.tex"
+    before = "\\section{Topic}\n\\slide{aaa-First}\n"
+    deck.write_text(before)
+    snapshot = deck_scan.read_deck(deck)
+    write = fileio.write_text_exact
+
+    def fail(path, *args, **kwargs):
+        if path == deck:
+            raise OSError("disk full")
+        return write(path, *args, **kwargs)
+
+    monkeypatch.setattr(fileio, "write_text_exact", fail)
+    with pytest.raises(OSError, match="Restored all files"):
+        topic_blocks.make_block(ctx, snapshot, snapshot.chapters[0], "Topic")
+    assert deck.read_text() == before and not list(ctx.blocks_dir.glob("*.tex"))
+    target, text = topic_blocks.prepare_calls_block(ctx, [r"\slide{aaa-First}"], "Research")
+    (ctx.blocks_dir / "research.tex").write_text(r"\slide{bbb-Other}")
+    with pytest.raises(fileio.StaleFileError, match="collides"):
+        topic_blocks.commit_block(ctx, target, text)
+    target.write_text(text)
+    with pytest.raises(ValueError, match="collide ignoring case"):
+        topic_blocks.read_blocks(ctx)

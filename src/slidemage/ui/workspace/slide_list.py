@@ -106,6 +106,7 @@ class SlideList(QWidget):
         self._undo: dict[Path, list[str]] = {}
         self._undo_order: list[tuple[Path, Path]] = []   # displayed deck, edited file
         self.blocks: dict[Path, tuple[str, list[str]]] = {}
+        self._block_work = None
         self.setMinimumWidth(MIN_WIDTH)
         self.setMaximumWidth(MAX_WIDTH)
 
@@ -1019,15 +1020,31 @@ class SlideList(QWidget):
             self._make_block(section)
 
     def _make_block(self, section: SectionRow) -> None:
-        deck = self.deck
-        try:
-            target, _, _ = topic_blocks.prepare_block(self.app.project, deck, section.chapter, section.title)
-            existing = target.exists()
+        from ..background import run_in_background
+
+        if self._block_work is not None:
+            return
+        deck, ctx = self.deck, self.app.project
+
+        def done(target, error):
+            self._block_work = None
+            if error is not None:
+                QMessageBox.critical(self, "Make block failed", str(error))
+                return
+            self._undo.pop(deck.path, None)
+            self._undo_order = [(owner, path) for owner, path in self._undo_order if path != deck.path]
+            self.app.after_deck_edit(deck.path, f"Linked section {section.title} to block {target.stem}")
+
+        def approve(result, error):
+            self._block_work = None
+            if error is not None:
+                QMessageBox.critical(self, "Make block failed", str(error))
+                return
+            target, existing = result
             writes = str(deck.path)
             if existing:
                 detail = f"Link to the existing block {target}?"
             else:
-                # Approval comes before the title prompt, so name the destination pattern too.
                 writes += f"\n{target.parent}/<slug-of-title>.tex (default: {target.name})"
                 detail = "Choose a block title next; its slug becomes the file name."
             if QMessageBox.question(
@@ -1036,18 +1053,16 @@ class SlideList(QWidget):
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
                     QMessageBox.StandardButton.Cancel) != QMessageBox.StandardButton.Yes:
                 return
-            title, accepted = QInputDialog.getText(self, "Make this section a block", "Block title:",
-                                                  text=section.title)
-            if not accepted:
-                return
-            target = topic_blocks.make_block(self.app.project, deck, section.chapter, title)
-        except (OSError, StaleFileError, ValueError) as exc:
-            QMessageBox.critical(self, "Make block failed", str(exc))
-            return
-        # Earlier deck snapshots would also undo this conversion, so discard them.
-        self._undo.pop(deck.path, None)
-        self._undo_order = [(owner, path) for owner, path in self._undo_order if path != deck.path]
-        self.app.after_deck_edit(deck.path, f"Linked section {section.title} to block {target.stem}")
+            title, accepted = QInputDialog.getText(self, "Make this section a block", "Block title:", text=section.title)
+            if accepted:
+                self._block_work = run_in_background(
+                    lambda: topic_blocks.make_block(ctx, deck, section.chapter, title), done, parent=self)
+
+        def prepare():
+            target, _, _ = topic_blocks.prepare_block(ctx, deck, section.chapter, section.title)
+            return target, target.exists()
+
+        self._block_work = run_in_background(prepare, approve, parent=self)
 
     def _remove_section(self, section: SectionRow) -> None:
         """Ask whether the heading alone goes, the section with its slides, or every section of the deck."""

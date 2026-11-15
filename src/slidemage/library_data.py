@@ -9,7 +9,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 
 from . import bundled_copies, deck_context, deck_language, deck_scan, slide_language
-from .fileio import atomic_write, read_json
+from .fileio import StaleFileError, atomic_write, read_text_exact
+from .filelock import build_lock
 from .project import ProjectContext, call_files
 from .slide_similarity import STRUCTURAL_RE
 
@@ -32,8 +33,12 @@ def group_ids(ctx: ProjectContext) -> dict[str, str]:
             for slide_id in links.paths}
 
 
-def _normalise(ctx: ProjectContext, data: LibraryData) -> LibraryData:
+def _normalise(ctx: ProjectContext, data: LibraryData, *, prune=True) -> LibraryData:
     ids = group_ids(ctx)
+    if not prune:
+        stored = data.pool | data.not_reusable | data.topics.keys() | {
+            i for members, _fingerprint in data.different_on_purpose for i in members}
+        ids.update({i: i for i in stored if i not in ids})
     topics = {}
     for slide_id, values in data.topics.items():
         if slide_id in ids:
@@ -47,26 +52,75 @@ def _normalise(ctx: ProjectContext, data: LibraryData) -> LibraryData:
                        {ids[i] for i in data.not_reusable if i in ids}, topics, dismissals)
 
 
-def read(ctx: ProjectContext) -> LibraryData:
-    """Missing files are empty; Nextcloud conflict copies contribute their sets by union."""
+def _read(paths) -> LibraryData:
     data = LibraryData()
-    conflicts = sorted(ctx.settings_dir.glob("library (conflict*).json"))
-    for path in [ctx.settings_dir / "library.json", *conflicts]:
-        raw = read_json(path)
+    for text in paths.values():
+        raw = json.loads(text) if text is not None else {}
         data.pool.update(raw.get("pool", []))
         data.not_reusable.update(raw.get("not_reusable", []))
         for slide_id, topics in raw.get("topics", {}).items():
             data.topics.setdefault(slide_id, set()).update(topics)
         for entry in raw.get("different_on_purpose", []):
             data.different_on_purpose.add((frozenset(entry["ids"]), entry["fingerprint"]))
-        if path in conflicts:
-            log.debug("Merged library conflict copy by union: %s", path)
-    return _normalise(ctx, data) if data != LibraryData() else data
+    return data
 
 
-def write(ctx: ProjectContext, data: LibraryData) -> None:
-    """Prune unknown IDs and write sorted JSON, one set entry per line, atomically."""
-    data = _normalise(ctx, data)
+def _snapshots(ctx):
+    paths = {}
+    for path in [ctx.settings_dir / "library.json", *sorted(ctx.settings_dir.glob("library (conflict*).json"))]:
+        try:
+            paths[path] = read_text_exact(path)
+        except FileNotFoundError:
+            paths[path] = None
+    return paths
+
+
+def read(ctx: ProjectContext) -> LibraryData:
+    """Missing files are empty; Nextcloud conflict copies contribute their sets by union."""
+    return _normalise(ctx, _read(_snapshots(ctx)))
+
+
+def update(ctx: ProjectContext, change) -> LibraryData:
+    """Re-read, apply change(data), and persist under the shared cross-process lock."""
+    with build_lock(ctx.settings_dir / "library.lock"):
+        for attempt in range(3):
+            snapshots = _snapshots(ctx)
+            data = _normalise(ctx, _read(snapshots), prune=False)  # Rename still needs old IDs.
+            change(data)
+            data = _normalise(ctx, data)
+            try:
+                _write(ctx, data, snapshots[ctx.settings_dir / "library.json"])
+            except StaleFileError:
+                if attempt == 2:
+                    raise
+                continue
+            for path, before in list(snapshots.items())[1:]:
+                try:
+                    if before is not None and read_text_exact(path) == before:
+                        path.unlink()
+                        log.debug("Merged and removed library conflict copy: %s", path)
+                except OSError:
+                    log.exception("Could not retire merged library conflict copy: %s", path)
+            return data
+
+
+def change_members(data: LibraryData, ids, action, value=True) -> None:
+    if action == "pool":
+        if value:
+            data.pool.update(ids)
+            data.not_reusable.difference_update(ids)
+        else:
+            data.pool.difference_update(ids)
+    elif action == "not_reusable":
+        data.not_reusable.update(ids)
+        data.pool.difference_update(ids)
+    else:
+        for bare in ids:
+            topics = data.topics.setdefault(bare, set())
+            topics.discard(value) if action == "remove_topic" else topics.add(value)
+
+
+def _write(ctx, data, before):
     fields = {
         "different_on_purpose": [{"fingerprint": fingerprint, "ids": sorted(ids)}
                                  for ids, fingerprint in sorted(data.different_on_purpose,
@@ -75,7 +129,8 @@ def write(ctx: ProjectContext, data: LibraryData) -> None:
         "pool": sorted(data.pool),
         "topics": {i: sorted(topics) for i, topics in sorted(data.topics.items())},
     }
-    atomic_write(ctx.settings_dir / "library.json", json.dumps(fields, ensure_ascii=False, indent=2) + "\n")
+    atomic_write(ctx.settings_dir / "library.json", json.dumps(fields, ensure_ascii=False, indent=2) + "\n",
+                 expected_text=before)
 
 
 # Plan §5.2, 2026-11-15: fixed thresholds, deliberately not settings.
@@ -119,7 +174,7 @@ def suggestions(ctx: ProjectContext) -> list[Suggestion]:
     for path in call_files(ctx):
         if path.parent == ctx.blocks_dir:
             pooled.update(ids[c.id] for c in deck_language.calls_in(
-                deck_language.masked(path.read_text(encoding="utf-8")), []) if c.id in ids)
+                deck_language.masked(read_text_exact(path)), []) if c.id in ids)
 
     segments, usage = [], defaultdict(list)
     for deck in deck_scan.scan_decks(ctx):

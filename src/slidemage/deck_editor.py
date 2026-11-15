@@ -369,10 +369,15 @@ def remove_slide_calls(deck_path: Path, expected_text: str, calls: list[SlideCal
     return apply(deck_path, expected_text, mutate)
 
 
-def _block_marker(text: str, call: ExpandedCall) -> tuple[int, int]:
+def _block_marker(path: Path, text: str, call: ExpandedCall) -> tuple[int, int]:
     """Check the deck's block marker, rather than the expanded slide's editability."""
+    from . import deck_language
+    from .deck_scan import deck_from_text
+
     token = text[call.call_start:call.call_end]
-    if not call.block or re.fullmatch(r"\\slideblock\s*\{" + re.escape(call.block) + r"\}", token) is None:
+    if (not call.block or INPUT_RE.fullmatch(token) is None or not any(
+            c.call_start == call.call_start and c.call_end == call.call_end and c.source == call.source
+            and c.block == call.block for c in deck_language.active_calls(deck_from_text(path, text)))):
         raise ValueError("This block marker changed; reload the deck and retry.")
     start, end = line_span(text, call.call_start, call.call_end)
     editable, reason = _editability(text, start, call.call_start, call.call_end, end)
@@ -383,7 +388,7 @@ def _block_marker(text: str, call: ExpandedCall) -> tuple[int, int]:
 
 def unlink_block(path: Path, text: str, call: ExpandedCall, block_text: str) -> str:
     """Replace one block marker with its body, leaving the section heading in place."""
-    start, end = _block_marker(text, call)
+    start, end = _block_marker(path, text, call)
     newline = eol(text)
     indent = text[start:call.call_start]
     body = "".join((indent + line if line else "") + newline for line in block_text.splitlines()
@@ -394,7 +399,7 @@ def unlink_block(path: Path, text: str, call: ExpandedCall, block_text: str) -> 
 
 def remove_block(path: Path, text: str, call: ExpandedCall) -> str:
     """Remove one block marker, keeping its section and the block file."""
-    start, end = _block_marker(text, call)
+    start, end = _block_marker(path, text, call)
     return apply(path, text, lambda current: current[:start] + current[end:])
 
 

@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 from PySide6.QtWidgets import QCheckBox, QDialog, QLabel, QMessageBox
 
-from slidemage import slide_similarity
+from slidemage import fileio, project, slide_similarity
 from slidemage.project import ProjectContext
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.kit.widgets import Button, ModalSheet
@@ -15,7 +15,9 @@ from slidemage.ui.pages.library.similar import SimilarView, prepare_clusters
 
 
 @pytest.fixture
-def copies(tmp_path):
+def copies(tmp_path, monkeypatch):
+    monkeypatch.setattr(project, "config_dir", lambda: tmp_path / "config")
+    monkeypatch.setattr(project, "cache_dir", lambda: tmp_path / "cache")
     ctx = ProjectContext.at(tmp_path)
     for folder in (ctx.slides_dir, ctx.decks_dir, ctx.blocks_dir, ctx.settings_dir):
         folder.mkdir()
@@ -29,7 +31,7 @@ def copies(tmp_path):
     app = SimpleNamespace(project=ctx, theme=ThemeManager(dark=False),
                           state=SimpleNamespace(language="EN"), background=SimpleNamespace(renderer=None),
                           slide_list=SimpleNamespace(_undo={}, _undo_order=[]),
-                          refresh_open_deck_editors=lambda: None)
+                          refresh_open_deck_editors=lambda: None, after_deck_edit=lambda *args: None)
     view = SimilarView(app)
     usage = slide_similarity.usage_index(ctx)
     view.set_clusters(prepare_clusters(ctx, slide_similarity.find_clusters(ctx, usage=usage), usage, None, "EN"))
@@ -41,19 +43,24 @@ def copies(tmp_path):
 
 def test_archive_unused_copy(qapp, copies, monkeypatch):
     ctx, view = copies
-    approvals = []
+    approvals, refreshes = [], []
+    view.changed.connect(lambda: refreshes.append(True))
     monkeypatch.setattr(QMessageBox, "question", lambda *args: approvals.append(args[2]) or QMessageBox.Yes)
     monkeypatch.setattr(QMessageBox, "warning", lambda *args: pytest.fail(args[2]))
     button = next(b for b in view.findChildren(Button) if b.text() == "Archive the unused copy")
     button.click()
     assert view._work.wait(5000)
     qapp.processEvents()
-    assert len(approvals) == 1
+    assert len(approvals) == 1 and refreshes == [True]
     assert (ctx.slides_dir / "archive" / "bbb-EN-Demo-current.tex").is_file()
     assert not (ctx.slides_dir / "bbb-EN-Demo-current.tex").exists()
     assert slide_similarity.find_clusters(ctx) == []
-    assert view._cards == []
-    assert view.chips["all"].text() == "All · 0"
+    (ctx.slides_dir / "bbb-EN-Demo-current.tex").write_bytes(
+        (ctx.slides_dir / "aaa-EN-Demo-current.tex").read_bytes())
+    (ctx.decks_dir / "keep.tex").unlink()
+    view.set_clusters(prepare_clusters(ctx, slide_similarity.find_clusters(ctx), {}, None, "EN"))
+    assert not [b for b in view._cards[0][1].findChildren(Button) if b.text() == "Archive the unused copy"]
+
 
 
 def test_replace_unpinned_calls_and_refuse_translation(qapp, copies, monkeypatch):
@@ -126,3 +133,38 @@ def test_replace_unpinned_calls_and_refuse_translation(qapp, copies, monkeypatch
             slide_similarity.replace_exact_copy(ctx, "aaa", "bbb", files)
         assert {p: p.read_bytes() for p in before} == before
         path.unlink()
+
+
+def test_replacement_restores_prior_writes_and_checks_external_banks(qapp, copies, monkeypatch):
+    ctx, _view = copies
+    block = ctx.blocks_dir / "Topic.tex"
+    deck = ctx.decks_dir / "replace.tex"
+    for path in (block, deck):
+        path.write_text("\\slide{bbb-EN-Demo}\n")
+    snapshots = {p: p.read_bytes() for p in (block, deck)}
+    files = slide_similarity.replacement_files(ctx, "aaa", "bbb")
+    write = fileio.write_text_exact
+
+    def fail_deck(path, *args, **kwargs):
+        if path == deck:
+            raise OSError("disk full")
+        return write(path, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(fileio, "write_text_exact", fail_deck)
+        with pytest.raises(OSError, match="Restored all files"):
+            slide_similarity.replace_exact_copy(ctx, "aaa", "bbb", files)
+    assert {p: p.read_bytes() for p in snapshots} == snapshots
+    settings = project.config_dir() / "plugins" / "settings" / "exam-forge.json"
+    settings.parent.mkdir(parents=True)
+    bank = ctx.root.parent / (ctx.root.name + "-external-bank")
+    bank.mkdir()
+    settings.write_text(json.dumps({"bank_folders": {str(deck): str(bank)}}))
+    link = bank / "question.json"
+    link.write_text(json.dumps({"sources": [{"slide_id": "bbb"}]}))
+    with pytest.raises(ValueError, match="unregistered external banks cannot be verified"):
+        slide_similarity.replace_exact_copy(ctx, "aaa", "bbb", files)
+    assert {p: p.read_bytes() for p in snapshots} == snapshots
+    link.write_text(json.dumps({"sources": [{"slide_id": "aaa"}]}))
+    slide_similarity.replace_exact_copy(ctx, "aaa", "bbb", files)
+    assert all("bbb" not in p.read_text() for p in snapshots)

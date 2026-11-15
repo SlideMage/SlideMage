@@ -78,9 +78,10 @@ def test_drag_across_the_block_edge_changes_nothing(block_list, qapp):
 
 
 @pytest.mark.parametrize("newline", ["\n", "\r\n"])
-def test_unlink_then_undo_restores_exact_deck_text(block_list, make_list, monkeypatch, newline):
+@pytest.mark.parametrize("marker", [r"\slideblock{topic}", r"\input{blocks/topic}", r"\include{blocks/topic.tex}"])
+def test_unlink_then_undo_restores_exact_deck_text(block_list, make_list, monkeypatch, newline, marker):
     slide_list, window, deck, block = block_list
-    before = read(deck).replace("\\slideblock{topic}", "\t\\slideblock{topic}").replace("\n", newline)
+    before = read(deck).replace("\\slideblock{topic}", "\t" + marker).replace("\n", newline)
     deck.write_bytes(before.encode())
     window.state.set_deck(deck_scan.read_deck(deck))
     slide_list.rebuild()
@@ -95,7 +96,7 @@ def test_unlink_then_undo_restores_exact_deck_text(block_list, make_list, monkey
     menu.triggered.emit("unlink")
     body = newline.join("\t" + line for line in block_before.decode().splitlines()
                        if not line.startswith("%%")) + newline
-    assert read(deck) == before.replace("\t\\slideblock{topic}" + newline,
+    assert read(deck) == before.replace("\t" + marker + newline,
                                         "\t% from block topic" + newline + body)
     assert ids(slide_list) == ["aaa", "bbb", "ccc"]
     assert block.read_bytes() == block_before

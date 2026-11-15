@@ -14,8 +14,8 @@ from pathlib import Path
 from typing import Literal
 
 from . import (alt_images, bundled_copies, deck_context, deck_editor, deck_language, deck_scan,
-               languages, slide_language)
-from .fileio import StaleFileError
+               languages, project, slide_language)
+from .fileio import StaleFileError, write_texts
 from .project import ProjectContext, call_files
 from .tex_source import VERBATIM_ENV_RE, VERB_RE, blanked_verbatim, comment_start
 
@@ -101,7 +101,10 @@ def archive_unused_copy(ctx: ProjectContext, kept: str, other: str) -> None:
     from . import unused_content
 
     _kept, path = _exact_paths(ctx, kept, other)
-    if usage_index(ctx).get(other) or path not in unused_content.find_unused_slides(ctx):
+    usage = usage_index(ctx)
+    if not usage.get(kept):
+        raise ValueError("Keep a copy used by a deck or block before archiving its unused twin.")
+    if usage.get(other) or path not in unused_content.find_unused_slides(ctx):
         raise ValueError(f"{other} is used by a deck, a block, a translation or the pool.")
     if unused_content.archive_files(ctx, [], [path], logging.getLogger(__name__).info)[1] != 1:
         raise ValueError(f"Could not archive {path.name}; check slides/archive/ for an existing copy.")
@@ -131,21 +134,35 @@ def replacement_files(ctx: ProjectContext, kept: str, other: str) -> dict[Path, 
         if use is not None and (kept_use is None or any(
                 text != kept_use.takeaways.get(code) for code, text in use.takeaways.items())):
             raise ValueError(f"{other} has alt-text for {entry.image} that {kept} lacks.")
-    # The plugin API has no link registry. Treat unknown .slidemage data as plugin data;
-    # refuse any ID reference there rather than guessing a plugin's link format.
-    core = {"library.json", "ai-review.json", "ai-review.lock", "ai-before", "claude-hooks",
+    # Exam Forge remembers user-chosen bank folders in its per-plugin settings.
+    # Host.cache_dir() is the other per-plugin storage scope; neither is .slidemage.
+    settings = project.config_dir() / "plugins" / "settings" / "exam-forge.json"
+    scope = "Checked project plugin data, the Exam Forge cache and remembered bank folders; unregistered external banks cannot be verified."
+    folders = [project.cache_dir() / "plugins" / "exam-forge"]
+    try:
+        choices = json.loads(settings.read_text(encoding="utf-8")).get("bank_folders", {}) if settings.exists() else {}
+        folders.extend(Path(value).expanduser() for value in choices.values())
+        for folder in folders[1:]:
+            if not folder.is_dir():
+                raise OSError(f"Remembered bank is unavailable: {folder}")
+    except (OSError, ValueError, TypeError, AttributeError) as exc:
+        raise ValueError(f"Cannot check Exam Forge links: {exc}. {scope}") from exc
+    core = {"library.json", "library.lock", "blocks.lock", "ai-review.json", "ai-review.lock", "ai-before", "claude-hooks",
             "bundled_copies.json", "project.json", "app_settings.json", "compile_passes.json",
             "translation_prompts.json", "draft_prompts.json", "backups", "compat-report.json",
             "compat-report.md", "timing.jsonl"}
     reference = re.compile(rb"(?<![A-Za-z0-9])" + re.escape(other.encode()) + rb"(?![A-Za-z0-9])")
-    for path in sorted(ctx.settings_dir.rglob("*")):
-        relative = path.relative_to(ctx.settings_dir)
-        if (not path.is_file() or relative.parts[0] in core
-                or relative.parts[0].startswith("library (conflict")):
-            continue
-        if reference.search(relative.as_posix().encode() + b"\0" + path.read_bytes()):
-            raise ValueError(f"{other} is referenced by plugin data in .slidemage/{relative}. "
-                             "SlideMage cannot verify or transfer these links.")
+    paths = [p for p in ctx.settings_dir.rglob("*") if p.relative_to(ctx.settings_dir).parts[0] not in core
+             and not p.name.startswith("library (conflict")]
+    for folder in folders:
+        paths.extend(folder.rglob("*.json"))
+    for path in sorted(set(paths)):
+        try:
+            if path.is_file() and reference.search(path.name.encode() + b"\0" + path.read_bytes()):
+                raise ValueError(f"{other} is referenced by plugin data in {path}. "
+                                 f"SlideMage cannot transfer these links. {scope}")
+        except OSError as exc:
+            raise ValueError(f"Cannot check plugin links in {path}: {exc}. {scope}") from exc
     files = {}
     for path in call_files(ctx):
         deck = deck_scan.read_deck(path)
@@ -167,8 +184,14 @@ def replace_exact_copy(ctx: ProjectContext, kept: str, other: str, files: dict[P
                 raise ValueError(f"Cannot replace calls in {path.name}: {call.readonly_reason}")
         calls_by_path[path] = calls
     slug = slide_language.current_id_slug_for_bare_id(ctx, kept)
-    for path, calls in calls_by_path.items():
-        deck_editor.retarget_slide_calls(path, current[path].text, calls, slug)
+    edits = {}
+    for path in sorted(calls_by_path, key=lambda p: (p.parent != ctx.blocks_dir, str(p))):
+        text = current[path].text
+        for call in reversed(calls_by_path[path]):
+            token = deck_editor.format_call(call.macro, slug, call.version, call.conditions, call.steps)
+            text = text[:call.call_start] + token + text[call.call_end:]
+        edits[path] = (current[path].text, text)
+    write_texts(edits)
 
 
 def find_clusters(ctx: ProjectContext, *, usage=None) -> list[Cluster]:

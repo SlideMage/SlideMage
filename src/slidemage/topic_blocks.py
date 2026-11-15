@@ -9,7 +9,8 @@ from pathlib import Path
 
 from . import deck_editor, deck_language
 from .deck_scan import Chapter, Deck, parse_chapters, scan_decks, slugify
-from .fileio import StaleFileError, read_text_exact, write_text_exact
+from .fileio import StaleFileError, read_text_exact, write_text_exact, write_texts
+from .filelock import build_lock
 from .project import ProjectContext, call_files
 from .tex_source import masked_same_length
 
@@ -35,7 +36,7 @@ def prepare_calls_block(ctx: ProjectContext, tokens: list[str], title: str, newl
         raise ValueError("Enter a block title on one line.")
     if not tokens:
         raise ValueError("Choose at least one slide for the block.")
-    paths = sorted(ctx.blocks_dir.glob("*.tex"))
+    paths = _block_paths(ctx)
     for path in paths:
         if not re.fullmatch(r"[A-Za-z0-9_-]+", path.stem):
             continue
@@ -138,35 +139,35 @@ def prepare_run_block(ctx: ProjectContext, occurrences: list[tuple[Deck, list[de
     return target, block_text, edits
 
 
-def _write(target: Path, block_text: str, edits: dict[Path, tuple[str, str]]) -> Path:
-    for path, (before, _after) in edits.items():
-        if read_text_exact(path) != before:
-            raise StaleFileError(f"{path.name} changed on disk -- reload and retry.")
-    created = not target.exists()
-    if not created and read_text_exact(target) != block_text:
-        raise StaleFileError(f"{target.name} changed on disk -- reload and retry.")
-    if created:
-        target.parent.mkdir(exist_ok=True)
-        write_text_exact(target, block_text)
-    written = []
-    try:
-        for path, (before, after) in edits.items():
-            deck_editor.apply(path, before, lambda _text: after)
-            written.append(path)
-    except (OSError, StaleFileError):
-        for path in reversed(written):
-            before, after = edits[path]
-            write_text_exact(path, before, expected_text=after)
-        if created and read_text_exact(target) == block_text:
-            target.unlink()
-        raise
+def _block_paths(ctx):
+    paths = sorted(ctx.blocks_dir.glob("*.tex"))
+    names = {}
+    for path in paths:
+        key = path.stem.casefold()
+        if key in names:
+            raise ValueError(f"Block names collide ignoring case: {names[key].name}, {path.name}. Rename one first.")
+        names[key] = path
+    return paths
+
+
+def commit_block(ctx, target: Path, block_text: str, edits=None) -> Path:
+    """One commit path for creation and conversion; blocks precede deck writes."""
+    _calls(block_text)
+    with build_lock(ctx.settings_dir / "blocks.lock"):
+        paths = _block_paths(ctx)
+        if any(p.stem.casefold() == target.stem.casefold() and p != target for p in paths):
+            raise StaleFileError(f"{target.name} now collides with another block -- reload and retry.")
+        before = read_text_exact(target) if target.exists() else None
+        if before is not None and before != block_text:
+            raise StaleFileError(f"{target.name} changed on disk -- reload and retry.")
+        write_texts({target: (before, block_text), **(edits or {})})
     return target
 
 
 def make_block(ctx: ProjectContext, deck: Deck, chapter: Chapter, title: str) -> Path:
     """Create or reuse a block and replace a section's calls. Not undoable."""
     target, block_text, new_text = prepare_block(ctx, deck, chapter, title)
-    return _write(target, block_text, {deck.path: (deck.text, new_text)})
+    return commit_block(ctx, target, block_text, {deck.path: (deck.text, new_text)})
 
 
 def make_run_block(ctx: ProjectContext, occurrences: list[tuple[Deck, list[deck_editor.SlideCall]]],
@@ -176,7 +177,7 @@ def make_run_block(ctx: ProjectContext, occurrences: list[tuple[Deck, list[deck_
         raise StaleFileError("The block proposal changed -- reload and retry.")
     target, block_text, edits = proposal
     before = {deck.path: deck.text for deck, _calls in occurrences}
-    return _write(target, block_text, {path: (before[path], text) for path, text in edits.items()})
+    return commit_block(ctx, target, block_text, {path: (before[path], text) for path, text in edits.items()})
 
 
 @dataclass
@@ -192,10 +193,12 @@ class TopicBlock:
 def read_blocks(ctx: ProjectContext) -> dict[str, TopicBlock]:
     """Physical blocks and the decks reached through the shared resolver."""
     blocks = {}
+    _block_paths(ctx)
     for path in call_files(ctx):
         if path.parent != ctx.blocks_dir or not re.fullmatch(r"[A-Za-z0-9_-]+", path.stem):
             continue
         text = read_text_exact(path)
+        _calls(text)
         metadata = dict(re.findall(r"^%% (SlideMage block|Topics|Description):[^\S\r\n]*([^\r\n]*)", text, re.MULTILINE))
         blocks[path.stem] = TopicBlock(
             path, metadata.get("SlideMage block", "").strip() or path.stem,
@@ -208,12 +211,20 @@ def read_blocks(ctx: ProjectContext) -> dict[str, TopicBlock]:
     return blocks
 
 
-def update_metadata(path: Path, field: str, value: str) -> None:
+def update_metadata(path: Path, field: str, value: str, *, expected: str | None = None) -> None:
     """Change just one managed header line, keeping calls, comments and line endings."""
     if field not in ("SlideMage block", "Topics", "Description") or "\n" in value or "\r" in value:
         raise ValueError("Block metadata must be a single header line.")
     before = read_text_exact(path)
     pattern = re.compile(r"^%% " + re.escape(field) + r":[^\r\n]*", re.MULTILINE)
+    match = pattern.search(before)
+    current = match[0].split(":", 1)[1].strip() if match else ""
+    if field == "SlideMage block" and not current:
+        current = path.stem
+    if field == "Topics":
+        current = ", ".join(t.strip() for t in current.split(",") if t.strip())
+    if expected is not None and current != expected:
+        raise StaleFileError(f"{field} changed on disk -- reload the block before editing it.")
     line = f"%% {field}: {value.strip()}"
     after = (pattern.sub(lambda _m: line, before, count=1) if pattern.search(before)
              else line + deck_editor.eol(before) + before)

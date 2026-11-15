@@ -6,17 +6,17 @@ from __future__ import annotations
 import difflib
 import re
 from dataclasses import dataclass, replace
-from pathlib import Path
+from types import SimpleNamespace
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QDialog, QGridLayout, QHBoxLayout,
                                QMessageBox, QScrollArea, QVBoxLayout)
 
-from .... import (alt_blocks, deck_context, languages, library_data, preview_target, render_key,
-                  render_lookup, slide_language, slide_similarity)
+from .... import alt_blocks, deck_context, library_data, slide_language, slide_similarity
 from ....slide_similarity import Cluster, normalise, uncomment
 from ...background import run_in_background
+from .pictures import load_picture
 from ...kit.flow import FlowLayout
 from ...kit.tokens import RADIUS_LG, SPACE
 from ...kit.widgets import Button, Card, Chip, ModalSheet, Surface, ToggleChip, caption, text_label
@@ -32,7 +32,7 @@ class Member:
     id: str
     title: str
     usage: str
-    png: Path | None
+    image: QImage
 
 
 @dataclass
@@ -44,7 +44,6 @@ class PreparedCluster:
 
 def prepare_clusters(ctx, clusters, usage, resolver, language):
     """Read sources and renders and compute diffs on the scan worker, before building widgets."""
-    codes = languages.project_languages(ctx).codes
     library = library_data.read(ctx)
     ids = library_data.group_ids(ctx)
     pool = {i for i, original in ids.items() if original in library.pool}
@@ -65,20 +64,9 @@ def prepare_clusters(ctx, clusters, usage, resolver, language):
                 continue
             slug = path.name[:-len(slide_language.CURRENT_SUFFIX)]
             decks = usage.get(slide_id, [])
-            png = None
-            if resolver is not None:
-                try:
-                    own = slide_language.own_language(slug, codes)
-                    preamble = decks[-1].preamble_text if decks else None
-                    target = preview_target.PreviewTarget(ctx, "slide", slug, None, None, None, None, preamble)
-                    unit = render_key.unit_for(target, "instructor", own if own in codes else language)
-                    record = render_lookup.instructor_reference(dict(resolver=resolver, unit=unit), strict=True)
-                    if record is not None:
-                        png = resolver.store.thumbnail_path(record)
-                except Exception:  # The Library also works when the render store is unavailable.
-                    pass
+            image = load_picture(ctx, SimpleNamespace(slug=slug, decks=decks), resolver, language)
             members.append(Member(slide_id, alt_blocks.plain_title(deck_context.frame_title(source) or slug),
-                                  ", ".join(deck.name for deck in decks), png))
+                                  ", ".join(deck.name for deck in decks), image))
             sources.append(source)
         if len(members) < 2:
             continue
@@ -113,6 +101,7 @@ def prepare_clusters(ctx, clusters, usage, resolver, language):
 
 class SimilarView(Surface):
     count_changed = Signal(int)
+    changed = Signal()
 
     def __init__(self, app) -> None:
         super().__init__()
@@ -197,8 +186,8 @@ class SimilarView(Surface):
                 picture.setFixedSize(256, 144)
                 picture.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 column.addWidget(picture)
-                if data.png is not None:
-                    pixmap = QPixmap(str(data.png))
+                if data.image is not None:
+                    pixmap = QPixmap.fromImage(data.image)
                     if not pixmap.isNull():
                         picture.setPixmap(pixmap.scaled(picture.size(), Qt.AspectRatioMode.KeepAspectRatio,
                                                        Qt.TransformationMode.SmoothTransformation))
@@ -207,9 +196,9 @@ class SimilarView(Surface):
                 usage.setTextFormat(Qt.TextFormat.PlainText)
                 column.addWidget(usage)
                 if cluster.kind == "exact":
-                    if not data.usage:
+                    if not data.usage and used:
                         archive = Button("Archive the unused copy")
-                        twin = next(m.id for m in prepared.members if m.id != data.id)
+                        twin = used[0].id
                         archive.clicked.connect(lambda _checked=False, kept=twin, other=data.id:
                                                 self._archive(kept, other))
                         column.addWidget(archive)
@@ -319,18 +308,8 @@ class SimilarView(Surface):
 
     def _act(self, action, files):
         ctx = self.app.project
-        language = self.app.state.language
-        try:
-            resolver = self.app.background.renderer.resolver
-        except AttributeError:
-            resolver = None
 
-        def work():
-            action()
-            usage = slide_similarity.usage_index(ctx)
-            return prepare_clusters(ctx, slide_similarity.find_clusters(ctx, usage=usage), usage, resolver, language)
-
-        def done(clusters, error):
+        def done(_result, error):
             self._work = None
             if ctx != self.app.project:
                 return
@@ -341,13 +320,15 @@ class SimilarView(Surface):
                 for path in files:
                     slide_list._undo.pop(path, None)
                 slide_list._undo_order = [(owner, path) for owner, path in slide_list._undo_order if path not in files]
-            self.app.refresh_open_deck_editors()
+            if files:
+                self.app.after_deck_edit(next(iter(files)), "Replaced exact-copy slide calls")
+            else:
+                self.app.refresh_open_deck_editors()
+            self.changed.emit()
             if error is not None:
                 QMessageBox.warning(self, "Similar slides action failed", str(error))
-            else:
-                self.set_clusters(clusters)
 
-        self._work = run_in_background(work, done, parent=self)
+        self._work = run_in_background(action, done, parent=self)
 
     def _style_diffs(self) -> None:
         t = self.app.theme.tokens
@@ -383,13 +364,24 @@ class SimilarView(Surface):
 
     def _dismiss(self, cluster: Cluster) -> None:
         ctx = self.app.project
-        library = library_data.read(ctx)
-        ids = library_data.group_ids(ctx)
-        library.different_on_purpose.add((frozenset(ids[i] for i in cluster.ids if i in ids),
-                                         cluster.fingerprint))
-        library_data.write(ctx, library)
-        self._dismissed.add(cluster.fingerprint)
-        self._filter(self._kind)
+        if self._work is not None:
+            return
+
+        def work():
+            ids = library_data.group_ids(ctx)
+            library_data.update(ctx, lambda data: data.different_on_purpose.add((
+                frozenset(ids[i] for i in cluster.ids if i in ids), cluster.fingerprint)))
+
+        def done(_result, error):
+            self._work = None
+            if error is not None:
+                self.status.setText(f"Could not save library: {error}")
+                self.status.show()
+            else:
+                self._dismissed.add(cluster.fingerprint)
+                self._filter(self._kind)
+
+        self._work = run_in_background(work, done, parent=self)
 
     def _open(self, ids) -> None:
         for slide_id in ids:

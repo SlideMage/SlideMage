@@ -13,7 +13,7 @@ from ...kit.flow import FlowLayout
 from ...kit.tokens import SPACE
 from ...kit.widgets import Button, Card, Chip, Field, RowButton, Surface, caption, clear_layout, text_label
 from ...workspace.slide_tree import BLOCK
-from .slides import load_picture
+from .pictures import load_picture
 
 
 class BlockView(QScrollArea):
@@ -22,6 +22,7 @@ class BlockView(QScrollArea):
     def __init__(self, app):
         super().__init__()
         self.app, self.block, self._pictures = app, None, None
+        self._write = None
         self.setWidgetResizable(True)
         self.setFrameShape(QScrollArea.Shape.NoFrame)
         content = Surface()
@@ -145,22 +146,34 @@ class BlockView(QScrollArea):
                     "Description": self.block.description}[field]
         if value == previous:
             return
-        try:
-            topic_blocks.update_metadata(self.block.path, field, value)
-        except (OSError, ValueError) as exc:
-            self.status.setText(f"Could not save block: {exc}")
+        if self._write is not None:
             return
-        if field == "SlideMage block":
-            self.block.title = value or self.block.path.stem
-            self.heading.setText(self.block.title)
-            self.title.setText(self.block.title)
-        elif field == "Topics":
-            self.block.topics = [t.strip() for t in value.split(",") if t.strip()]
-            self._show_topics()
-        else:
-            self.block.description = value
-        self.status.clear()
-        self.changed.emit()
+        block = self.block
+        self._write = True
+        self.widget().setEnabled(False)
+
+        def done(_result, error):
+            self._write = None
+            self.widget().setEnabled(True)
+            if self.block is not block:
+                return
+            if error is not None:
+                self.status.setText(f"Could not save block: {error}")
+                return
+            if field == "SlideMage block":
+                block.title = value or block.path.stem
+                self.heading.setText(block.title)
+                self.title.setText(block.title)
+            elif field == "Topics":
+                block.topics = [t.strip() for t in value.split(",") if t.strip()]
+                self._show_topics()
+            else:
+                block.description = value
+            self.status.clear()
+            self.changed.emit()
+
+        self._write = run_in_background(
+            lambda: topic_blocks.update_metadata(block.path, field, value, expected=previous), done, parent=self)
 
     def eventFilter(self, watched, event):
         if watched is getattr(self, "description", None) and event.type() == QEvent.Type.FocusOut:

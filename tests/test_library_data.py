@@ -14,9 +14,13 @@ def test_rename_updates_library_file(tmp_path):
     (ctx.root / "slide_ids.csv").write_text('"id"\n', encoding="utf-8")
     for slide_id in ("abc", "def"):
         (ctx.slides_dir / f"{slide_id}-EN-Demo-current.tex").write_text("Demo", encoding="utf-8")
-    library_data.write(ctx, library_data.LibraryData(
-        pool={"abc"}, not_reusable={"abc"}, topics={"abc": {"Topic"}},
-        different_on_purpose={(frozenset({"abc", "def"}), "fingerprint")}))
+    def seed(data):
+        data.pool.add("abc")
+        data.not_reusable.add("abc")
+        data.topics["abc"] = {"Topic"}
+        data.different_on_purpose.add((frozenset({"abc", "def"}), "fingerprint"))
+
+    library_data.update(ctx, seed)
 
     slide_rename.rename_slide_id(ctx, "abc", "xyz")
 
@@ -52,18 +56,52 @@ def test_conflict_copy_merges_by_union(tmp_path, caplog):
     copy.write_text(json.dumps(conflict), encoding="utf-8")
     second = ctx.settings_dir / "library (conflict other).json"
     second.write_text(json.dumps(conflict), encoding="utf-8")
-    with caplog.at_level(logging.DEBUG, logger="slidemage.library_data"):
-        merged = library_data.read(ctx)
+    merged = library_data.read(ctx)
     assert merged == library_data.LibraryData(
         pool={"abc"}, not_reusable={"abc", "ghi"}, topics={"abc": {"Alpha", "Zebra"}},
         different_on_purpose={(frozenset({"abc", "ghi"}), f) for f in ("first", "second")})
-    assert copy.name in caplog.text and second.name in caplog.text
     assert {p.name for p in unused_content.find_unused_slides(ctx)} == {"ghi-EN-Other-current.tex"}
     assert unused_content.find_unused_media(ctx) == []
-    library_data.write(ctx, merged)
+    with caplog.at_level(logging.DEBUG, logger="slidemage.library_data"):
+        library_data.update(ctx, lambda _data: None)
     text = path.read_text(encoding="utf-8")
     assert "gone" not in text and "def" not in text
     assert json.loads(text)["topics"] == {"abc": ["Alpha", "Zebra"]}
-    assert json.loads(copy.read_text(encoding="utf-8")) == conflict
-    path.unlink()
-    assert library_data.read(ctx).pool == {"abc"}
+    assert not copy.exists() and not second.exists()
+    assert copy.name in caplog.text and second.name in caplog.text
+    library_data.update(ctx, lambda data: data.topics["abc"].discard("Alpha"))
+    assert library_data.read(ctx).topics["abc"] == {"Zebra"}
+
+
+def test_updates_reapply_to_fresh_data_under_lock(tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    ctx = ProjectContext.at(tmp_path)
+    ctx.slides_dir.mkdir()
+    for slide_id in ("abc", "def"):
+        (ctx.slides_dir / f"{slide_id}-EN-Demo-current.tex").touch()
+    barrier = Barrier(2)
+
+    def add(slide_id):
+        barrier.wait(timeout=5)
+        library_data.update(ctx, lambda data: data.pool.add(slide_id))
+
+    with ThreadPoolExecutor(2) as workers:
+        list(workers.map(add, ("abc", "def")))
+    assert library_data.read(ctx).pool == {"abc", "def"}
+
+    library_data.update(ctx, lambda data: data.pool.clear())
+    write = library_data._write
+    changed = False
+
+    def sync_arrives(ctx, data, before):
+        nonlocal changed
+        if not changed:
+            changed = True
+            (ctx.settings_dir / "library.json").write_text(json.dumps({"pool": ["def"]}))
+        return write(ctx, data, before)
+
+    monkeypatch.setattr(library_data, "_write", sync_arrives)
+    library_data.update(ctx, lambda data: data.pool.add("abc"))
+    assert library_data.read(ctx).pool == {"abc", "def"}
