@@ -33,7 +33,6 @@ class SlideGroup:
     members: list[str]
     decks: list
     unused: bool
-    # Populated by the topic-block branch after it is merged.
     blocks: list[str] = field(default_factory=list)
 
 
@@ -60,7 +59,9 @@ def prepare_groups(ctx, usage, language):
                                alt_blocks.plain_title(deck_context.frame_title(links.header(slug)) or slug),
                                text, slide_language.badge_for(ctx, slug, links=links).text(), members,
                                sorted(decks.values(), key=lambda d: d.path.stat().st_mtime_ns),
-                               all(slide_language.current_name(s) in unused for s in members)))
+                               all(slide_language.current_name(s) in unused for s in members),
+                               sorted({d.path.stem for s in members for d in usage.get(slide_language.bare_id(s), [])
+                                       if d.path.parent == ctx.blocks_dir})))
     return sorted(rows, key=lambda row: (row.title.casefold(), row.id))
 
 
@@ -405,7 +406,8 @@ class SlidesView(Surface):
         self.render_button.setEnabled(self._render is None)
         self.versions.setText("Loading versions and languages…")
         self.pool_switch.setChecked(row.id in self.model.library.pool or bool(row.blocks))
-        self.pool_switch.setEnabled(self._write is None)
+        self.pool_switch.setEnabled(self._write is None and not row.blocks)
+        self.pool_switch.setToolTip("In the pool through block " + ", ".join(row.blocks) if row.blocks else "")
         self.open_source.setEnabled(True)
         self.show_deck.setEnabled(bool(row.decks))
         self.detail_status.setText("")
@@ -528,12 +530,12 @@ class SlidesView(Surface):
         def done(result, error):
             self._write = None
             self.actions.setEnabled(True)
-            self.pool_switch.setEnabled(True)
+            self.pool_switch.setEnabled(not (self._current and self._current.blocks))
             if error is not None:
                 self.status.setText(f"Could not save library: {error}")
                 self.status.show()
                 if self._current:
-                    self.pool_switch.setChecked(self._current.id in self.model.library.pool)
+                    self.pool_switch.setChecked(self._current.id in self.model.library.pool or bool(self._current.blocks))
                 return
             self.model.library, unused = result
             for row in self.model.groups:

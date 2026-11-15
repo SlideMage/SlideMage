@@ -30,6 +30,7 @@ def test_cluster_cards_and_counts(qapp, tmp_path, monkeypatch):
     app = SimpleNamespace(project=ctx, theme=theme, state=WorkspaceState(ctx),
                           background=SimpleNamespace(renderer=None))
     page = LibraryPage(app)
+    page.similar_row.clicked.emit()  # Select explicitly; Library now opens on Pool or Suggestions.
     page.resize(1100, 850)
     page.show()
     view = page.similar_view

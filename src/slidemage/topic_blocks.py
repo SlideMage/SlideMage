@@ -6,7 +6,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from . import deck_editor
+from . import deck_editor, deck_language
 from .deck_scan import Chapter, Deck, parse_chapters, slugify
 from .fileio import StaleFileError, read_text_exact, write_text_exact
 from .project import ProjectContext
@@ -27,16 +27,40 @@ def _calls(text: str) -> list[re.Match]:
     return calls
 
 
-def prepare_block(ctx: ProjectContext, deck: Deck, chapter: Chapter, title: str) -> tuple[Path, str, str]:
-    """Return the block path, its proposed text, and the new deck text, without writing.
-
-    Reuse a valid block with exactly the same call tokens (including pins and
-    conditions), ignoring comments and spacing between calls. Section comments
-    stay in the deck; new blocks contain the calls and their title header.
-    """
+def _block(ctx: ProjectContext, tokens: list[str], title: str, newline: str) -> tuple[Path, str]:
+    """Reuse exact call tokens, including pins and conditions, or propose a unique key."""
     title = title.strip()
     if not title or "\n" in title or "\r" in title:
         raise ValueError("Enter a block title on one line.")
+    paths = sorted(ctx.blocks_dir.glob("*.tex"))
+    for path in paths:
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", path.stem):
+            continue
+        try:
+            text = read_text_exact(path)
+            existing = _calls(text)
+        except ValueError:
+            continue   # plain TeX files and invalid blocks cannot be reused
+        if [text[call.start():call.end()] for call in existing] == tokens:
+            return path, text
+    key = slugify(title)
+    used = {path.stem.casefold() for path in paths}
+    candidate, suffix = key, 2
+    while candidate.casefold() in used:
+        candidate, suffix = f"{key}-{suffix}", suffix + 1
+    return (ctx.blocks_dir / f"{candidate}.tex",
+            f"%% SlideMage block: {title}{newline}" + newline.join(tokens) + newline)
+
+
+def _replace(body: str, calls: list[re.Match], target: Path) -> str:
+    for index, call in reversed(list(enumerate(calls))):
+        replacement = f"\\slideblock{{{target.stem}}}" if index == 0 else ""
+        body = body[:call.start()] + replacement + body[call.end():]
+    return body
+
+
+def prepare_block(ctx: ProjectContext, deck: Deck, chapter: Chapter, title: str) -> tuple[Path, str, str]:
+    """Propose a block and new deck text; comments stay in the deck. No writes."""
     if chapter not in parse_chapters(deck.text):
         raise ValueError("This section changed; reload the deck and retry.")
     if not deck_editor.section_editable(deck.text, chapter):
@@ -44,48 +68,109 @@ def prepare_block(ctx: ProjectContext, deck: Deck, chapter: Chapter, title: str)
     start = deck_editor.section_line_span(deck.text, chapter)[1]
     body = deck.text[start:chapter.end]
     calls = _calls(body)
-    tokens = [call.group() for call in calls]
-    paths = sorted(ctx.blocks_dir.glob("*.tex"))
-    target = None
-    for path in paths:
-        if not re.fullmatch(r"[A-Za-z0-9_-]+", path.stem):
-            continue
-        try:
-            existing = _calls(read_text_exact(path))
-        except ValueError:
-            continue   # plain TeX files and invalid blocks cannot be reused
-        if [call.group() for call in existing] == tokens:
-            target = path
-            break
-    if target is None:
-        key = slugify(title)
-        used = {path.stem.casefold() for path in paths}
-        candidate, suffix = key, 2
-        while candidate.casefold() in used:
-            candidate, suffix = f"{key}-{suffix}", suffix + 1
-        target = ctx.blocks_dir / f"{candidate}.tex"
-    newline = deck_editor.eol(deck.text)
-    block_text = f"%% SlideMage block: {title}{newline}" + newline.join(
-        body[call.start():call.end()] for call in calls) + newline
-    for index, call in reversed(list(enumerate(calls))):
-        replacement = f"\\slideblock{{{target.stem}}}" if index == 0 else ""
-        body = body[:call.start()] + replacement + body[call.end():]
+    target, block_text = _block(ctx, [body[c.start():c.end()] for c in calls], title, deck_editor.eol(deck.text))
+    body = _replace(body, calls, target)
     return target, block_text, deck.text[:start] + body + deck.text[chapter.end:]
+
+
+def prepare_run_block(ctx: ProjectContext, occurrences: list[tuple[Deck, list[deck_editor.SlideCall]]],
+                      title: str) -> tuple[Path, str, dict[Path, str]]:
+    """Propose replacing consecutive, identical calls in several decks. No writes.
+
+    A whole linked block can be one occurrence; its physical reference is kept
+    or retargeted to the matching block, without editing the block's calls.
+    """
+    if not occurrences:
+        raise ValueError("Choose a run of slide calls.")
+    tokens, spans, decks, linked = None, {}, {}, {}
+    for deck, selected in occurrences:
+        if not selected or any(not c.editable for c in selected):
+            raise ValueError("Use calls on their own lines.")
+        if any(c.chapter != selected[0].chapter for c in selected):
+            raise ValueError("A shared run cannot cross a section boundary.")
+        start, end = selected[0].call_start, selected[-1].call_end
+        source = getattr(selected[0], "source", deck.path)
+        if source != deck.path:
+            body = read_text_exact(source)
+            calls = _calls(body)
+            if (source.parent != ctx.blocks_dir or not re.fullmatch(r"[A-Za-z0-9_-]+", source.stem)
+                    or any(c.source != source or c.call_start != start for c in selected)
+                    or [c.index for c in selected] != list(range(len(calls)))
+                    or [deck_language.call_text(c) for c in selected] != [deck_language.call_text(c)
+                        for c in deck_language.calls_in(deck_language.masked(body), [])]):
+                raise ValueError("Unlink the block first to convert part of it.")
+            linked[source] = body
+            replacements = None  # Replace the physical block reference, not its expanded calls.
+        else:
+            body = deck.text[start:end]
+            calls = _calls(body)
+            if (any(getattr(c, "source", deck.path) != deck.path for c in selected)
+                    or [(c.start() + start, c.end() + start) for c in calls]
+                    != [(c.call_start, c.call_end) for c in selected]):
+                raise ValueError("The run changed; reload the deck and retry.")
+            replacements = calls
+        current = [body[c.start():c.end()] for c in calls]
+        if tokens is not None and current != tokens:
+            raise ValueError("The decks' calls do not match exactly (including variants, pins and conditions).")
+        tokens = current
+        if deck.path in decks and decks[deck.path].text != deck.text:
+            raise ValueError("The deck changed; reload and retry.")
+        decks[deck.path] = deck
+        spans.setdefault(deck.path, []).append((start, end, body, replacements))
+    if linked:
+        target, block_text = next(iter(linked.items()))
+    else:
+        target, block_text = _block(ctx, tokens, title, deck_editor.eol(occurrences[0][0].text))
+    edits = {}
+    for path, runs in spans.items():
+        text = decks[path].text
+        boundary = len(text)
+        for start, end, body, calls in sorted(runs, key=lambda r: r[0], reverse=True):
+            if end > boundary:
+                raise ValueError("The selected runs overlap.")
+            replacement = _replace(body, calls, target) if calls is not None else f"\\slideblock{{{target.stem}}}"
+            text = text[:start] + replacement + text[end:]
+            boundary = start
+        edits[path] = text
+    return target, block_text, edits
+
+
+def _write(target: Path, block_text: str, edits: dict[Path, tuple[str, str]]) -> Path:
+    for path, (before, _after) in edits.items():
+        if read_text_exact(path) != before:
+            raise StaleFileError(f"{path.name} changed on disk -- reload and retry.")
+    created = not target.exists()
+    if not created and read_text_exact(target) != block_text:
+        raise StaleFileError(f"{target.name} changed on disk -- reload and retry.")
+    if created:
+        target.parent.mkdir(exist_ok=True)
+        write_text_exact(target, block_text)
+    written = []
+    try:
+        for path, (before, after) in edits.items():
+            deck_editor.apply(path, before, lambda _text: after)
+            written.append(path)
+    except (OSError, StaleFileError):
+        for path in reversed(written):
+            before, after = edits[path]
+            write_text_exact(path, before, expected_text=after)
+        if created and read_text_exact(target) == block_text:
+            target.unlink()
+        raise
+    return target
 
 
 def make_block(ctx: ProjectContext, deck: Deck, chapter: Chapter, title: str) -> Path:
     """Create or reuse a block and replace a section's calls. Not undoable."""
     target, block_text, new_text = prepare_block(ctx, deck, chapter, title)
-    if read_text_exact(deck.path) != deck.text:
-        raise StaleFileError(f"{deck.path.name} changed on disk -- reload and retry.")
-    created = not target.exists()
-    if created:
-        target.parent.mkdir(exist_ok=True)
-        write_text_exact(target, block_text)
-    try:
-        deck_editor.apply(deck.path, deck.text, lambda _text: new_text)
-    except (OSError, StaleFileError):
-        if created and read_text_exact(target) == block_text:
-            target.unlink()
-        raise
-    return target
+    return _write(target, block_text, {deck.path: (deck.text, new_text)})
+
+
+def make_run_block(ctx: ProjectContext, occurrences: list[tuple[Deck, list[deck_editor.SlideCall]]],
+                   title: str, proposal: tuple[Path, str, dict[Path, str]]) -> Path:
+    """Apply an approved proposal, refusing any changed destination or calls. Not undoable."""
+    if prepare_run_block(ctx, occurrences, title) != proposal:
+        raise StaleFileError("The block proposal changed -- reload and retry.")
+    target, block_text, edits = proposal
+    before = {deck.path: deck.text for deck, _calls in occurrences}
+    return _write(target, block_text, {path: (before[path], text) for path, text in edits.items()})
