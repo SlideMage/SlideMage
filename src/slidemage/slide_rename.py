@@ -38,10 +38,8 @@ from typing import Optional
 
 from .fileio import read_text_exact, write_text_exact
 from . import ai_review, alt_images, deck_editor, deck_headers, languages, slide_ids, slide_language
-from .project import ProjectContext
+from .project import ProjectContext, call_files
 from .processes import delete_file, move_file
-
-# Decks and archived decks can hold \slide{}-family references.
 
 _MACROS = "|".join(sorted(deck_editor.ALL_MACROS))
 
@@ -86,9 +84,8 @@ def count_references(ctx: ProjectContext, id_slug: str) -> int:
 
 
 def _reference_decks(ctx: ProjectContext) -> list[Path]:
-    """Every deck file that can call a slide: the decks and the archived decks, #workdeck.tex among them."""
-    return [p for directory in ctx.deck_folders if directory.is_dir()
-            for p in directory.glob("*.tex")]
+    """Every file that can call a slide, #workdeck.tex among them."""
+    return call_files(ctx)
 
 
 def _rewrite_references_in_file(deck_path: Path, id_slug: str, new_id_slug: str) -> int:

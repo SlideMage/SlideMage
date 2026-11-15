@@ -24,7 +24,7 @@ Two independent scans (find_unused_media(), find_unused_slides()), archived by a
 - slides/: a slides/<id>-current.tex or slides/<id>-vX-Y-Z.tex file is "in
   use" if actually \\slide{}/\\conditionalslide{}/\\omitslide{}/
   \\slidestep{}/\\slideversion{}/\\omitslideversion{}-ed from any *.tex file
-  directly inside decks/ or decks/archive/ -- deliberately every *.tex file
+  directly inside decks/, decks/archive/, or blocks/ -- deliberately every *.tex file
   there,
   not just ones with \\documentclass (i.e. not deck_scan.scan_decks()):
   decks/test-slides.tex is a shared \\input{}-ed fragment with real
@@ -63,7 +63,7 @@ from pathlib import Path
 from typing import Callable, Iterable
 
 from . import ai_review, languages
-from .project import ProjectContext
+from .project import ProjectContext, call_files
 from .slide_language import current_name
 from .tex_source import COMMENT_RE
 
@@ -96,16 +96,9 @@ LogCallback = Callable[[str], None]
 
 
 def _deck_texts(ctx: ProjectContext) -> list[str]:
-    """Raw text of deck and archived-deck .tex files, excluding generated wrappers."""
-    texts: list[str] = []
-    for directory in (ctx.decks_dir, ctx.archive_dir):
-        if not directory.is_dir():
-            continue
-        for path in directory.glob("*.tex"):
-            if path.name.startswith("_"):
-                continue
-            texts.append(_strip_comments(path.read_text(encoding="utf-8", errors="replace")))
-    return texts
+    """Text of decks and blocks, with comments and generated wrappers excluded."""
+    return [_strip_comments(path.read_text(encoding="utf-8", errors="replace"))
+            for path in call_files(ctx) if path.parent == ctx.blocks_dir or not path.name.startswith("_")]
 
 
 def slide_filenames_in(ctx: ProjectContext, text: str) -> set[str]:

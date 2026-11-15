@@ -19,7 +19,7 @@ from pathlib import Path
 
 from . import deck_editor, fileio, slide_language
 from .filelock import build_lock
-from .project import ProjectContext
+from .project import ProjectContext, call_files
 
 
 def _key(ctx: ProjectContext, path: Path | str) -> str | None:
@@ -111,8 +111,10 @@ def rename(ctx: ProjectContext, old: Path, new: Path) -> None:
 
 
 def inserted_slides(ctx: ProjectContext, path: Path, before: str, after: str, source: str) -> None:
-    """Note added live deck calls on their slide's mark, never on the deck itself."""
-    if path.suffix != ".tex" or not path.resolve().is_relative_to(ctx.decks_dir.resolve()):
+    """Note added calls in decks or blocks on their slide's mark, never on the caller."""
+    # A block's first call may still be in an unsaved buffer.
+    if path.suffix != ".tex" or (path.resolve() not in {p.resolve() for p in call_files(ctx)}
+                                 and path.resolve().parent != ctx.blocks_dir.resolve()):
         return
     def calls(text):
         return Counter(call.source_filename for call in deck_editor.parse_slide_calls(

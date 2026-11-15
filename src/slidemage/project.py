@@ -651,6 +651,20 @@ class ProjectContext:
         return self.decks_dir, self.archive_dir
 
 
+def call_files(ctx: ProjectContext) -> list[Path]:
+    """Decks, archived decks, and blocks with slide calls (excluding comments and verbatim)."""
+    from types import SimpleNamespace
+    from .deck_editor import parse_slide_calls
+    from .deck_language import masked
+
+    paths = [p for directory in ctx.deck_folders for p in sorted(directory.glob("*.tex"))]
+    for path in sorted(ctx.blocks_dir.glob("*.tex")):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if parse_slide_calls(SimpleNamespace(text=masked(text), chapters=[])):
+            paths.append(path)
+    return paths
+
+
 def from_environment() -> ProjectContext:
     """The project a command line works on: $SLIDEMAGE_PROJECT, else the one found
     upward from the working directory, else the last opened (else the working directory)."""
