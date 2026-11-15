@@ -56,7 +56,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Iterable, Optional
 
-from . import bibliography, deck_editor, deck_language
+from . import bibliography, deck_editor, deck_language, topic_blocks
 from .deck_scan import Chapter, Deck
 from .project import ProjectContext
 from .tex_source import blanked_verbatim, comment_start, masked_same_length
@@ -614,16 +614,10 @@ def lint_text(ctx: ProjectContext, text: str, source: str = "buffer", path: Opti
     found += [i.with_source(source, path) for i in _macro_colours(text)]
     if path is not None and path.parent == ctx.blocks_dir:
         masked = deck_language.masked(text)
-        calls = deck_language.calls_in(masked, [])
-        if calls or re.search(r"\\slideblock\b", masked):
-            remaining = masked_same_length(text)
-            for call in reversed(calls):
-                remaining = (remaining[:call.call_start]
-                             + re.sub(r"[^\n]", " ", remaining[call.call_start:call.call_end])
-                             + remaining[call.call_end:])
+        if deck_language.calls_in(masked, []) or re.search(r"\\slideblock\b", masked):
             found += [LintIssue("block-content", "topic blocks allow only slide calls, blank lines and comments; "
                                 f"found {line.strip()!r}", number, source, path)
-                      for number, line in enumerate(remaining.splitlines(), 1) if line.strip()]
+                      for number, line in topic_blocks.stray_lines(text)]
     found.sort(key=lambda x: (x.line, x.code))
     return found
 

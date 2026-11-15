@@ -97,7 +97,7 @@ class Visibility(SidePanel):
             "Change failed",
             f"{'Showed' if visible else 'Hid'} {call.id_slug} in {VIEW_LABELS[view]} of {self.state.deck.name}",
             lambda path, deck_text: set_calls_visibility(
-                path, deck_text, [deck_language.source_call(deck_scan.deck_from_text(path, deck_text), call)],
+                path, deck_text, [deck_language.source_calls(deck_scan.deck_from_text(path, deck_text), [call])[0]],
                 view, visible), source=source)
         if not done:
             self.refresh()   # refused: the cell goes back to what the deck says

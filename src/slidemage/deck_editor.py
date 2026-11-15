@@ -59,6 +59,7 @@ DEFAULT_CONDITIONS = list(VIEWS)
 # add_slide_dialog.py) -- the four macros with no separate version file.
 BASE_MACROS = ["slide", "slidefinal", "omitslide", "conditionalslide", "slidestep"]
 
+BLOCK_KEY_RE = re.compile(r"[A-Za-z0-9_-]+")   # a topic block's file stem and its \slideblock key
 SLIDE_CALL_RE = re.compile(
     r"\\slideversion\s*\{(?P<sv_idslug>[^}]+)\}\s*\{(?P<sv_version>[^}]+)\}"
     r"|\\omitslideversion\s*\{(?P<osv_idslug>[^}]+)\}\s*\{(?P<osv_version>[^}]+)\}"
@@ -371,13 +372,8 @@ def remove_slide_calls(deck_path: Path, expected_text: str, calls: list[SlideCal
 
 def _block_marker(path: Path, text: str, call: SlideCall) -> tuple[int, int]:
     """Check the deck's block marker, rather than the expanded slide's editability."""
-    from . import deck_language
-    from .deck_scan import deck_from_text
-
-    token = text[call.call_start:call.call_end]
-    if (not call.block or INPUT_RE.fullmatch(token) is None or not any(
-            c.call_start == call.call_start and c.call_end == call.call_end and c.source == call.source
-            and c.block == call.block for c in deck_language.active_calls(deck_from_text(path, text)))):
+    marker = INPUT_RE.fullmatch(text[call.call_start:call.call_end])
+    if not call.block or marker is None or Path(marker.group(1)).stem != call.block:
         raise ValueError("This block marker changed; reload the deck and retry.")
     start, end = line_span(text, call.call_start, call.call_end)
     editable, reason = _editability(text, start, call.call_start, call.call_end, end)
@@ -910,7 +906,7 @@ def insert_slide_call(
 
 def insert_block(deck_path: Path, expected_text: str, insert_at: int, indent: str, key: str, title: str) -> str:
     """Insert a block and its section heading together, as one undoable edit."""
-    if not re.fullmatch(r"[A-Za-z0-9_-]+", key):
+    if not BLOCK_KEY_RE.fullmatch(key):
         raise ValueError("Invalid topic block key.")
     title = _section_title(title)
 

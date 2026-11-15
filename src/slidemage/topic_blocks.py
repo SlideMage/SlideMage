@@ -16,15 +16,30 @@ from .slide_usage import deck_calls, decks_by
 from .tex_source import masked_same_length
 
 
+def stray_lines(text: str) -> list[tuple[int, str]]:
+    """Numbered lines holding anything but slide calls, blank lines and comments."""
+    remaining = masked_same_length(text)
+    for call in deck_language.calls_in(deck_language.masked(text), []):
+        remaining = (remaining[:call.call_start] + re.sub(r"[^\n]", " ", remaining[call.call_start:call.call_end])
+                     + remaining[call.call_end:])
+    return [(number, line) for number, line in enumerate(remaining.splitlines(), 1) if line.strip()]
+
+
+def metadata(text: str) -> dict:
+    """The managed header lines of a block; a missing line gives an empty value."""
+    found = dict(re.findall(r"^%% (SlideMage block|Topics|Description):[^\S\r\n]*([^\r\n]*)", text, re.MULTILINE))
+    return {"title": found.get("SlideMage block", "").strip(),
+            "topics": [t.strip() for t in found.get("Topics", "").split(",") if t.strip()],
+            "description": found.get("Description", "").strip()}
+
+
 def _calls(text: str) -> list[re.Match]:
     """Validate a call-only body, ignoring comments and spacing between calls."""
-    masked = masked_same_length(text)
-    calls = list(deck_editor.SLIDE_CALL_RE.finditer(masked))
-    remaining = deck_editor.SLIDE_CALL_RE.sub("", masked)
-    if remaining.strip():
-        found = next(line.strip() for line in remaining.splitlines() if line.strip())
+    calls = list(deck_editor.SLIDE_CALL_RE.finditer(masked_same_length(text)))
+    stray = stray_lines(text)
+    if stray:
         raise ValueError("A topic block allows only slide calls, blank lines and comments; "
-                         f"found {found!r}.")
+                         f"found {stray[0][1].strip()!r}.")
     if not calls:
         raise ValueError("This section has no slide calls to make into a block.")
     return calls
@@ -39,7 +54,7 @@ def prepare_calls_block(ctx: ProjectContext, tokens: list[str], title: str, newl
         raise ValueError("Choose at least one slide for the block.")
     paths = _block_paths(ctx)
     for path in paths:
-        if not re.fullmatch(r"[A-Za-z0-9_-]+", path.stem):
+        if not deck_editor.BLOCK_KEY_RE.fullmatch(path.stem):
             continue
         try:
             text = read_text_exact(path)
@@ -98,7 +113,7 @@ def prepare_run_block(ctx: ProjectContext, occurrences: list[tuple[Deck, list[de
         if source != deck.path:
             body = read_text_exact(source)
             calls = _calls(body)
-            if (source.parent != ctx.blocks_dir or not re.fullmatch(r"[A-Za-z0-9_-]+", source.stem)
+            if (source.parent != ctx.blocks_dir or not deck_editor.BLOCK_KEY_RE.fullmatch(source.stem)
                     or any(c.source != source or c.call_start != start for c in selected)
                     or [c.index for c in selected] != list(range(len(calls)))
                     or [deck_language.call_text(c) for c in selected] != [deck_language.call_text(c)
@@ -196,15 +211,13 @@ def read_blocks(ctx: ProjectContext, scanned: list | None = None) -> dict[str, T
     blocks = {}
     _block_paths(ctx)
     for path in deck_language.block_files(ctx):
-        if not re.fullmatch(r"[A-Za-z0-9_-]+", path.stem):
+        if not deck_editor.BLOCK_KEY_RE.fullmatch(path.stem):
             continue
         text = read_text_exact(path)
         _calls(text)
-        metadata = dict(re.findall(r"^%% (SlideMage block|Topics|Description):[^\S\r\n]*([^\r\n]*)", text, re.MULTILINE))
-        blocks[path.stem] = TopicBlock(
-            path, metadata.get("SlideMage block", "").strip() or path.stem,
-            [t.strip() for t in metadata.get("Topics", "").split(",") if t.strip()],
-            metadata.get("Description", ""), deck_language.calls_in(deck_language.masked(text), []))
+        meta = metadata(text)
+        blocks[path.stem] = TopicBlock(path, meta["title"] or path.stem, meta["topics"], meta["description"],
+                                       deck_language.calls_in(deck_language.masked(text), []))
     if blocks:
         users = decks_by(deck_calls(ctx) if scanned is None else scanned, "block")
         for key, block in blocks.items():
@@ -218,12 +231,9 @@ def update_metadata(path: Path, field: str, value: str, *, expected: str | None 
         raise ValueError("Block metadata must be a single header line.")
     before = read_text_exact(path)
     pattern = re.compile(r"^%% " + re.escape(field) + r":[^\r\n]*", re.MULTILINE)
-    match = pattern.search(before)
-    current = match[0].split(":", 1)[1].strip() if match else ""
-    if field == "SlideMage block" and not current:
-        current = path.stem
-    if field == "Topics":
-        current = ", ".join(t.strip() for t in current.split(",") if t.strip())
+    meta = metadata(before)
+    current = {"SlideMage block": meta["title"] or path.stem, "Topics": ", ".join(meta["topics"]),
+               "Description": meta["description"]}[field]
     if expected is not None and current != expected:
         raise StaleFileError(f"{field} changed on disk -- reload the block before editing it.")
     line = f"%% {field}: {value.strip()}"

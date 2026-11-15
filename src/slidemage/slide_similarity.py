@@ -30,6 +30,11 @@ MATH_RE = re.compile(r"(?<!\\)(?:\$\$.*?\$\$|\$[^$]*\$|\\\(.*?\\\)|\\\[.*?\\\]|"
                      r"\\begin\{(?P<env>math|displaymath|equation\*?|align\*?|alignat\*?|gather\*?|multline\*?)\}"
                      r".*?\\end\{(?P=env)\})", re.DOTALL)
 STRUCTURAL_RE = re.compile(r"\\(?:titleframe|sectionframe)(?![A-Za-z@])|\\begin\s*\{sectionframe\}")
+# Settings files that never hold a slide ID; any other file under .slidemage is searched for one.
+CORE_SETTINGS = {"library.json", "library.lock", "blocks.lock", "ai-review.json", "ai-review.lock", "ai-before", "claude-hooks",
+                 "bundled_copies.json", "project.json", "app_settings.json", "compile_passes.json",
+                 "translation_prompts.json", "draft_prompts.json", "backups", "compat-report.json",
+                 "compat-report.md", "timing.jsonl"}
 
 
 @dataclass
@@ -102,11 +107,10 @@ def _unpinned_calls(deck: deck_scan.Deck, slide_id: str) -> list[deck_editor.Sli
             if c.id == slide_id and c.version is None and mask[c.call_start] == "\\"]
 
 
-def replacement_files(ctx: ProjectContext, kept: str, other: str) -> dict[Path, deck_scan.Deck]:
-    """Validate an exact-copy replacement and snapshot physical files with unpinned calls."""
-    kept_path, other_path = _exact_paths(ctx, kept, other)
+def _refuse_lost_links(ctx: ProjectContext, kept: str, other: str) -> None:
+    """Refuse a replacement that would lose a translation, alt-text or a plugin link of `other`."""
     links = slide_language.TranslationLinks(ctx.slides_dir, languages.project_languages(ctx).codes)
-    groups = [links.group(p.name[:-len(slide_language.CURRENT_SUFFIX)]) for p in (kept_path, other_path)]
+    groups = [links.group(slide_language.current_id_slug_for_bare_id(ctx, i)) for i in (kept, other)]
     if not all(g.valid for g in groups):
         raise ValueError("The translation links are ambiguous; repair them before replacing calls.")
     missing = groups[1].members.keys() - groups[0].members.keys()
@@ -133,12 +137,8 @@ def replacement_files(ctx: ProjectContext, kept: str, other: str) -> dict[Path, 
                 raise OSError(f"Remembered bank is unavailable: {folder}")
     except (OSError, ValueError, TypeError, AttributeError) as exc:
         raise ValueError(f"Cannot check Exam Forge links: {exc}. {scope}") from exc
-    core = {"library.json", "library.lock", "blocks.lock", "ai-review.json", "ai-review.lock", "ai-before", "claude-hooks",
-            "bundled_copies.json", "project.json", "app_settings.json", "compile_passes.json",
-            "translation_prompts.json", "draft_prompts.json", "backups", "compat-report.json",
-            "compat-report.md", "timing.jsonl"}
     reference = re.compile(rb"(?<![A-Za-z0-9])" + re.escape(other.encode()) + rb"(?![A-Za-z0-9])")
-    paths = [p for p in ctx.settings_dir.rglob("*") if p.relative_to(ctx.settings_dir).parts[0] not in core
+    paths = [p for p in ctx.settings_dir.rglob("*") if p.relative_to(ctx.settings_dir).parts[0] not in CORE_SETTINGS
              and not p.name.startswith("library (conflict")]
     for folder in folders:
         paths.extend(folder.rglob("*.json"))
@@ -149,6 +149,12 @@ def replacement_files(ctx: ProjectContext, kept: str, other: str) -> dict[Path, 
                                  f"SlideMage cannot transfer these links. {scope}")
         except OSError as exc:
             raise ValueError(f"Cannot check plugin links in {path}: {exc}. {scope}") from exc
+
+
+def replacement_files(ctx: ProjectContext, kept: str, other: str) -> dict[Path, deck_scan.Deck]:
+    """Validate an exact-copy replacement and snapshot physical files with unpinned calls."""
+    _exact_paths(ctx, kept, other)
+    _refuse_lost_links(ctx, kept, other)
     files = {}
     for path in deck_language.call_files(ctx):
         deck = deck_scan.read_deck(path)

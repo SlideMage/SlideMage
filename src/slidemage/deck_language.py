@@ -193,10 +193,6 @@ def source_calls(deck: Deck, calls: list[SlideCall]) -> list[SlideCall]:
         physical[c.source_start] if c.source is not None else c for c in calls)}.values())
 
 
-def source_call(deck: Deck, call: SlideCall) -> SlideCall:
-    return source_calls(deck, [call])[0]
-
-
 def deck_slots(ctx: ProjectContext, deck: Deck, language: str, *,
                links: slide_language.TranslationLinks | None = None) -> list[SlideSlot]:
     return slots(ctx, active_calls(deck), language, links=links)
