@@ -12,7 +12,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QButtonGroup, QGridLayout, QHBoxLayout, QScrollArea, QVBoxLayout
 
-from .... import (alt_blocks, deck_context, languages, preview_target, render_key,
+from .... import (alt_blocks, deck_context, languages, library_data, preview_target, render_key,
                   render_lookup, slide_language)
 from ....slide_similarity import Cluster, normalise, uncomment
 from ...kit.flow import FlowLayout
@@ -43,9 +43,15 @@ class PreparedCluster:
 def prepare_clusters(ctx, clusters, usage, resolver, language):
     """Read sources and renders and compute diffs on the scan worker, before building widgets."""
     codes = languages.project_languages(ctx).codes
+    library = library_data.read(ctx)
+    ids = library_data.group_ids(ctx)
+    pool = {i for i, original in ids.items() if original in library.pool}
     prepared = []
-    # Pool ordering comes with Step 3.4; until then, kind followed by largest cluster first.
-    for cluster in sorted(clusters, key=lambda c: (list(CLASSES).index(c.kind), -len(c.ids))):
+    for cluster in sorted(clusters, key=lambda c: (not pool.intersection(c.ids),
+                                                 list(CLASSES).index(c.kind), -len(c.ids))):
+        members = frozenset(ids[i] for i in cluster.ids if i in ids)
+        if (members, cluster.fingerprint) in library.different_on_purpose:
+            continue
         members, sources = [], []
         for slide_id in cluster.ids:
             path = slide_language.current_path_for_bare_id(ctx, slide_id)
@@ -109,8 +115,6 @@ class SimilarView(Surface):
     def __init__(self, app) -> None:
         super().__init__()
         self.app = app
-        self._root = None
-        # Session only until Step 3.4 moves fingerprint dismissals into library.json.
         self._dismissed = set()
         self._cards = []
         self._diff_labels = []
@@ -149,10 +153,7 @@ class SimilarView(Surface):
         self.destroyed.connect(lambda: remove_listener())
 
     def set_clusters(self, clusters) -> None:
-        ctx = self.app.project
-        if self._root != ctx.root:
-            self._dismissed.clear()
-            self._root = ctx.root
+        self._dismissed.clear()  # Persisted dismissals were filtered on the scan worker.
         self._cards.clear()
         self._diff_labels.clear()
         while (item := self.cards.takeAt(0)) is not None:
@@ -233,7 +234,7 @@ class SimilarView(Surface):
             actions = QHBoxLayout()
             actions.addStretch(1)
             dismiss = Button("Different on purpose")
-            dismiss.clicked.connect(lambda _checked=False, fingerprint=cluster.fingerprint: self._dismiss(fingerprint))
+            dismiss.clicked.connect(lambda _checked=False, cluster=cluster: self._dismiss(cluster))
             actions.addWidget(dismiss)
             open_both = Button("Open both")
             open_both.clicked.connect(lambda _checked=False, ids=cluster.ids: self._open(ids))
@@ -277,8 +278,14 @@ class SimilarView(Surface):
         self.status.setVisible(not counts["all"])
         self.count_changed.emit(counts["all"])
 
-    def _dismiss(self, fingerprint: str) -> None:
-        self._dismissed.add(fingerprint)
+    def _dismiss(self, cluster: Cluster) -> None:
+        ctx = self.app.project
+        library = library_data.read(ctx)
+        ids = library_data.group_ids(ctx)
+        library.different_on_purpose.add((frozenset(ids[i] for i in cluster.ids if i in ids),
+                                         cluster.fingerprint))
+        library_data.write(ctx, library)
+        self._dismissed.add(cluster.fingerprint)
         self._filter(self._kind)
 
     def _open(self, ids) -> None:
