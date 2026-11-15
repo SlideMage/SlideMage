@@ -6,11 +6,11 @@ from __future__ import annotations
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QHBoxLayout, QStackedWidget
 
-from ....slide_similarity import find_clusters
+from ....slide_similarity import find_clusters, usage_index
 from ...background import run_in_background
 from ...kit.tokens import SPACE
 from ...kit.widgets import Card, IconButton, RowButton, Surface, text_label
-from .similar import SimilarView
+from .similar import SimilarView, prepare_clusters
 
 
 class LibraryPage(Surface):
@@ -20,7 +20,6 @@ class LibraryPage(Surface):
         super().__init__()
         self.app = app
         self._scan = None
-        self.clusters = []
 
         outer = QHBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -58,18 +57,31 @@ class LibraryPage(Surface):
         self._scan_project = ctx
         self.status.setText("Finding similar slides…")
         self.status.show()
-        self._scan = run_in_background(lambda: find_clusters(ctx), self._on_loaded, parent=self)
+        language = self.app.state.language
+
+        def scan():
+            usage = usage_index(ctx)
+            clusters = find_clusters(ctx, usage=usage)
+            try:
+                resolver = self.app.background.renderer.resolver
+            except Exception:  # Rendering may be disabled or its store unavailable.
+                resolver = None
+            return prepare_clusters(ctx, clusters, usage, resolver, language)
+
+        self._scan = run_in_background(scan, self._on_loaded, parent=self)
 
     def _on_loaded(self, clusters, error) -> None:
         self._scan = None
         if self._scan_project != self.app.project:
             self.ensure_loaded()
             return
-        if error is not None:
-            self.status.setText(f"Could not find similar slides: {error}")
-            return
-        self.clusters = clusters
-        self.similar_view.set_clusters(clusters)
+        try:
+            if error is not None:
+                raise error
+            self.similar_view.set_clusters(clusters)
+        except Exception as exc:
+            self.status.setText(f"Could not find similar slides: {exc}")
+            self.status.show()
 
     def shutdown(self) -> None:
         if self._scan is not None:

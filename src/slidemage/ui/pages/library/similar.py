@@ -5,15 +5,16 @@ from __future__ import annotations
 
 import difflib
 import re
+from dataclasses import dataclass, replace
+from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QButtonGroup, QGridLayout, QHBoxLayout, QScrollArea, QVBoxLayout
 
-from .... import (alt_blocks, deck_context, deck_scan, languages, preview_target, render_key,
-                  render_lookup, slide_language, slide_usage)
-from ....slide_similarity import normalise
-from ....tex_source import COMMENT_RE
+from .... import (alt_blocks, deck_context, languages, preview_target, render_key,
+                  render_lookup, slide_language)
+from ....slide_similarity import Cluster, normalise, uncomment
 from ...kit.flow import FlowLayout
 from ...kit.tokens import RADIUS_LG, SPACE
 from ...kit.widgets import Button, Card, Chip, Surface, ToggleChip, caption, text_label
@@ -22,6 +23,84 @@ from ...kit.widgets import Button, Card, Chip, Surface, ToggleChip, caption, tex
 CLASSES = {"all": "All", "exact": "Exact copies", "same_words": "Same words", "similar": "Similar text"}
 WORD_RE = re.compile(r"\$\$.*?\$\$|\$[^$]*\$|\\\(.*?\\\)|\\\[.*?\\\]|media/[^\s{}\\]+|"
                      r"\\[A-Za-z@]+\*?|\d+(?:[.,:/–-]\d+)*|[^\W_]+|[=<>+\-*/^_]", re.DOTALL)
+
+
+@dataclass
+class Member:
+    id: str
+    title: str
+    usage: str
+    png: Path | None
+
+
+@dataclass
+class PreparedCluster:
+    cluster: Cluster
+    members: list[Member]
+    diffs: list[list[tuple[str, str, bool]]]
+
+
+def prepare_clusters(ctx, clusters, usage, resolver, language):
+    """Read sources and renders and compute diffs on the scan worker, before building widgets."""
+    codes = languages.project_languages(ctx).codes
+    prepared = []
+    # Pool ordering comes with Step 3.4; until then, kind followed by largest cluster first.
+    for cluster in sorted(clusters, key=lambda c: (list(CLASSES).index(c.kind), -len(c.ids))):
+        members, sources = [], []
+        for slide_id in cluster.ids:
+            path = slide_language.current_path_for_bare_id(ctx, slide_id)
+            if path is None:
+                continue
+            try:
+                source = path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            slug = path.name[:-len(slide_language.CURRENT_SUFFIX)]
+            decks = usage.get(slide_id, [])
+            png = None
+            if resolver is not None:
+                try:
+                    own = slide_language.own_language(slug, codes)
+                    preamble = decks[-1].preamble_text if decks else None
+                    target = preview_target.PreviewTarget(ctx, "slide", slug, None, None, None, None, preamble)
+                    unit = render_key.unit_for(target, "instructor", own if own in codes else language)
+                    record = render_lookup.instructor_reference(dict(resolver=resolver, unit=unit), strict=True)
+                    if record is not None:
+                        png = resolver.store.thumbnail_path(record)
+                except Exception:  # The Library also works when the render store is unavailable.
+                    pass
+            members.append(Member(slide_id, alt_blocks.plain_title(deck_context.frame_title(source) or slug),
+                                  ", ".join(deck.name for deck in decks), png))
+            sources.append(source)
+        if len(members) < 2:
+            continue
+        diffs = []
+        if cluster.kind != "exact":
+            for source in sources[1:]:
+                changes = []
+                if cluster.kind == "same_words":
+                    for line in difflib.unified_diff(uncomment(sources[0]).splitlines(),
+                                                     uncomment(source).splitlines(), lineterm=""):
+                        changes.append((line, "delete" if line.startswith("-") else
+                                        "insert" if line.startswith("+") else "equal", False))
+                else:
+                    words = [[w for w in WORD_RE.findall(normalise(text))
+                              if not w.startswith("\\") or w.startswith((r"\(", r"\["))]
+                             for text in (sources[0], source)]
+                    for operation, a, b, c, d in difflib.SequenceMatcher(None, *words, autojunk=False).get_opcodes():
+                        groups = [("equal", words[0][a:b])] if operation == "equal" else []
+                        if operation in ("delete", "replace"):
+                            groups.append(("delete", words[0][a:b]))
+                        if operation in ("insert", "replace"):
+                            groups.append(("insert", words[1][c:d]))
+                        for role, tokens in groups:
+                            for word in tokens:
+                                changes.append((word, role, any(ch.isdigit() for ch in word)
+                                                or word.startswith(("$", r"\(", r"\["))
+                                                or word in "=<>+-*/^_"))
+                diffs.append(changes)
+        prepared.append(PreparedCluster(replace(cluster, ids=[m.id for m in members]), members, diffs))
+    return prepared
 
 
 class SimilarView(Surface):
@@ -79,9 +158,6 @@ class SimilarView(Surface):
         while (item := self.cards.takeAt(0)) is not None:
             item.widget().hide()
             item.widget().deleteLater()
-        decks = deck_scan.scan_decks(ctx)
-        codes = languages.project_languages(ctx).codes
-        resolver = self.app.centre.preview._renders.renderer(ctx).resolver
         self.sequences = Card()
         self.sequence_toggle = Button("Sequences in one deck (0)", "ghost")
         self.sequence_toggle.setCheckable(True)
@@ -92,15 +168,15 @@ class SimilarView(Surface):
         self.sequences.layout().addWidget(sequence_body)
         sequence_body.hide()
         self.sequence_toggle.toggled.connect(sequence_body.setVisible)
-        # Pool ordering comes with Step 3.4; until then, kind followed by largest cluster first.
-        for cluster in sorted(clusters, key=lambda c: (list(CLASSES).index(c.kind), -len(c.ids))):
+        for prepared in clusters:
+            cluster = prepared.cluster
             card = Card()
             card.setProperty("cluster_kind", cluster.kind)
             head = QHBoxLayout()
             head.addWidget(Chip("Sequence" if cluster.sequence_deck else
                                 {"exact": "Exact copy", "same_words": "Same words", "similar": "Similar text"}[cluster.kind],
                                 "ok" if cluster.sequence_deck else "warning" if cluster.kind == "exact" else "neutral"))
-            title = text_label(cluster.ids[0], "heading")
+            title = text_label(prepared.members[0].title, "heading")
             title.setTextFormat(Qt.TextFormat.PlainText)
             title.setWordWrap(True)
             head.addWidget(title, 1)
@@ -108,8 +184,7 @@ class SimilarView(Surface):
                 head.addWidget(caption(f"overlap {cluster.overlap:.0%}"))
             card.layout().addLayout(head)
             members = QGridLayout()
-            sources = []
-            for index, slide_id in enumerate(cluster.ids):
+            for index, data in enumerate(prepared.members):
                 member = Surface()
                 column = QVBoxLayout(member)
                 column.setContentsMargins(0, 0, 0, 0)
@@ -117,29 +192,13 @@ class SimilarView(Surface):
                 picture.setFixedSize(256, 144)
                 picture.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 column.addWidget(picture)
-                path = slide_language.current_path_for_bare_id(ctx, slide_id)
-                usages = []
-                source = ""
-                if path is not None:
-                    source = path.read_text(encoding="utf-8", errors="replace")
-                    slug = path.name[:-len(slide_language.CURRENT_SUFFIX)]
-                    if index == 0:
-                        title.setText(alt_blocks.plain_title(deck_context.frame_title(source) or slug))
-                    usages = slide_usage.find_usage(ctx, slug, decks)
-                    language = slide_language.own_language(slug, codes)
-                    preamble = usages[-1].deck.preamble_text if usages else None
-                    target = preview_target.PreviewTarget(ctx, "slide", slug, None, None, None, None, preamble)
-                    unit = render_key.unit_for(target, "instructor", language if language in codes else self.app.state.language)
-                    record = render_lookup.instructor_reference(dict(resolver=resolver, unit=unit), strict=True)
-                    if record is not None and (png := resolver.store.thumbnail_path(record)) is not None:
-                        pixmap = QPixmap(str(png))
-                        if not pixmap.isNull():
-                            picture.setPixmap(pixmap.scaled(picture.size(), Qt.AspectRatioMode.KeepAspectRatio,
-                                                           Qt.TransformationMode.SmoothTransformation))
-                sources.append(source)
-                column.addWidget(text_label(slide_id, "mono"))
-                usage = caption(", ".join(u.deck.name for u in usages) if usages else "in no deck",
-                                "" if usages else "warning")
+                if data.png is not None:
+                    pixmap = QPixmap(str(data.png))
+                    if not pixmap.isNull():
+                        picture.setPixmap(pixmap.scaled(picture.size(), Qt.AspectRatioMode.KeepAspectRatio,
+                                                       Qt.TransformationMode.SmoothTransformation))
+                column.addWidget(text_label(data.id, "mono"))
+                usage = caption(data.usage or "in no deck", "" if data.usage else "warning")
                 usage.setTextFormat(Qt.TextFormat.PlainText)
                 column.addWidget(usage)
                 members.addWidget(member, index // 2, index % 2, Qt.AlignmentFlag.AlignTop)
@@ -149,45 +208,24 @@ class SimilarView(Surface):
             if cluster.kind == "exact":
                 card.layout().addWidget(caption("The sources are identical once comments, %% lines and version metadata are removed."))
             else:
-                for index, source in enumerate(sources[1:], 1):
+                for index, changes in enumerate(prepared.diffs, 1):
                     card.layout().addWidget(caption(f"{cluster.ids[0]} → {cluster.ids[index]}"))
                     diff = Card()
-                    if cluster.kind == "same_words":
-                        lines = difflib.unified_diff(COMMENT_RE.sub("", sources[0]).splitlines(),
-                                                     COMMENT_RE.sub("", source).splitlines(), lineterm="")
-                        for line in lines:
-                            label = text_label(line, "mono")
-                            label.setTextFormat(Qt.TextFormat.PlainText)
-                            label.setWordWrap(True)
-                            diff.layout().addWidget(label)
-                            self._diff_labels.append((label, "delete" if line.startswith("-") else
-                                                      "insert" if line.startswith("+") else "equal", False))
-                    else:
-                        words = []
-                        for text in (sources[0], source):
-                            words.append([w for w in WORD_RE.findall(normalise(text))
-                                          if not w.startswith("\\") or w.startswith((r"\(", r"\["))])
-                        flow = FlowLayout(spacing=SPACE.xs)
-                        diff.layout().addLayout(flow)
-                        for operation, a, b, c, d in difflib.SequenceMatcher(None, *words, autojunk=False).get_opcodes():
-                            changes = [("equal", words[0][a:b])] if operation == "equal" else []
-                            if operation in ("delete", "replace"):
-                                changes.append(("delete", words[0][a:b]))
-                            if operation in ("insert", "replace"):
-                                changes.append(("insert", words[1][c:d]))
-                            for role, tokens in changes:
-                                for word in tokens:
-                                    label = text_label(word, "mono")
-                                    label.setTextFormat(Qt.TextFormat.PlainText)
-                                    label.setWordWrap(True)
-                                    label.setMaximumWidth(480)
-                                    font = label.font()
-                                    font.setStrikeOut(role == "delete")
-                                    label.setFont(font)
-                                    flow.addWidget(label)
-                                    self._diff_labels.append((label, role, any(ch.isdigit() for ch in word)
-                                                              or word.startswith(("$", r"\(", r"\["))
-                                                              or word in "=<>+-*/^_"))
+                    layout = diff.layout()
+                    if cluster.kind == "similar":
+                        layout = FlowLayout(spacing=SPACE.xs)
+                        diff.layout().addLayout(layout)
+                    for text, role, outlined in changes:
+                        label = text_label(text, "mono")
+                        label.setTextFormat(Qt.TextFormat.PlainText)
+                        label.setWordWrap(True)
+                        if cluster.kind == "similar":
+                            label.setMaximumWidth(480)
+                            font = label.font()
+                            font.setStrikeOut(role == "delete")
+                            label.setFont(font)
+                        layout.addWidget(label)
+                        self._diff_labels.append((label, role, outlined))
                     card.layout().addWidget(diff)
                 if cluster.kind == "similar":
                     card.layout().addWidget(caption("Removed words are struck through; added words are green. "

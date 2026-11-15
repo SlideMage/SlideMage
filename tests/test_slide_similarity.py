@@ -6,7 +6,7 @@ import json
 import pytest
 
 from slidemage.project import ProjectContext
-from slidemage.slide_similarity import find_clusters, normalise, tokens
+from slidemage.slide_similarity import find_clusters, normalise, tokens, usage_index
 
 
 @pytest.mark.parametrize("language, other", [("EN", "DE"), ("DE", "EN")])
@@ -77,5 +77,30 @@ def test_sequence_deck(tmp_path):
     block.write_text("\\slide{c-EN-Demo}\n\\slide{d-EN-Demo}")
     (blocks / "linked.tex").write_text("\\slide{g-EN-Demo}")
     (blocks / "second.tex").write_text("\\slide{h-EN-Demo}")
-    assert [(c.ids, c.sequence_deck) for c in find_clusters(ctx)] == [
+    usage = usage_index(ctx)
+    assert [d.path for d in usage["f"]] == [ctx.decks_dir / "other.tex"]
+    assert [d.path for d in usage["g"]] == [deck, blocks / "linked.tex"]
+    assert [(c.ids, c.sequence_deck) for c in find_clusters(ctx, usage=usage)] == [
         (["a", "b"], deck), (["c", "d"], block), (["e", "f"], None), (["g", "h"], deck)]
+
+
+def test_verbatim_and_math():
+    for source in (r"\verb|a  b % first|", r"\verb*+a  b % first+", *(
+            "\\begin{" + env + "}\na  b % first\n\\end{" + env + "}"
+            for env in ("verbatim", "Verbatim", "lstlisting", "minted"))):
+        assert normalise("% metadata\n  " + source + "  % comment\n") == source
+        assert normalise(source) != normalise(source.replace("first", "second"))
+        assert normalise(source) != normalise(source.replace("a  b", "a b"))
+    assert normalise(r"a \% b % comment") == r"a \% b"
+    assert normalise(r"a \\% comment" + "\n b") == r"a \\ b"
+    assert tokens(r"$\Gamma$") != tokens(r"$\gamma$")
+    for env in ("equation", "align*", "gather", "multline"):
+        assert tokens(r"\begin{" + env + r"}x\le y\end{" + env + "}") != tokens(
+            r"\begin{" + env + r"}x\ge y\end{" + env + "}")
+    for opening, closing in (("$", "$"), ("$$", "$$"), (r"\(", r"\)"), (r"\[", r"\]")):
+        less = opening + r"x\le y" + closing
+        greater = opening + r"x\ge y" + closing
+        assert tokens(less) == ["x", r"\le", "y"]
+        assert tokens(less) != tokens(greater)
+        assert tokens(r"\textbf{Compare these five words using }" + less) == tokens(
+            "Compare these five words using " + less)

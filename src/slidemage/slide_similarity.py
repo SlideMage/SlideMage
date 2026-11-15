@@ -14,7 +14,7 @@ from typing import Literal
 
 from . import bundled_copies, deck_context, deck_language, deck_scan, languages, slide_language
 from .project import ProjectContext
-from .tex_source import COMMENT_RE
+from .tex_source import VERBATIM_ENV_RE, VERB_RE, blanked_verbatim, comment_start
 
 # Plan §6, 2026-11-15: fixed thresholds, deliberately not settings.
 MIN_OVERLAP = 0.5
@@ -23,6 +23,9 @@ MIN_WORDS = 5
 VERSION_RE = re.compile(r"\\setSlideVersion\s*\{[^}]*\}")
 MACRO_RE = re.compile(r"\\[A-Za-z@]+\*?")
 TOKEN_RE = re.compile(r"media/[^\s{}\\]+|[^\W_]+|[=<>+\-*/^_]", re.UNICODE)
+MATH_RE = re.compile(r"(?<!\\)(?:\$\$.*?\$\$|\$[^$]*\$|\\\(.*?\\\)|\\\[.*?\\\]|"
+                     r"\\begin\{(?P<env>math|displaymath|equation\*?|align\*?|alignat\*?|gather\*?|multline\*?)\}"
+                     r".*?\\end\{(?P=env)\})", re.DOTALL)
 STRUCTURAL_RE = re.compile(r"\\(?:titleframe|sectionframe)(?![A-Za-z@])|\\begin\s*\{sectionframe\}")
 
 
@@ -35,17 +38,58 @@ class Cluster:
     sequence_deck: Path | None
 
 
+def uncomment(text: str) -> str:
+    """Remove comments while preserving percent signs in verbatim content."""
+    lines = []
+    for line, mask in zip(text.splitlines(keepends=True), blanked_verbatim(text).splitlines(keepends=True)):
+        cut = comment_start(mask)
+        lines.append(line if cut < 0 else line[:cut] + ("\n" if line.endswith("\n") else ""))
+    return "".join(lines)
+
+
 def normalise(text: str) -> str:
-    """Remove comments and version metadata, then canonicalise whitespace."""
-    return " ".join(VERSION_RE.sub("", COMMENT_RE.sub("", text)).split())
+    """Remove comments and version metadata; preserve verbatim whitespace."""
+    verbatim = []
+
+    def keep(match):
+        verbatim.append(match.group())
+        return f"\x00{len(verbatim) - 1}\x00"
+
+    text = uncomment(text)
+    for pattern in (VERBATIM_ENV_RE, VERB_RE):
+        text = pattern.sub(keep, text)
+    text = " ".join(VERSION_RE.sub("", text).split())
+    return re.sub(r"\x00(\d+)\x00", lambda m: verbatim[int(m[1])], text)
 
 
 def tokens(text: str) -> list[str]:
-    """Lower-case words, numbers, formula symbols and media paths, without macro names."""
-    return TOKEN_RE.findall(MACRO_RE.sub(" ", normalise(text)).lower())
+    """Lower-case words, numbers, media paths and formulas, retaining math macro names."""
+    text = re.sub(MATH_RE.pattern + "|" + MACRO_RE.pattern,
+                  lambda m: m[0] if MATH_RE.fullmatch(m[0]) else " ", normalise(text), flags=re.DOTALL)
+    return [token if token.startswith("\\") else token.lower()
+            for token in re.findall(MACRO_RE.pattern + "|" + TOKEN_RE.pattern, text)]
 
 
-def find_clusters(ctx: ProjectContext) -> list[Cluster]:
+def usage_index(ctx: ProjectContext) -> dict[str, list[deck_scan.Deck]]:
+    """Index expanded active calls once, shared by sequence detection and usage labels."""
+    usage = defaultdict(list)
+    decks = deck_scan.scan_decks(ctx)
+    for path in sorted((ctx.root / "blocks").glob("*.tex")):
+        try:
+            decks.append(deck_scan.read_deck(path))
+        except OSError:
+            continue
+    for deck in decks:
+        try:
+            expanded, _ = deck_language.expand_fragments(deck)
+        except OSError:
+            continue
+        for slide_id in dict.fromkeys(call.id for call in deck_language.active_calls(expanded)):
+            usage[slide_id].append(deck)
+    return usage
+
+
+def find_clusters(ctx: ProjectContext, *, usage=None) -> list[Cluster]:
     """Connected components per kind; each pair belongs to its strongest kind only."""
     bundled = bundled_copies.read_manifest(ctx.root).get("manual", {}).get("files", {})
     codes = languages.project_languages(ctx).codes
@@ -53,7 +97,10 @@ def find_clusters(ctx: ProjectContext) -> list[Cluster]:
     for path in sorted(ctx.slides_dir.glob("*-current.tex")):
         if path.name.startswith("ZZ") or path.relative_to(ctx.root).as_posix() in bundled:
             continue
-        text = path.read_text(encoding="utf-8", errors="replace")
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
         if (STRUCTURAL_RE.search(deck_language.masked(text))
                 or {"contents", "section"}.intersection(deck_context.reasons(text))):
             continue
@@ -90,14 +137,8 @@ def find_clusters(ctx: ProjectContext) -> list[Cluster]:
         if overlap >= MIN_OVERLAP:
             pairs[a, b] = ("similar", overlap)
 
-    # Read usage only once, through the existing fragment expansion. Blocks are also useful on their own.
-    usage = defaultdict(set)
-    decks = deck_scan.scan_decks(ctx)
-    decks.extend(deck_scan.read_deck(p) for p in sorted((ctx.root / "blocks").glob("*.tex")))
-    for deck in decks:
-        expanded, _ = deck_language.expand_fragments(deck)
-        for call in deck_language.active_calls(expanded):
-            usage[call.id].add(deck.path)
+    if usage is None:
+        usage = usage_index(ctx)
 
     clusters = []
     for kind in ("exact", "same_words", "similar"):
@@ -121,6 +162,6 @@ def find_clusters(ctx: ProjectContext) -> list[Cluster]:
                           if pair_kind == kind and a in members and b in members)
             fingerprint = hashlib.sha256(json.dumps(sorted(texts[i] for i in ids),
                                                     ensure_ascii=False).encode()).hexdigest()
-            common = set.intersection(*(usage[i] for i in ids))
+            common = set.intersection(*(set(deck.path for deck in usage.get(i, [])) for i in ids))
             clusters.append(Cluster(kind, ids, overlap, fingerprint, min(common) if common else None))
     return clusters

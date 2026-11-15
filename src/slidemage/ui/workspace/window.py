@@ -439,7 +439,8 @@ class WorkspaceWindow(QMainWindow):
             self.decks = scan_decks(self.project)
         self.centre.decks_rescanned(old_names, self.decks)      # each working tab follows its deck, or closes with it
         self.topbar.set_decks(self.decks, self.deck_groups)
-        self.body.setCurrentWidget(self.no_decks if not self.decks else self.body.widget(0))
+        self.body.setCurrentWidget(self.no_decks if not self.decks and self.stack.currentWidget() is not self.library_page
+                                   else self.body.widget(0))
         if not self.decks:
             self.no_decks.refresh()
         timing.caller("reload_decks")
@@ -490,6 +491,7 @@ class WorkspaceWindow(QMainWindow):
         is_library = self.stack.widget(index) is self.library_page
         self.topbar.set_images_open(is_images)
         self.topbar.set_library_open(is_library)
+        self.body.setCurrentWidget(self.body.widget(0) if is_library or self.decks else self.no_decks)
         self._apply_column_visibility()
         if is_images:
             self.side_panels.flush()
