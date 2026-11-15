@@ -135,7 +135,8 @@ def replacement_files(ctx: ProjectContext, kept: str, other: str) -> dict[Path, 
     # refuse any ID reference there rather than guessing a plugin's link format.
     core = {"library.json", "ai-review.json", "ai-review.lock", "ai-before", "claude-hooks",
             "bundled_copies.json", "project.json", "app_settings.json", "compile_passes.json",
-            "translation_prompts.json", "draft_prompts.json"}
+            "translation_prompts.json", "draft_prompts.json", "backups", "compat-report.json",
+            "compat-report.md", "timing.jsonl"}
     reference = re.compile(rb"(?<![A-Za-z0-9])" + re.escape(other.encode()) + rb"(?![A-Za-z0-9])")
     for path in sorted(ctx.settings_dir.rglob("*")):
         relative = path.relative_to(ctx.settings_dir)
