@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Linked rows edit the block, and cannot cross its boundary."""
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -51,6 +52,14 @@ def test_reorder_writes_only_the_block_and_ctrl_z_restores_it(block_list, qapp, 
     assert read(deck) == before
     assert ids(slide_list) == ["aaa", "bbb", "ccc"]
     assert not make_list.errors
+    from slidemage.ui.workspace.panels.versions import SlideVersions
+    panel = SimpleNamespace(_pinnable=lambda: [slide_list.rows()[0].deck_call], state=window.state,
+                            actions=SimpleNamespace(edit_deck=slide_list.edit))
+    SlideVersions._set_pin(panel, "aaa-First", "1-0-0")
+    assert "\\slideversion{aaa-First}{1-0-0}" in read(block)
+    assert read(deck) == before
+    SlideVersions._set_pin(panel, "aaa-First", None)
+    assert read(block) == block_before
 
 
 def test_drag_across_the_block_edge_changes_nothing(block_list, qapp):
@@ -95,3 +104,28 @@ def test_unlink_then_undo_restores_exact_deck_text(block_list, make_list, monkey
     assert block.read_bytes() == block_before
     assert slide_list.tree.section_items()[0].data(0, BLOCK) is not None
     assert not make_list.errors
+
+
+@pytest.mark.parametrize("source", ["block", "deck"])
+def test_stale_repeated_rows_refuse_edits(block_list, make_list, source, monkeypatch):  # noqa: F811 -- fixture
+    from slidemage import deck_editor, deck_language
+
+    listing, window, deck, block = block_list
+    path = block if source == "block" else deck
+    original = "\\slideversion{aaa-First}{1-0-0}\n\\slideversion{aaa-First}{2-0-0}\n"
+    if source == "deck":
+        original = "\\begin{document}\n" + original + "\\end{document}\n"
+    path.write_text(original)
+    window.state.set_deck(deck_scan.read_deck(deck))
+    listing.rebuild()
+    rows = [r.deck_call for r in listing.rows() if r.call.id == "aaa"]
+    parse = Mock(wraps=deck_language.calls_in)
+    monkeypatch.setattr(deck_language, "calls_in", parse)
+    physical = deck_language.source_calls(deck_scan.read_deck(path), rows)
+    assert parse.call_count == 1
+    assert [c.version for c in physical] == ["1-0-0", "2-0-0"]
+    changed = "% Nextcloud insertion\n" + original
+    path.write_text(changed)
+    assert not listing.edit_calls("Remove failed", "Removed", [rows[1]], deck_editor.remove_slide_calls)
+    assert read(path) == changed
+    assert ("Refresh the slide list" if source == "block" else "reload the deck") in make_list.errors[-1]

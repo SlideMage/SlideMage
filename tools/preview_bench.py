@@ -218,7 +218,7 @@ def instrument():
 
 class Bench:
     def __init__(self, args, root):
-        from slidemage import deck_editor, deck_scan, deck_settings, preview_requests, project
+        from slidemage import deck_language, deck_scan, deck_settings, preview_requests, project
         self.args, self.root = args, root
         self.ctx = project.ProjectContext.at(root)
         decks = [d for d in deck_scan.scan_decks(self.ctx) if not d.archived and not d.name.startswith('_')]
@@ -226,7 +226,7 @@ class Bench:
         if self.deck is None:
             raise SystemExit(f'no deck {args.deck or ""} in {root}'.replace('  ', ' '))
         self.language = (args.language or deck_settings.read_settings(self.deck.text).language).upper()
-        used = {call.id for call in deck_editor.parse_slide_calls(self.deck) if not deck_editor.is_commented_out(self.deck.text, call)}
+        used = {call.id for call in deck_language.active_calls(self.deck)}
         slides = sorted(self.ctx.slides_dir.glob('*-current.tex'))
         self.slide = next((p for p in slides if (p.stem.startswith(args.slide) if args.slide else p.stem.split('-')[0] in used)), None)
         if self.slide is None:

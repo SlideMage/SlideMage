@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Optional
 
 from . import deck_editor, languages, slide_language, slide_versioning
-from .deck_scan import Deck, read_deck, scan_decks
+from .deck_scan import Deck, deck_from_text, read_deck, scan_decks
 from .project import ProjectContext, call_files
 
 PINNED = {"slideversion": "slide", "omitslideversion": "omitslide"}
@@ -96,6 +96,53 @@ def _skipped(deck: Deck) -> bool:
     return deck.name.startswith(("#", "zzz_"))
 
 
+_index_cache = None
+
+
+def call_file_index(ctx: ProjectContext, decks: list[Deck] | None = None):
+    """Physical call files and their consuming decks, cached against dependency revisions."""
+    from . import deck_language
+
+    global _index_cache
+    previous = _index_cache if _index_cache and _index_cache[0] == ctx.root else None
+    paths = {p for folder in (*ctx.deck_folders, ctx.blocks_dir) for p in folder.glob("*.tex")}
+    if previous:
+        paths.update(previous[2])
+
+    def revision(path):
+        try:
+            stat = path.stat()
+            return path, stat.st_mtime_ns, stat.st_size
+        except OSError:
+            return path, None, None
+
+    def signature():
+        return (tuple(revision(p) for p in sorted(paths)),
+                None if decks is None else tuple((d.path, d.text) for d in decks))
+
+    key = signature()
+    if previous and previous[1] == key:
+        return previous[3]
+    files = {d.path: d for d in (scan_decks(ctx) if decks is None else decks) if not _skipped(d)}
+    users: dict[Path, list[Deck]] = {}
+    for deck in list(files.values()):
+        _, dependencies, calls = deck_language._resolve_calls(deck)
+        paths.update(dependencies)
+        for call in calls:
+            if call.source != deck.path:
+                if call.source not in files:
+                    files[call.source] = deck_from_text(call.source, call.source_text)
+                consumers = users.setdefault(call.source, [])
+                if deck not in consumers:
+                    consumers.append(deck)
+    for path in call_files(ctx):
+        if path.parent == ctx.blocks_dir and path not in files:
+            files[path] = read_deck(path)
+    result = files, users
+    _index_cache = ctx.root, signature(), paths, result
+    return result
+
+
 def find_usage(ctx: ProjectContext, id_slug: str, decks: Optional[list[Deck]] = None, *, language: Optional[str] = None) -> list[DeckUsage]:
     """Files holding calls of this slide, with the decks reached through each block.
 
@@ -104,24 +151,19 @@ def find_usage(ctx: ProjectContext, id_slug: str, decks: Optional[list[Deck]] = 
     """
     from . import deck_language
 
-    files = {d.path: d for d in (decks if decks is not None else scan_decks(ctx)) if not _skipped(d)}
-    blocks = [p for p in call_files(ctx) if p.parent == ctx.blocks_dir]
-    users: dict[Path, list[Deck]] = {}
-    for deck in files.values() if blocks else ():
-        for source in {c.source for c in deck_language.active_calls(deck)}:
-            users.setdefault(source, []).append(deck)
-    files.update((p, read_deck(p)) for p in blocks)
+    files, users = call_file_index(ctx, decks)
     usages = []
     links = slide_language.links_for(ctx) if language is not None else None
     for path, deck in files.items():
         if language is not None:
-            every = [slot.call for slot in deck_language.deck_slots(ctx, deck, language, links=links)]
+            every = [slot.call for slot in deck_language.slots(
+                ctx, deck_language.calls_in(deck_language.masked(deck.text), deck.chapters), language, links=links)]
         else:
             every = deck_language.calls_in(deck.text, deck.chapters, comments=True)
         places = [(c, i) for i, c in enumerate(every, start=1)
-                  if c.id_slug == id_slug and getattr(c, "source", path) == path]
+                  if c.id_slug == id_slug]
         if places:
-            block = path.stem if path.parent == ctx.blocks_dir else None
+            block = path.stem if path.parent == ctx.blocks_dir or path in users else None
             usages.append(DeckUsage(deck, [c for c, _ in places], [i for _, i in places], len(every),
                                     block, users.get(path, []) if block else []))
     return usages
@@ -163,13 +205,12 @@ def set_pin(deck_path: Path, expected_text: str, calls: list[deck_editor.SlideCa
     \\omitslideversion and back; a call that is pinned already moves to another
     version. A call of a kind with no pinned form is left alone. As one edit,
     through the deck editor's stale-checked rewrite; returns the new deck text."""
-    if any(getattr(call, "source", deck_path) != deck_path for call in calls):
-        raise ValueError("Pin the call in its source file; a per-deck choice needs Unlink first.")
     from . import deck_language
-    from .deck_scan import deck_from_text
 
+    if any(deck_language.call_source(call, deck_path) != deck_path for call in calls):
+        raise ValueError("Pin the call in its source file; a per-deck choice needs Unlink first.")
     deck = deck_from_text(deck_path, expected_text)
-    calls = list({c.call_start: c for c in (deck_language.source_call(deck, c) for c in calls)}.values())
+    calls = deck_language.source_calls(deck, calls)
     text = expected_text
     for call in sorted(calls, key=lambda c: c.call_start, reverse=True):
         if version is None:

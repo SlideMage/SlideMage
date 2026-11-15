@@ -23,7 +23,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from . import deck_editor, deck_language, deck_settings, languages, project
+from . import deck_language, deck_settings, languages, project
 from .deck_editor import SlideCall
 from .deck_scan import Deck
 from .fileio import atomic_write

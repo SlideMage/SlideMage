@@ -92,11 +92,12 @@ class PreviewTarget:
 
 
 def for_call(ctx: project.ProjectContext, deck: Deck, call: SlideCall, position: int, language: Optional[str] = None, *, frame_number: Optional[int] = None,
-             occurrence_key: tuple = (), hidden: bool = False, outline=None) -> PreviewTarget:
+             occurrence_key: tuple = (), hidden: bool = False, outline=None, deck_hash: str | None = None) -> PreviewTarget:
     """`call`, the `position`-th slide call of `deck`, as the deck typesets it. `outline` (deck_outline.Outline), when it
     describes `deck` in `language`, supplies the translation links and the Instructor frame numbers instead of
-    another scan of the slides folder and a resolution of every slot."""
-    shared = outline if outline is not None and outline.matches(ctx, deck, language or "EN") else None
+    another scan of the slides folder and a resolution of every slot. Batch callers pass the expanded
+    `deck_hash` validated once for the pass, keeping fragment reads outside the row loop."""
+    shared = outline if outline is not None and outline.matches(ctx, deck, language or "EN", deck_hash=deck_hash) else None
     if language is not None:
         from .deck_language import resolve_call
         call = resolve_call(call, language, shared.links if shared else slide_language.links_for(ctx))
@@ -116,7 +117,8 @@ def for_call(ctx: project.ProjectContext, deck: Deck, call: SlideCall, position:
     if not found:
         return target
     return replace(target, needs_context=found,
-                   deck_hash=shared.deck_hash if shared else text_sha256(deck_language.expand_fragments(deck)[0].text))
+                   deck_hash=(deck_hash if deck_hash is not None else shared.deck_hash if shared else
+                              text_sha256(deck_language.expand_fragments(deck)[0].text)))
 
 
 def requested_views(view: str | None, selected_view: str = VIEW_INSTRUCTOR) -> tuple[str, ...]:

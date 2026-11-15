@@ -131,6 +131,22 @@ def test_watch_external_edits(host, qapp):
     watch.stop()
     assert len(seen) == count
 
+    from unittest.mock import Mock
+    from slidemage.ai.project_watch import Changes
+    from slidemage.ui.workspace.terminal.sync import DiskSync
+    from slidemage.ui.workspace.chat.gui_workspace import GuiWorkspace
+    window = Mock(project=host.ctx, decks=[])
+    block = host.ctx.blocks_dir / "topic.tex"
+    sync = DiskSync(window, host.ctx.root)
+    for changes in (Changes(added=(block,)), Changes(modified=(block,)), Changes(removed=(block,))):
+        window.reset_mock()
+        sync._apply(changes)
+        window.centre.disk_changed.assert_called_once_with(block)
+        window.after_deck_edit.assert_called_once_with(block, "Claude Code changed topic.tex")
+    window.reset_mock()
+    GuiWorkspace._show_written(Mock(window=window), block)
+    window.after_deck_edit.assert_called_once_with(block, "The chat changed topic.tex")
+
 
 def test_a_failing_callback_is_offered_the_changes_again(host, qapp):
     calls = []

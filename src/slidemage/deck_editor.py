@@ -31,7 +31,7 @@ from .project import ProjectContext
 from .fileio import StaleFileError as StaleFileError, read_text_exact, write_text_exact
 from .deck_scan import DOCUMENT_BEGIN_LINE_RE, DOCUMENT_END_RE, Chapter, Deck, parse_chapters, SECTION_RE, find_decktags
 from .slide_language import FROZEN_RE, current_name, frozen_name
-from .tex_source import COMMENT_RE, is_commented
+from .tex_source import COMMENT_RE, INPUT_RE, is_commented
 
 if TYPE_CHECKING:
     from .deck_language import ExpandedCall
@@ -534,7 +534,9 @@ def step_block(text: str, calls: list[SlideCall], call: SlideCall) -> list[Slide
     r"""The calls that together decide which versions typeset which steps at `call`'s place: for a \slidestep, the
     run of \slidestep calls of the same slide next to each other (alternatives: each version has one of them), with
     only blank or comment lines between; any other call stands alone."""
-    if getattr(call, "index", None) is not None:
+    from .deck_language import ExpandedCall
+
+    if isinstance(call, ExpandedCall) and call.index is not None:
         raise ValueError("Edit reveal steps in the topic block's source file.")
     if call.macro != "slidestep":
         return [call]
@@ -543,7 +545,7 @@ def step_block(text: str, calls: list[SlideCall], call: SlideCall) -> list[Slide
     def joined(first: SlideCall, second: SlideCall) -> bool:
         between = text[first.line_end:second.line_start]
         return (first.macro == second.macro == "slidestep" and first.id_slug == second.id_slug == call.id_slug
-                and getattr(first, "source", None) == getattr(second, "source", None)
+                and all(not isinstance(c, ExpandedCall) or c.index is None for c in (first, second))
                 and all(_BLANK_OR_COMMENT_RE.match(line) for line in between.split("\n")))
 
     low = index
@@ -557,7 +559,9 @@ def step_block(text: str, calls: list[SlideCall], call: SlideCall) -> list[Slide
 
 def step_edit_problem(call: SlideCall, view: str) -> Optional[str]:
     r"""Why the steps of `call` cannot be changed for `view` from the step bar, or None when they can."""
-    if getattr(call, "index", None) is not None:
+    from .deck_language import ExpandedCall
+
+    if isinstance(call, ExpandedCall) and call.index is not None:
         return "Edit reveal steps in the topic block's source file."
     if not call.editable:
         return call.readonly_reason or "This call cannot be edited."
@@ -756,9 +760,9 @@ def section_append_point(deck: Deck, chapter: Optional[Chapter]) -> int:
     """Where a slide goes to become the last one of a section (None: the slides
     before the first one): after its last call, or below its marker line
     when it has none."""
-    last = next((c for c in reversed(parse_slide_calls(deck)) if c.chapter == chapter), None)
+    last = next((p for p in reversed(_call_placements(deck)) if _find_chapter(deck.chapters, p[1] - 1) == chapter), None)
     if last is not None:
-        return last.line_end
+        return last[1]
     if chapter is None:
         raise ValueError("there are no slides before the first section")
     return section_line_span(deck.text, chapter)[1]
@@ -1014,21 +1018,33 @@ class InsertPosition:
     indent: str
 
 
+def _call_placements(deck: Deck) -> list[tuple[int, int, str, str]]:
+    """Physical lines holding calls or includes, without reading any fragments."""
+    from .deck_language import masked
+
+    calls = parse_slide_calls(deck)
+    places = [(c.line_start, c.line_end, c.indent, f"{i}. {c.id_slug}")
+              for i, c in enumerate(calls, 1)]
+    text = masked(deck.text)
+    begin = deck.preamble_end if deck.preamble_end is not None else 0
+    for match in INPUT_RE.finditer(text, begin):
+        start, end = line_span(deck.text, match.start(), match.end())
+        indent = deck.text[start:match.start()]
+        places.append((start, end, indent if not indent.strip() else "", match.group().strip()))
+    return sorted(places)
+
+
 def slide_insert_positions(deck: Deck) -> list[InsertPosition]:
     """Places for inserting a slide before the first or after each existing call."""
-    calls = parse_slide_calls(deck)
-    if not calls:
+    places = _call_placements(deck)
+    if not places:
         return [InsertPosition("At the end of the deck", end_insert_point(deck.text), "")]
-    return [InsertPosition("At the beginning", calls[0].line_start, calls[0].indent)] + [
-        InsertPosition(f"After {number}. {call.id_slug}", call.line_end, call.indent)
-        for number, call in enumerate(calls, start=1)
+    return [InsertPosition("At the beginning", places[0][0], places[0][2])] + [
+        InsertPosition(f"After {label}", end, indent) for _, end, indent, label in places
     ]
 
 
 def append_position(deck: Deck) -> tuple[int, str]:
-    """(insert_at, indent) for a call appended after the last slide."""
-    calls = parse_slide_calls(deck)
-    if not calls:
-        return end_insert_point(deck.text), ""
-    last = calls[-1]
-    return last.line_end, last.indent
+    """(insert_at, indent) for a call appended after the last slide or include."""
+    places = _call_placements(deck)
+    return (places[-1][1], places[-1][2]) if places else (end_insert_point(deck.text), "")

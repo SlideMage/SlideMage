@@ -28,6 +28,21 @@ def test_insert_positions_follow_regular_slide_calls(tmp_path):
         "At the beginning", "After 1. aaa-EN-First", "After 2. bbb-EN-Second",
     ]
     assert positions[-1].insert_at == text.index("\\end{document}")
+    from slidemage.deck_scan import deck_from_text
+    for include in (r"\slideblock{topic}", r"\input{shared}"):
+        body = "\\section{Topic}\n" + include + "\n"
+        for calls in ("", "\\slide{aaa-EN-First}\n"):
+            source = "\\begin{document}\n" + body + calls + "\\end{document}\n"
+            deck = deck_from_text(tmp_path / "course.tex", source)
+            anchors = deck_editor.slide_insert_positions(deck)
+            assert anchors[0].insert_at == source.index(include)
+            assert deck_editor.append_position(deck)[0] == source.index("\\end{document}")
+            assert deck_editor.section_append_point(deck, deck.chapters[0]) == source.index("\\end{document}")
+            # A final block must remain before an append too.
+            source = source.replace(body + calls, "\\section{Topic}\n" + calls + include + "\n")
+            deck = deck_from_text(deck.path, source)
+            assert deck_editor.append_position(deck)[0] == source.index("\\end{document}")
+            assert deck_editor.section_append_point(deck, deck.chapters[0]) == source.index("\\end{document}")
 
 
 def test_insert_slide_calls_at_end_of_file_without_newline(tmp_path):
