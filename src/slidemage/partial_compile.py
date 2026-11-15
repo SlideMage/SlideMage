@@ -360,7 +360,8 @@ def wrapper_text(plan: PartialPlan) -> str:
     whole-deck compile, without the generated appendix."""
     job = plan.job
     from . import deck_language
-    deck, _, calls = deck_language._resolve_calls(job.deck)
+    resolution = deck_language.resolve(job.deck)
+    deck, calls = resolution.deck, resolution.calls
     # The appendix itself isn't generated (its pages stay as they are),
     # but the footers' "Slide previews" link to it must be there.
     lines = compiler.override_lines(plan.context, job, appendix_link=job._appendix_applies,

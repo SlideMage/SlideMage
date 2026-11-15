@@ -142,7 +142,7 @@ class ResolvedSlot:
 
 def resolve_slots(ctx: ProjectContext, deck: Deck, view: str, language: str, *,
                   links: slide_language.TranslationLinks | None = None,
-                  calls: list[SlideCall] | None = None) -> tuple[ResolvedSlot, ...]:
+                  resolution: deck_language.Resolution | None = None) -> tuple[ResolvedSlot, ...]:
     """Logical occurrences and their per-view frame counters (hidden steps consume none)."""
     if view not in deck_editor.VIEWS:
         raise ValueError(f"Invalid preview view: {view!r}")
@@ -150,7 +150,7 @@ def resolve_slots(ctx: ProjectContext, deck: Deck, view: str, language: str, *,
     frame = 0
     result = []
     for position, slot in enumerate(deck_language.slots(
-            ctx, calls if calls is not None else deck_language.active_calls(deck), language, links=links), 1):
+            ctx, (resolution or deck_language.resolve(deck)).calls, language, links=links), 1):
         base = _call_key(slot.original)
         occurrence = occurrences.get(base, 0)
         occurrences[base] = occurrence + 1
@@ -206,12 +206,12 @@ class Outline:
     instructor_frames: dict[tuple, int]        # occurrence key -> frame number in the Instructor view
 
     def matches(self, ctx: ProjectContext, deck: Deck, language: str, view: str | None = None, *,
-                deck_hash: str | None = None) -> bool:
-        """Whether this describes the deck; `deck_hash` reuses an already validated expansion."""
+                resolution: deck_language.Resolution | None = None) -> bool:
+        """Whether this describes the deck; `resolution` reuses an expansion already read for the pass."""
         return (self.ctx == ctx and self.deck_path == deck.path
                 and self.language == language and view in (None, self.view)
-                and self.deck_hash == (deck_hash if deck_hash is not None else
-                                          text_sha256(deck_language.expand_fragments(deck)[0].text)))
+                and self.deck_hash == (resolution.hash if resolution else
+                                       text_sha256(deck_language.expand_fragments(deck)[0].text)))
 
     @property
     def rows(self) -> list[SlideRow]:
@@ -228,22 +228,23 @@ class Outline:
         return next((row for row in matches if row.key == occurrence_key), matches[0] if matches else None)
 
 
-def resolve_outline(ctx: ProjectContext, deck: Deck, view: str, language: str, *, resolution=None) -> Outline:
+def resolve_outline(ctx: ProjectContext, deck: Deck, view: str, language: str, *,
+                    resolution: deck_language.Resolution | None = None) -> Outline:
     """`build_outline`, with what resolving it learnt kept for others to reuse."""
     links = slide_language.links_for(ctx)
-    expanded, _, calls = resolution if resolution is not None else deck_language._resolve_calls(deck)
-    resolved = resolve_slots(ctx, deck, view, language, links=links, calls=calls)
+    resolution = resolution or deck_language.resolve(deck)
+    resolved = resolve_slots(ctx, deck, view, language, links=links, resolution=resolution)
     instructor = resolved if view == deck_editor.VIEW_INSTRUCTOR else resolve_slots(
-        ctx, deck, deck_editor.VIEW_INSTRUCTOR, language, links=links, calls=calls)
-    return Outline(ctx, deck.path, text_sha256(expanded.text), view, language,
+        ctx, deck, deck_editor.VIEW_INSTRUCTOR, language, links=links, resolution=resolution)
+    return Outline(ctx, deck.path, resolution.hash, view, language,
                    _sections(ctx, deck, view, language, resolved, links), links,
                    {r.key: r.frame_number for r in instructor})
 
 
-def outline_rows(ctx: ProjectContext, deck: Deck, view: str, language: str, *, outline: Outline | None = None, resolution=None) -> list[SlideRow]:
+def outline_rows(ctx: ProjectContext, deck: Deck, view: str, language: str, *, outline: Outline | None = None,
+                 resolution: deck_language.Resolution | None = None) -> list[SlideRow]:
     """Every slide row of `deck` in order: `outline`'s when it describes this deck, view and language, else resolved afresh."""
-    deck_hash = text_sha256(resolution[0].text) if resolution else None
-    if outline is not None and outline.matches(ctx, deck, language, view, deck_hash=deck_hash):
+    if outline is not None and outline.matches(ctx, deck, language, view, resolution=resolution):
         return outline.rows
     return resolve_outline(ctx, deck, view, language, resolution=resolution).rows
 

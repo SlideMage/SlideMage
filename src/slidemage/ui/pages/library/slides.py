@@ -490,7 +490,7 @@ class SlidesView(Surface):
         self.app.state.set_deck(deck_scan.read_deck(deck.path))
         ids = {slide_language.bare_id(s) for s in row.members}
         target = next((r for r in self.app.slide_list.rows()
-                       if (block is None or getattr(r.deck_call, "block", None) == block)
+                       if (block is None or r.deck_call.block == block)
                        and (r.call.id in ids or r.deck_call.id in ids or ids.intersection(r.related_ids))), None)
         if target is not None:
             self.app.state.set_focused_slide(target.call.id, occurrence_key=target.key)

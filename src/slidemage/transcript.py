@@ -477,7 +477,8 @@ def resolve_deck(ctx: ProjectContext, deck_path: Path, version: str) -> list[Dec
     # Preamble definitions and text after the document are not slide placements.
     body = _document_body(deck.text)
     deck = replace(deck, text=body, preamble_end=0, chapters=deck_scan.parse_chapters(body))
-    expanded, _dependencies, calls = deck_language._resolve_calls(deck, strict_includes=True)
+    resolution = deck_language.resolve(deck, strict_includes=True)
+    expanded, calls = resolution.deck, resolution.calls
     slides: list[DeckSlide] = []
     number = 0
     # the LaTeX counter: \subsection{}s since the chapter's \section{}

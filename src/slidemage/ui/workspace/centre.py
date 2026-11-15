@@ -39,7 +39,6 @@ from PySide6.QtWidgets import (
 
 from ... import app_settings, deck_editor, deck_language, deck_outline, languages, open_path, preview_build, slide_branch, slide_language, slide_source, slide_usage, slide_versioning
 from ...ai.tools.slidemage import slide_target
-from ...fileio import text_sha256
 from ...preview_target import PreviewTarget, for_call, for_path
 from ...slide_language import MULT, bare_id, current_path_for_bare_id, own_language
 from ..dialogs.new_slide_version import NewSlideVersionSheet
@@ -1550,22 +1549,20 @@ class CentreColumn(QFrame):
             self.preview.set_step_choice(target.source_path, 1 if direction > 0 else None)
         state.set_focused_slide(other.call.id, occurrence_key=other.key)
 
-    def _english_frames(self, state, resolution=None) -> Optional[deck_outline.Outline]:
+    def _english_frames(self, state, resolution: deck_language.Resolution) -> Optional[deck_outline.Outline]:
         """An outline for for_call without a language, which takes the Instructor frame numbers of the English
         resolution: the state's own when it is English, else one resolution kept for the deck text. Without it each
         neighbour resolved every slot of the deck again (in German, six times after every Preview refresh)."""
         outline = state.outline
-        expanded, _, calls = resolution if resolution is not None else deck_language._resolve_calls(state.deck)
-        deck_hash = text_sha256(expanded.text)
-        if outline is not None and outline.matches(state.project, state.deck, "EN", deck_hash=deck_hash):
+        if outline is not None and outline.matches(state.project, state.deck, "EN", resolution=resolution):
             return outline
         cached = getattr(self, "_english_frames_cache", None)
-        if cached is not None and cached.matches(state.project, state.deck, "EN", deck_hash=deck_hash):
+        if cached is not None and cached.matches(state.project, state.deck, "EN", resolution=resolution):
             return cached
         links = slide_language.links_for(state.project)
-        slots = deck_outline.resolve_slots(state.project, state.deck, deck_editor.VIEW_INSTRUCTOR, "EN", links=links, calls=calls)
+        slots = deck_outline.resolve_slots(state.project, state.deck, deck_editor.VIEW_INSTRUCTOR, "EN", links=links, resolution=resolution)
         cached = deck_outline.Outline(state.project, state.deck.path,
-                                      deck_hash,
+                                      resolution.hash,
                                       deck_editor.VIEW_INSTRUCTOR, "EN",
                                       [], links, {r.key: r.frame_number for r in slots})
         self._english_frames_cache = cached
@@ -1585,7 +1582,7 @@ class CentreColumn(QFrame):
         cached = getattr(self, "_neighbours_cache", None)
         if cached is not None and cached[0] == key and cached[1] is state.outline:
             return cached[2]
-        resolution = deck_language._resolve_calls(state.deck)
+        resolution = deck_language.resolve(state.deck)
         rows = deck_outline.outline_rows(state.project, deck, state.view, state.language, outline=state.outline, resolution=resolution)
         index = next((i for i, r in enumerate(rows) if r.position == row.position), None)
         if index is None:
@@ -1597,7 +1594,7 @@ class CentreColumn(QFrame):
         # under the same key once that slide is focused.
         frames = self._english_frames(state, resolution)
         targets = [(for_call(state.project, deck, r.call, r.position, frame_number=r.frame_number,
-                             occurrence_key=r.key, hidden=r.hidden, outline=frames, deck_hash=frames.deck_hash), r) for r in picks if not r.hidden]
+                             occurrence_key=r.key, hidden=r.hidden, outline=frames, resolution=resolution), r) for r in picks if not r.hidden]
         if state.outline is not None:           # without a resolved outline there is nothing that says it is still right
             self._neighbours_cache = (key, state.outline, targets)
         return targets
@@ -1612,11 +1609,11 @@ class CentreColumn(QFrame):
         cached = getattr(self, "_deck_targets_cache", None)
         if cached is not None and cached[0] == key and cached[1] is state.outline:
             return cached[2]
-        resolution = deck_language._resolve_calls(state.deck)
+        resolution = deck_language.resolve(state.deck)
         rows = deck_outline.outline_rows(state.project, state.deck, state.view, state.language, outline=state.outline, resolution=resolution)
         frames = self._english_frames(state, resolution)
         targets = [(for_call(state.project, state.deck, r.call, r.position, frame_number=r.frame_number,
-                             occurrence_key=r.key, hidden=r.hidden, outline=frames, deck_hash=frames.deck_hash), r) for r in rows if not r.hidden]
+                             occurrence_key=r.key, hidden=r.hidden, outline=frames, resolution=resolution), r) for r in rows if not r.hidden]
         self._deck_targets_cache = (key, state.outline, targets)
         return targets
 

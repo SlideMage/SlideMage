@@ -293,7 +293,6 @@ class SlideList(QWidget):
         return preview_thumbnails.for_outline(
             self.app.project, self.deck, outline, self.state.view, self.state.language,
             read_source=self._thumbnail_source, paths=paths,
-            deck_hash=self._resolved.deck_hash if self._resolved else None,
             resolver=renderer.resolver if renderer is not None else None)
 
     def _queue_preview_images(self, outline, *, paths=None):
@@ -326,7 +325,6 @@ class SlideList(QWidget):
                 if selected_paths is None or path.resolve() in selected_paths:
                     buffers[path.resolve()] = self._thumbnail_source(path)
         outline = tuple(outline)
-        deck_hash = self._resolved.deck_hash if self._resolved else None
 
         def work():
             from ... import render_evidence
@@ -336,7 +334,7 @@ class SlideList(QWidget):
             with timing.span("thumbnails.for_outline", rows=sum(len(s.rows) for s in outline)):
                 updated = preview_thumbnails.for_outline(
                     ctx, deck, outline, view, language, read_source=lambda path: buffers.get(path.resolve()),
-                    paths=selected_paths, validation=validation, revision_sink=revisions, deck_hash=deck_hash,
+                    paths=selected_paths, validation=validation, revision_sink=revisions,
                     resolver=renderer.resolver if renderer is not None else None)
             metrics = {'validation_seconds': time.perf_counter() - started,
                        'dependency_hash_seconds': validation.dependency_seconds,
@@ -552,8 +550,7 @@ class SlideList(QWidget):
                 if deck else None)
         self.state.outline = self._resolved
         self._outline = self._resolved.sections if self._resolved else []
-        sources = {r.deck_call.source for r in self.rows()
-                   if isinstance(r.deck_call, deck_language.ExpandedCall) and r.deck_call.block}
+        sources = {r.deck_call.source for r in self.rows() if r.deck_call.block}
         self.blocks = {}
         if sources:
             from ...slide_usage import call_file_index
@@ -777,8 +774,8 @@ class SlideList(QWidget):
             return
         neighbor = items[position + delta]
         call = current.deck_call
-        if (deck_language.call_source(call, deck.path) != deck.path or
-                isinstance(neighbor, SlideRow) and deck_language.call_source(neighbor.deck_call, deck.path) != deck.path):
+        if ((call.source or deck.path) != deck.path or
+                isinstance(neighbor, SlideRow) and (neighbor.deck_call.source or deck.path) != deck.path):
             if (not isinstance(neighbor, SlideRow) or call.source != neighbor.deck_call.source
                     or call.call_start != neighbor.deck_call.call_start):
                 self.toast.show_message(BLOCK_MOVE_REFUSED)
@@ -841,7 +838,7 @@ class SlideList(QWidget):
 
     def show_in_library(self, *, block: str | None = None) -> None:
         row = self._current_row()
-        block = block or (getattr(row.deck_call, "block", None) if row else None)
+        block = block or (row.deck_call.block if row else None)
         show = getattr(self.app, "show_library", None)
         if show is not None:
             show(block=block)
@@ -1123,7 +1120,7 @@ class SlideList(QWidget):
     def edit_calls(self, failed: str, summary: str, calls: list, change: Callable,
                    cleanup: Optional[Callable] = None) -> bool:
         """Route one file's occurrences to raw calls before invoking deck_editor."""
-        sources = {deck_language.call_source(call, self.deck.path) for call in calls}
+        sources = {call.source or self.deck.path for call in calls}
         if len(sources) != 1:
             self.toast.show_message("Select slides from one source file at a time.")
             return False
@@ -1171,7 +1168,7 @@ class SlideList(QWidget):
         deck = self.deck
         if deck is None:
             return
-        sources = {deck_language.call_source(r.deck_call, deck.path) for r in self.rows()}
+        sources = {r.deck_call.source or deck.path for r in self.rows()}
         seen = set()
         for index in range(len(self._undo_order) - 1, -1, -1):
             owner, path = self._undo_order[index]
@@ -1278,7 +1275,7 @@ class SlideList(QWidget):
                   target: Optional[str] = None) -> None:
         for row in self.rows():
             call = row.deck_call
-            if deck_language.call_source(call, self.deck.path) != self.deck.path:
+            if (call.source or self.deck.path) != self.deck.path:
                 if call.line_start < insert_at < call.line_end:
                     self.toast.show_message("Insert before or after the topic block, not inside it.")
                     return
@@ -1330,7 +1327,7 @@ class SlideList(QWidget):
         self._move_slides(rows, insert_at, f"to {section.title}")
 
     def _move_slides(self, rows: list[SlideRow], insert_at: int, where: str) -> None:
-        if any(deck_language.call_source(r.deck_call, self.deck.path) != self.deck.path for r in rows):
+        if any((r.deck_call.source or self.deck.path) != self.deck.path for r in rows):
             self.toast.show_message(BLOCK_MOVE_REFUSED)
             return
         calls = [r.deck_call for r in rows]
@@ -1350,10 +1347,10 @@ class SlideList(QWidget):
             return
         target_call = target.deck_call if isinstance(target, SlideRow) else None
         source_calls = [r.deck_call for r in sources]
-        if any(deck_language.call_source(c, deck.path) != deck.path for c in
+        if any((c.source or deck.path) != deck.path for c in
                source_calls + ([target_call] if target_call else [])):
             if (target_call is None or any(
-                    (deck_language.call_source(c, deck.path), c.call_start) !=
+                    (c.source or deck.path, c.call_start) !=
                     (target_call.source, target_call.call_start) for c in source_calls)):
                 self.toast.show_message(BLOCK_MOVE_REFUSED)
                 return

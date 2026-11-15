@@ -18,7 +18,7 @@ from typing import Optional
 
 from PySide6.QtWidgets import QHBoxLayout, QMessageBox
 
-from .... import deck_editor, deck_language, slide_language, slide_source, slide_usage, slide_versioning
+from .... import deck_editor, slide_language, slide_source, slide_usage, slide_versioning
 from ...kit import kit_qss as q
 from ...kit.widgets import Button, PopoverMenu, SegmentedControl
 from .base import Row, SidePanel, box, text
@@ -146,7 +146,7 @@ class SlideVersions(SidePanel):
 
     def _set_pin(self, id_slug: str, version: Optional[str]) -> None:
         calls = self._pinnable()
-        sources = {deck_language.call_source(c, self.state.deck.path) for c in calls}
+        sources = {c.source or self.state.deck.path for c in calls}
         if len(sources) != 1:
             QMessageBox.information(self, "Choose one source",
                                     "These calls span several source files. Change each call in the slide list.")

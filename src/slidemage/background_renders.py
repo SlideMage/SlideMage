@@ -86,7 +86,8 @@ def deck_language_code(ctx: ProjectContext, deck: Deck) -> str:
 
 
 def deck_units(ctx: ProjectContext, deck: Deck, view: str, language: str, start_at: Optional[str] = None,
-               context_ready: Optional[Callable[[], bool]] = None, *, resolution=None) -> list[render_key.Unit]:
+               context_ready: Optional[Callable[[], bool]] = None, *,
+               resolution: deck_language.Resolution | None = None) -> list[render_key.Unit]:
     """The units of `deck` in `view` and `language` in deck order, beginning at the slide `start_at` (a bare id)
     and wrapping round; a call the view does not typeset, and one whose slide file is missing, have none. A slide
     that needs its deck (a contents or agenda slide, a section divider) is typeset in the deck's last compile, so it
@@ -94,9 +95,8 @@ def deck_units(ctx: ProjectContext, deck: Deck, view: str, language: str, start_
     if deck.preamble_end is None:
         return []
     links = slide_language.links_for(ctx)
-    expanded, _, calls = resolution if resolution is not None else deck_language._resolve_calls(deck)
-    deck_hash = text_sha256(expanded.text)
-    slots = deck_outline.resolve_slots(ctx, deck, view, language, links=links, calls=calls)
+    resolution = resolution or deck_language.resolve(deck)
+    slots = deck_outline.resolve_slots(ctx, deck, view, language, links=links, resolution=resolution)
     units: list[render_key.Unit] = []
     start_index = None
     for row in slots:
@@ -106,7 +106,7 @@ def deck_units(ctx: ProjectContext, deck: Deck, view: str, language: str, start_
             start_index = len(units)
         if not call.included_in(view) or not (ctx.slides_dir / call.source_filename).is_file():
             continue
-        target = preview_target.for_call(ctx, deck, call, row.position, frame_number=row.frame_number, deck_hash=deck_hash)
+        target = preview_target.for_call(ctx, deck, call, row.position, frame_number=row.frame_number, resolution=resolution)
         if target.needs_context and not (context_ready is not None and context_ready()):
             continue        # no deck compile to typeset it in: the Preview renders it on its own when it is shown
         units.append(render_key.unit_for(target, view, language, deck.name))
@@ -466,7 +466,7 @@ class BackgroundRenderer:
                                   deck_context.in_deck_ready(self.ctx, deck, view, language))
                     try:
                         if resolution is None:
-                            resolution = deck_language._resolve_calls(deck)
+                            resolution = deck_language.resolve(deck)
                         units = deck_units(self.ctx, deck, view, language, start_at, ready, resolution=resolution)
                     except Exception:  # noqa: BLE001 -- a deck that cannot be read now is tried again next time
                         deck_clean = False          # and none of its renders is deleted

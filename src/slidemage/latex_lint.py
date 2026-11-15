@@ -696,9 +696,9 @@ def check_deck_job(ctx: ProjectContext, deck: Deck, version: Optional[str] = Non
 
     from .deck_settings import read_settings
     language = (language or read_settings(deck.text).language).upper()
-    _, inline_inputs, expanded_calls = deck_language._resolve_calls(deck)
-    calls = [s.call for s in deck_language.slots(ctx, expanded_calls, language)]
-    for path in inline_inputs:
+    resolution = deck_language.resolve(deck)
+    calls = [s.call for s in deck_language.slots(ctx, resolution.calls, language)]
+    for path in resolution.dependencies:
         if path.parent != ctx.slides_dir:
             check_file(path)
     for call in calls:

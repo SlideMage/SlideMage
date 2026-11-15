@@ -261,7 +261,7 @@ class SlideDelegate(QStyledItemDelegate):
             painter.drawRoundedRect(rect.adjusted(0.75, 0.75, -0.75, -0.75), RADIUS_SM, RADIUS_SM)
         if row.hidden and not current:
             painter.setOpacity(0.4)
-        if getattr(row.deck_call, "block", None):
+        if row.deck_call.block:
             painter.fillRect(QRectF(rect.left(), rect.top(), 3, rect.height()), QColor(t.info))
 
         if row.unreviewed:
@@ -300,7 +300,7 @@ class SlideDelegate(QStyledItemDelegate):
 
         # the right edge: lock for a call that can't be edited here, then the variant chip
         right = rect.right() - 6
-        if getattr(row.deck_call, "block", None):
+        if row.deck_call.block:
             painter.setPen(QColor(t.info))
             painter.setFont(self._font(FONT_ICONS, 14))
             painter.drawText(QRectF(right - 14, rect.top(), 15, rect.height()), Qt.AlignmentFlag.AlignCenter, "link")
@@ -421,12 +421,12 @@ class SlideTree(QTreeWidget):
             blocks = {}
             for row in section.rows:
                 call = row.deck_call
-                if getattr(call, "block", None):
+                if call.block:
                     blocks.setdefault((call.source, call.call_start), []).append(row)
             only_block = len(blocks) == 1 and len(next(iter(blocks.values()))) == len(section.rows)
             for row in section.rows:
                 call = row.deck_call
-                if getattr(call, "block", None):
+                if call.block:
                     rows = blocks[(call.source, call.call_start)]
                     if row is rows[0]:
                         block = BlockRow(call.block, (block_titles or {}).get(call.source, call.block), rows)

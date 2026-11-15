@@ -92,7 +92,7 @@ class Visibility(SidePanel):
         return slot
 
     def _set(self, call: SlideCall, view: str, visible: bool) -> None:
-        source = getattr(call, "source", self.state.deck.path)
+        source = call.source or self.state.deck.path
         done = self.actions.edit_deck(
             "Change failed",
             f"{'Showed' if visible else 'Hid'} {call.id_slug} in {VIEW_LABELS[view]} of {self.state.deck.name}",

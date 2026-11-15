@@ -126,9 +126,9 @@ def call_file_index(ctx: ProjectContext, decks: list[Deck] | None = None):
     files = {d.path: d for d in (scan_decks(ctx) if decks is None else decks) if not _skipped(d)}
     users: dict[Path, list[Deck]] = {}
     for deck in list(files.values()):
-        _, dependencies, calls = deck_language._resolve_calls(deck)
-        paths.update(dependencies)
-        for call in calls:
+        resolution = deck_language.resolve(deck)
+        paths.update(resolution.dependencies)
+        for call in resolution.calls:
             if call.source != deck.path:
                 if call.source not in files:
                     files[call.source] = deck_from_text(call.source, call.source_text)
@@ -207,7 +207,7 @@ def set_pin(deck_path: Path, expected_text: str, calls: list[deck_editor.SlideCa
     through the deck editor's stale-checked rewrite; returns the new deck text."""
     from . import deck_language
 
-    if any(deck_language.call_source(call, deck_path) != deck_path for call in calls):
+    if any((call.source or deck_path) != deck_path for call in calls):
         raise ValueError("Pin the call in its source file; a per-deck choice needs Unlink first.")
     deck = deck_from_text(deck_path, expected_text)
     calls = deck_language.source_calls(deck, calls)

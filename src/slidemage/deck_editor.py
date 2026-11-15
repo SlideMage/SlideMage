@@ -25,16 +25,13 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
 from .project import ProjectContext
 from .fileio import StaleFileError as StaleFileError, read_text_exact, write_text_exact
 from .deck_scan import DOCUMENT_BEGIN_LINE_RE, DOCUMENT_END_RE, Chapter, Deck, parse_chapters, SECTION_RE, find_decktags
 from .slide_language import FROZEN_RE, current_name, frozen_name
 from .tex_source import COMMENT_RE, INPUT_RE, is_commented
-
-if TYPE_CHECKING:
-    from .deck_language import ExpandedCall
 
 
 # Macros that take a pinned version as a second brace argument.
@@ -92,10 +89,13 @@ class SlideCall:
     editable: bool
     readonly_reason: Optional[str]
     chapter: Optional[Chapter]
+    source: Optional[Path] = None   # the file physically holding the call, for a call a block put in the deck
+    block: Optional[str] = None     # the topic block's name, when that file is one
+    index: Optional[int] = None     # the call's number within its block's occurrence
 
     @property
     def identity(self) -> tuple[int, int | None]:
-        return self.call_start, None
+        return self.call_start, self.index
 
     @property
     def id_slug(self) -> str:
@@ -369,7 +369,7 @@ def remove_slide_calls(deck_path: Path, expected_text: str, calls: list[SlideCal
     return apply(deck_path, expected_text, mutate)
 
 
-def _block_marker(path: Path, text: str, call: ExpandedCall) -> tuple[int, int]:
+def _block_marker(path: Path, text: str, call: SlideCall) -> tuple[int, int]:
     """Check the deck's block marker, rather than the expanded slide's editability."""
     from . import deck_language
     from .deck_scan import deck_from_text
@@ -386,7 +386,7 @@ def _block_marker(path: Path, text: str, call: ExpandedCall) -> tuple[int, int]:
     return start, end
 
 
-def unlink_block(path: Path, text: str, call: ExpandedCall, block_text: str) -> str:
+def unlink_block(path: Path, text: str, call: SlideCall, block_text: str) -> str:
     """Replace one block marker with its body, leaving the section heading in place."""
     start, end = _block_marker(path, text, call)
     newline = eol(text)
@@ -397,7 +397,7 @@ def unlink_block(path: Path, text: str, call: ExpandedCall, block_text: str) -> 
     return apply(path, text, lambda current: current[:start] + replacement + current[end:])
 
 
-def remove_block(path: Path, text: str, call: ExpandedCall) -> str:
+def remove_block(path: Path, text: str, call: SlideCall) -> str:
     """Remove one block marker, keeping its section and the block file."""
     start, end = _block_marker(path, text, call)
     return apply(path, text, lambda current: current[:start] + current[end:])
@@ -539,9 +539,7 @@ def step_block(text: str, calls: list[SlideCall], call: SlideCall) -> list[Slide
     r"""The calls that together decide which versions typeset which steps at `call`'s place: for a \slidestep, the
     run of \slidestep calls of the same slide next to each other (alternatives: each version has one of them), with
     only blank or comment lines between; any other call stands alone."""
-    from .deck_language import ExpandedCall
-
-    if isinstance(call, ExpandedCall) and call.index is not None:
+    if call.index is not None:
         raise ValueError("Edit reveal steps in the topic block's source file.")
     if call.macro != "slidestep":
         return [call]
@@ -550,7 +548,7 @@ def step_block(text: str, calls: list[SlideCall], call: SlideCall) -> list[Slide
     def joined(first: SlideCall, second: SlideCall) -> bool:
         between = text[first.line_end:second.line_start]
         return (first.macro == second.macro == "slidestep" and first.id_slug == second.id_slug == call.id_slug
-                and all(not isinstance(c, ExpandedCall) or c.index is None for c in (first, second))
+                and first.index is None and second.index is None
                 and all(_BLANK_OR_COMMENT_RE.match(line) for line in between.split("\n")))
 
     low = index
@@ -564,9 +562,7 @@ def step_block(text: str, calls: list[SlideCall], call: SlideCall) -> list[Slide
 
 def step_edit_problem(call: SlideCall, view: str) -> Optional[str]:
     r"""Why the steps of `call` cannot be changed for `view` from the step bar, or None when they can."""
-    from .deck_language import ExpandedCall
-
-    if isinstance(call, ExpandedCall) and call.index is not None:
+    if call.index is not None:
         return "Edit reveal steps in the topic block's source file."
     if not call.editable:
         return call.readonly_reason or "This call cannot be edited."

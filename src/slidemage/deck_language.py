@@ -12,12 +12,14 @@ earliest call into the group.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from functools import cached_property
 from pathlib import Path
 from types import SimpleNamespace
 
 from . import alt_blocks, deck_editor, languages, slide_language
 from .deck_editor import SlideCall
 from .deck_scan import Chapter, Deck
+from .fileio import text_sha256
 from .project import ProjectContext, find_upward
 from .tex_source import INPUT_RE, blanked_verbatim, masked_same_length
 
@@ -93,19 +95,12 @@ def calls_in(text: str, chapters: list[Chapter], *, comments: bool = False) -> l
     return deck_editor.parse_slide_calls(shim)  # type: ignore[arg-type]
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ExpandedCall(SlideCall):
-    source: Path
-    block: str | None
-    index: int | None
     source_line: int
     source_start: int
     source_text: str = field(repr=False)
     expanded: SlideCall  # offsets in the expanded text, for compile-only replacements
-
-    @property
-    def identity(self) -> tuple[int, int | None]:
-        return self.call_start, self.index
 
 
 @dataclass
@@ -119,14 +114,25 @@ class _SourceSpan:
     placement: tuple[int, int] | None
 
 
-def _resolve_calls(deck: Deck, *, strict_includes: bool = False) -> tuple[Deck, list[Path], list[ExpandedCall]]:
+@dataclass(frozen=True)
+class Resolution:
+    """One expansion of a deck, to share between the readers of a pass."""
+    deck: Deck                      # with the fragments inlined
+    dependencies: list[Path]
+    calls: list[ExpandedCall]
+
+    @cached_property
+    def hash(self) -> str:
+        return text_sha256(self.deck.text)
+
+
+def resolve(deck: Deck, *, strict_includes: bool = False) -> Resolution:
     """Executable calls, with placement in the deck and provenance in the physical file.
 
     An included call owns the include's span in the deck; its index distinguishes
     calls within that occurrence. `expanded` retains offsets for compile copies.
     """
-    spans: list[_SourceSpan] = []
-    expanded, dependencies = expand_fragments(deck, strict_includes=strict_includes, _spans=spans)
+    expanded, dependencies, spans = _expand_fragments(deck, strict_includes)
     calls = deck_editor.parse_slide_calls(replace(expanded, text=masked(expanded.text)))
     result = []
     span_index = 0
@@ -145,36 +151,31 @@ def _resolve_calls(deck: Deck, *, strict_includes: bool = False) -> tuple[Deck, 
         result.append(ExpandedCall(
             **{**vars(call), 'call_start': start, 'call_end': end,
                'line_start': line_start, 'line_end': line_end,
-               'chapter': deck_editor._find_chapter(deck.chapters, start)},
-            source=span.source,
-            block=span.source.stem if index is not None and span.source.parent.name == "blocks" else None,
-            index=index,
+               'chapter': deck_editor._find_chapter(deck.chapters, start),
+               'source': span.source,
+               'block': span.source.stem if index is not None and span.source.parent.name == "blocks" else None,
+               'index': index},
             source_line=span.source_line + expanded.text.count("\n", span.start, call.call_start),
             source_start=offset, source_text=span.source_text,
             expanded=call))
-    return expanded, dependencies, result
+    return Resolution(expanded, dependencies, result)
 
 
 def active_calls(deck: Deck) -> list[ExpandedCall]:
     """Executable expanded calls, retaining physical placement and chapter objects."""
-    return _resolve_calls(deck)[2]
-
-
-def call_source(call: SlideCall, deck_path: Path) -> Path:
-    """The physical file owning a call."""
-    return call.source if isinstance(call, ExpandedCall) else deck_path
+    return resolve(deck).calls
 
 
 def source_calls(deck: Deck, calls: list[SlideCall]) -> list[SlideCall]:
     """Verify one source revision, then map its occurrences to physical calls once."""
-    expanded = [c for c in calls if isinstance(c, ExpandedCall)]
+    expanded = [c for c in calls if c.source is not None]
     if any(c.source != deck.path for c in expanded):
         raise ValueError("Edit this call in its source file, not in the deck that links it.")
     if any(c.source_text != deck.text for c in expanded):
         raise ValueError("The slide call changed. Refresh the slide list and try again.")
     physical = {c.call_start: c for c in calls_in(deck.text, deck.chapters)} if expanded else {}
     return list({c.call_start: c for c in (
-        physical[c.source_start] if isinstance(c, ExpandedCall) else c for c in calls)}.values())
+        physical[c.source_start] if c.source is not None else c for c in calls)}.values())
 
 
 def source_call(deck: Deck, call: SlideCall) -> SlideCall:
@@ -198,11 +199,12 @@ def call_text(call: SlideCall) -> str:
 
 def resolved_text(ctx: ProjectContext, deck: Deck, language: str) -> str:
     """A compile-only copy with resolved calls, retaining all surrounding TeX."""
-    expanded, _, calls = _resolve_calls(deck)
+    resolution = resolve(deck)
+    calls = resolution.calls
     active = slots(ctx, calls, language)
     replacements = {s.original.identity: call_text(s.call) for s in active if s.call != s.original}
     kept = {s.original.identity for s in active}
-    text = expanded.text
+    text = resolution.deck.text
     for call in reversed(calls):
         start, end = call.expanded.call_start, call.expanded.call_end
         replacement = replacements.get(call.identity, text[start:end] if call.identity in kept else "")
@@ -210,8 +212,7 @@ def resolved_text(ctx: ProjectContext, deck: Deck, language: str) -> str:
     return text
 
 
-def expand_fragments(deck: Deck, *, strict_includes: bool = False,
-                     _spans: list[_SourceSpan] | None = None) -> tuple[Deck, list[Path]]:
+def expand_fragments(deck: Deck, *, strict_includes: bool = False) -> tuple[Deck, list[Path]]:
     """Expand local body fragments without rewriting their files.
 
     Only fragments containing slide calls are expanded. Their original files
@@ -219,6 +220,10 @@ def expand_fragments(deck: Deck, *, strict_includes: bool = False,
     copy instead of opening them itself. `strict_includes` raises for missing
     literal includes and cycles instead of leaving them for TeX.
     """
+    return _expand_fragments(deck, strict_includes)[:2]
+
+
+def _expand_fragments(deck: Deck, strict_includes: bool) -> tuple[Deck, list[Path], list[_SourceSpan]]:
     from .deck_scan import parse_chapters
 
     root = find_upward(deck.path.parent) or deck.path.parent.parent
@@ -277,9 +282,7 @@ def expand_fragments(deck: Deck, *, strict_includes: bool = False,
         return "".join(parts), origins
 
     expanded, spans = expand(deck.text, deck.path, frozenset({deck.path.resolve()}))
-    if _spans is not None:
-        _spans.extend(spans)
-    return replace(deck, text=expanded, chapters=parse_chapters(expanded)), sorted(set(dependencies))
+    return replace(deck, text=expanded, chapters=parse_chapters(expanded)), sorted(set(dependencies)), spans
 
 
 def compile_deck(ctx: ProjectContext, deck: Deck, language: str) -> tuple[Deck, list[Path]]:

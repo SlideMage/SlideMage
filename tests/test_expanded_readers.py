@@ -100,8 +100,8 @@ def test_expansion_is_shared_by_a_target_pass(linked, monkeypatch, producer):
 
     ctx, deck, _, _ = linked
     (ctx.slides_dir / "abc-EN-Hello-current.tex").write_text(r"\tableofcontents")
-    resolve = Mock(wraps=deck_language.expand_fragments)
-    monkeypatch.setattr(deck_language, "expand_fragments", resolve)
+    resolve = Mock(wraps=deck_language._expand_fragments)
+    monkeypatch.setattr(deck_language, "_expand_fragments", resolve)
     if producer == "batch":
         assert batch_render.plan_deck(ctx, deck)
     elif producer == "slide":
@@ -109,14 +109,16 @@ def test_expansion_is_shared_by_a_target_pass(linked, monkeypatch, producer):
     elif producer == "background":
         assert background_renders.deck_units(ctx, deck, "instructor", "EN", context_ready=lambda: True)
     elif producer == "thumbnails":
-        outline = deck_outline.resolve_outline(ctx, deck, "instructor", "EN")
+        resolution = deck_language.resolve(deck)
+        outline = deck_outline.resolve_outline(ctx, deck, "instructor", "EN", resolution=resolution)
         preview_thumbnails.for_outline(ctx, deck, outline.sections, "instructor", "EN", resolver=Mock(),
-                                       deck_hash=outline.deck_hash)
+                                       resolution=resolution)
     elif producer == "outline":
-        outline = deck_outline.resolve_outline(ctx, deck, "instructor", "EN")
+        resolution = deck_language.resolve(deck)
+        outline = deck_outline.resolve_outline(ctx, deck, "instructor", "EN", resolution=resolution)
         for row in outline.rows * 30:
             target = preview_target.for_call(ctx, deck, row.call, row.position, "EN", outline=outline,
-                                             deck_hash=outline.deck_hash)
+                                             resolution=resolution)
             if row.call.id == "abc":
                 assert target.deck_hash == outline.deck_hash
     else:

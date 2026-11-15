@@ -93,7 +93,7 @@ def prepare_run_block(ctx: ProjectContext, occurrences: list[tuple[Deck, list[de
         if any(c.chapter != selected[0].chapter for c in selected):
             raise ValueError("A shared run cannot cross a section boundary.")
         start, end = selected[0].call_start, selected[-1].call_end
-        source = getattr(selected[0], "source", deck.path)
+        source = selected[0].source or deck.path
         if source != deck.path:
             body = read_text_exact(source)
             calls = _calls(body)
@@ -108,7 +108,7 @@ def prepare_run_block(ctx: ProjectContext, occurrences: list[tuple[Deck, list[de
         else:
             body = deck.text[start:end]
             calls = _calls(body)
-            if (any(getattr(c, "source", deck.path) != deck.path for c in selected)
+            if (any((c.source or deck.path) != deck.path for c in selected)
                     or [(c.start() + start, c.end() + start) for c in calls]
                     != [(c.call_start, c.call_end) for c in selected]):
                 raise ValueError("The run changed; reload the deck and retry.")

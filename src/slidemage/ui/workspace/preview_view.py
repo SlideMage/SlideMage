@@ -635,7 +635,7 @@ class PreviewPane(Surface):
             if target is not None:
                 self._settle.start()
         self._target, self._row, self._title, self._message = target, row, title, message
-        block = getattr(row.deck_call, "block", None) if row else None
+        block = row.deck_call.block if row else None
         self._block_notice.setVisible(bool(block))
         if block:
             block_title, decks = self.app.slide_list.blocks.get(row.deck_call.source, (block, []))
@@ -1281,13 +1281,14 @@ class PreviewPane(Surface):
         deck = self.state.deck
         if row is None or deck is None:
             return [], []
-        expanded, _, calls = deck_language._resolve_calls(deck)
+        resolution = deck_language.resolve(deck)
+        calls = resolution.calls
         physical = next((c for c in calls if c.identity == row.deck_call.identity), None)
         if physical is None:
             return calls, []
         occurrence = [c.expanded for c in calls if c.source == physical.source and (
             physical.index is None or c.call_start == physical.call_start)]
-        group = deck_editor.step_block(expanded.text, occurrence, physical.expanded)
+        group = deck_editor.step_block(resolution.deck.text, occurrence, physical.expanded)
         identities = {c.call_start for c in group}
         return calls, [c for c in calls if c.expanded.call_start in identities]
 
