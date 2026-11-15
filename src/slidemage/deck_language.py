@@ -18,7 +18,7 @@ from types import SimpleNamespace
 from . import alt_blocks, deck_editor, languages, slide_language
 from .deck_editor import SlideCall
 from .deck_scan import Chapter, Deck
-from .project import ProjectContext
+from .project import ProjectContext, find_upward
 from .tex_source import INPUT_RE, blanked_verbatim, masked_same_length
 
 
@@ -134,6 +134,7 @@ def expand_fragments(deck: Deck, *, strict_includes: bool = False) -> tuple[Deck
     """
     from .deck_scan import parse_chapters
 
+    root = find_upward(deck.path.parent) or deck.path.parent.parent
     dependencies: list[Path] = []
 
     def expand(text: str, directory: Path, seen: frozenset[Path]) -> str:
@@ -142,8 +143,12 @@ def expand_fragments(deck: Deck, *, strict_includes: bool = False) -> tuple[Deck
             name = match.group(1).strip()
             if not name or "\\" in name or "#" in name:
                 continue  # Macro-valued paths require TeX expansion.
+            block = match.group().startswith(r"\slideblock")
+            if block:
+                name = f"blocks/{name}"
             name = name if name.endswith(".tex") else name + ".tex"
-            candidates = (deck.path.parent / name, deck.path.parent.parent / name, directory / name)
+            candidates = ((root / name,) if block else
+                          (deck.path.parent / name, root / name, directory / name))
             path = next((p for p in candidates if p.is_file()), None)
             if path is None:
                 if strict_includes:
@@ -154,7 +159,7 @@ def expand_fragments(deck: Deck, *, strict_includes: bool = False) -> tuple[Deck
                     raise ValueError(f"Deck include cycle detected at {path}")
                 continue
             # Themes, media and slide sources keep their normal input behavior.
-            if not path.resolve().is_relative_to(deck.path.parent.parent.resolve()):
+            if not path.resolve().is_relative_to(root.resolve()):
                 continue
             with path.open(encoding="utf-8", errors="replace", newline="") as file:
                 fragment = file.read()

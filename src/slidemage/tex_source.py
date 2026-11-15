@@ -17,7 +17,7 @@ VERBATIM_ENV_RE = re.compile(
 IFFALSE_RE = re.compile(r"\\iffalse\b.*?\\fi\b", re.DOTALL)
 VERB_RE = re.compile(r"\\verb\*?([^a-zA-Z\s*])(.*?)\1")
 
-INPUT_RE = re.compile(r"\\(?:input|include)\s*\{([^{}]+)\}")
+INPUT_RE = re.compile(r"\\(?:input|include|slideblock)\s*\{([^{}]+)\}")
 
 
 def is_commented(text: str, pos: int) -> bool:

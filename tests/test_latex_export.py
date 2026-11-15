@@ -257,3 +257,22 @@ def test_the_exported_folder_compiles_on_its_own(project, tmp_path_factory):
     with pymupdf.open(alone / "plain.pdf") as pdf:
         assert len(pdf) == 2
         assert "One" in pdf[0].get_text() and "Two" in pdf[1].get_text()
+
+
+@pytest.mark.parametrize("folder", ["decks", "decks/archive"])
+def test_a_slideblock_exports_its_slides_and_their_dependencies(project, folder):
+    project.blocks_dir.mkdir(exist_ok=True)
+    block = project.blocks_dir / "topic.tex"
+    block.write_text("\\slide{zz1-EN-One}\n\\slide{zz2-EN-Two}\n", encoding="utf-8")
+    path = project.root / folder / "linked.tex"
+    path.parent.mkdir(exist_ok=True)
+    path.write_text(HEAD.format(template="slidemage", calls=r"\slideblock{topic}"), encoding="utf-8")
+
+    result = export(project, "linked")
+
+    assert result.missing == []
+    assert {"linked.tex", "blocks/topic.tex", "slides/zz1-EN-One-current.tex", "slides/zz2-EN-Two-current.tex",
+            "media/pic-one.png", "media/bare.png", "snippets/zz2-1.tex"} <= set(result.files)
+    for name in ("blocks/topic.tex", "slides/zz1-EN-One-current.tex", "slides/zz2-EN-Two-current.tex"):
+        assert (result.folder / name).read_bytes() == (project.root / name).read_bytes()
+    assert r"\slideblock{topic}" in (result.folder / "linked.tex").read_text(encoding="utf-8")
