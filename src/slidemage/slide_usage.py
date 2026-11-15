@@ -19,6 +19,9 @@ dialog (ui/dialogs/slide_usage_dialog.py) asks for each deck:
 
 \slidefinal, \conditionalslide and \slidestep have no pinned form, so a
 deck using only those always follows -current (the dialog says so).
+
+A linked block is one call file and one choice, shared by every deck using it.
+Choices are keyed by file path; Keep pins the block file once.
 """
 from __future__ import annotations
 
@@ -27,8 +30,8 @@ from pathlib import Path
 from typing import Optional
 
 from . import deck_editor, languages, slide_language, slide_versioning
-from .deck_scan import Deck, scan_decks
-from .project import ProjectContext
+from .deck_scan import Deck, read_deck, scan_decks
+from .project import ProjectContext, call_files
 
 PINNED = {"slideversion": "slide", "omitslideversion": "omitslide"}
 PINNABLE = {"slide": "slideversion", "omitslide": "omitslideversion"}
@@ -39,7 +42,9 @@ class DeckUsage:
     deck: Deck
     calls: list = field(default_factory=list)       # deck_editor.SlideCall
     positions: list = field(default_factory=list)   # 1-based place of each call among the deck's slide calls
-    total: int = 0                                  # the deck's slide calls
+    total: int = 0                                  # the file's slide calls
+    block: Optional[str] = None
+    decks: list[Deck] = field(default_factory=list)  # decks reached through this block
 
     @property
     def pinned_versions(self) -> list[str]:
@@ -92,22 +97,33 @@ def _skipped(deck: Deck) -> bool:
 
 
 def find_usage(ctx: ProjectContext, id_slug: str, decks: Optional[list[Deck]] = None, *, language: Optional[str] = None) -> list[DeckUsage]:
-    """Every deck (archived ones too) that calls this slide, in scan order. `decks` are the ones already
-    scanned (else the folder is); with a `language` one scan of the slides folder serves all of them."""
+    """Files holding calls of this slide, with the decks reached through each block.
+
+    `decks` reuses an existing scan; `language` resolves the calls as shown in the UI.
+    Calls used for edits (without `language`) retain their physical file offsets.
+    """
     from . import deck_language
+
+    files = {d.path: d for d in (decks if decks is not None else scan_decks(ctx)) if not _skipped(d)}
+    blocks = [p for p in call_files(ctx) if p.parent == ctx.blocks_dir]
+    users: dict[Path, list[Deck]] = {}
+    for deck in files.values() if blocks else ():
+        for source in {c.source for c in deck_language.active_calls(deck)}:
+            users.setdefault(source, []).append(deck)
+    files.update((p, read_deck(p)) for p in blocks)
     usages = []
-    links = None
-    for deck in decks if decks is not None else scan_decks(ctx):
-        if _skipped(deck):
-            continue
+    links = slide_language.links_for(ctx) if language is not None else None
+    for path, deck in files.items():
         if language is not None:
-            links = links or slide_language.links_for(ctx)
             every = [slot.call for slot in deck_language.deck_slots(ctx, deck, language, links=links)]
         else:
             every = deck_language.calls_in(deck.text, deck.chapters, comments=True)
-        places = [(c, i) for i, c in enumerate(every, start=1) if c.id_slug == id_slug]
+        places = [(c, i) for i, c in enumerate(every, start=1)
+                  if c.id_slug == id_slug and getattr(c, "source", path) == path]
         if places:
-            usages.append(DeckUsage(deck, [c for c, _ in places], [i for _, i in places], len(every)))
+            block = path.stem if path.parent == ctx.blocks_dir else None
+            usages.append(DeckUsage(deck, [c for c, _ in places], [i for _, i in places], len(every),
+                                    block, users.get(path, []) if block else []))
     return usages
 
 
@@ -128,14 +144,16 @@ def find_translations(ctx: ProjectContext, id_slug: str, text: str, decks: Optio
         path = slide_language.current_path_for_bare_id(ctx, bare)
         if partner is None or path is None or partner == id_slug:
             continue
-        used = [u.deck.name for u in find_usage(ctx, partner, decks)]
+        used = list(dict.fromkeys(d.name for u in find_usage(ctx, partner, decks)
+                                  for d in (u.decks if u.block else [u.deck])))
         out.append(Translation(partner, slide_language.own_language(partner, codes), path, used))
     return out
 
 
 def needs_dialog(usages: list[DeckUsage], translations: list[Translation]) -> bool:
     """More than one deck, a pinned call anywhere, or a translation."""
-    return len(usages) > 1 or any(u.pinned_versions for u in usages) or bool(translations)
+    decks = {d.path for u in usages for d in (u.decks if u.block else [u.deck])}
+    return len(decks) > 1 or any(u.pinned_versions for u in usages) or bool(translations)
 
 
 def set_pin(deck_path: Path, expected_text: str, calls: list[deck_editor.SlideCall],
@@ -145,6 +163,8 @@ def set_pin(deck_path: Path, expected_text: str, calls: list[deck_editor.SlideCa
     \\omitslideversion and back; a call that is pinned already moves to another
     version. A call of a kind with no pinned form is left alone. As one edit,
     through the deck editor's stale-checked rewrite; returns the new deck text."""
+    if any(getattr(c, "source", deck_path) != deck_path for c in calls):
+        raise ValueError("Pin the call in its source file; a per-deck choice needs Unlink first.")
     text = expected_text
     for call in sorted(calls, key=lambda c: c.call_start, reverse=True):
         if version is None:
@@ -156,15 +176,15 @@ def set_pin(deck_path: Path, expected_text: str, calls: list[deck_editor.SlideCa
     return text
 
 
-def apply_choices(ctx: ProjectContext, id_slug: str, choices: dict[str, str], frozen_version: Optional[str]) -> list[str]:
-    """Rewrite the decks' calls as chosen ({deck name: "current" | "keep"};
+def apply_choices(ctx: ProjectContext, id_slug: str, choices: dict[Path, str], frozen_version: Optional[str]) -> list[str]:
+    """Rewrite the decks' calls as chosen ({file path: "current" | "keep"};
     frozen_version is the hyphenated version just frozen, "1-1-0" -- None if
     nothing was frozen, then "keep" can pin nothing). Re-reads every deck, so
     a deck edited since the dialog opened is handled on its current text.
     Returns one log line per deck that changed."""
     log = []
     for usage in find_usage(ctx, id_slug):
-        choice = choices.get(usage.deck.name)
+        choice = choices.get(usage.deck.path)
         if choice == "current":
             version, wanted = None, PINNED
         elif choice == "keep" and frozen_version:

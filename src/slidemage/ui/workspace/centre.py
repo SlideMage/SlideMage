@@ -529,7 +529,8 @@ class CentreColumn(QFrame):
         if not id_slug:
             return []
         decks = getattr(self.app, "decks", None)
-        return [usage.deck for usage in slide_usage.find_usage(self.state.project, id_slug, decks)]
+        return list({d.path: d for u in slide_usage.find_usage(self.state.project, id_slug, decks)
+                     for d in (u.decks if u.block else [u.deck])}.values())
 
     def adopt_deck(self, deck, tab: Optional[CentreTab] = None) -> None:
         """The placeholder's "Open in <deck>" (tab-contexts.md E6): `tab` (default: the one on show) gets `deck` as its
