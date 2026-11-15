@@ -14,9 +14,9 @@ from pathlib import Path
 from typing import Literal
 
 from . import (alt_images, bundled_copies, deck_context, deck_editor, deck_language, deck_scan,
-               languages, project, slide_language)
+               languages, project, slide_language, slide_usage)
 from .fileio import StaleFileError, write_texts
-from .project import ProjectContext, call_files
+from .project import ProjectContext
 from .tex_source import VERBATIM_ENV_RE, VERB_RE, blanked_verbatim, comment_start
 
 # Plan §6, 2026-11-15: fixed thresholds, deliberately not settings.
@@ -73,20 +73,6 @@ def tokens(text: str) -> list[str]:
             for token in re.findall(MACRO_RE.pattern + "|" + TOKEN_RE.pattern, text)]
 
 
-def usage_index(ctx: ProjectContext) -> dict[str, list[deck_scan.Deck]]:
-    """Index expanded active calls once, shared by sequence detection and usage labels."""
-    usage = defaultdict(list)
-    for path in call_files(ctx):
-        try:
-            deck = deck_scan.read_deck(path)
-            calls = deck_language.active_calls(deck)
-        except OSError:
-            continue
-        for slide_id in dict.fromkeys(call.id for call in calls):
-            usage[slide_id].append(deck)
-    return usage
-
-
 def _exact_paths(ctx: ProjectContext, kept: str, other: str) -> tuple[Path, Path]:
     paths = [slide_language.current_path_for_bare_id(ctx, i) for i in (kept, other)]
     if kept == other or any(p is None for p in paths):
@@ -101,9 +87,9 @@ def archive_unused_copy(ctx: ProjectContext, kept: str, other: str) -> None:
     from . import unused_content
 
     _kept, path = _exact_paths(ctx, kept, other)
-    usage = usage_index(ctx)
+    usage = slide_usage.decks_by(slide_usage.deck_calls(ctx), "id")
     if not usage.get(kept):
-        raise ValueError("Keep a copy used by a deck or block before archiving its unused twin.")
+        raise ValueError("Keep a copy used by a deck before archiving its unused twin.")
     if usage.get(other) or path not in unused_content.find_unused_slides(ctx):
         raise ValueError(f"{other} is used by a deck, a block, a translation or the pool.")
     if unused_content.archive_files(ctx, [], [path], logging.getLogger(__name__).info)[1] != 1:
@@ -164,7 +150,7 @@ def replacement_files(ctx: ProjectContext, kept: str, other: str) -> dict[Path, 
         except OSError as exc:
             raise ValueError(f"Cannot check plugin links in {path}: {exc}. {scope}") from exc
     files = {}
-    for path in call_files(ctx):
+    for path in deck_language.call_files(ctx):
         deck = deck_scan.read_deck(path)
         if _unpinned_calls(deck, other):
             files[path] = deck
@@ -243,7 +229,7 @@ def find_clusters(ctx: ProjectContext, *, usage=None) -> list[Cluster]:
             pairs[a, b] = ("similar", overlap)
 
     if usage is None:
-        usage = usage_index(ctx)
+        usage = slide_usage.decks_by(slide_usage.deck_calls(ctx), "id")
 
     clusters = []
     for kind in ("exact", "same_words", "similar"):

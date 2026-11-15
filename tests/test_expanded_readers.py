@@ -93,10 +93,10 @@ def test_plugin_deck_slides(linked):
         assert [r.block for r in refs] == ["topic"] * (3 * repeat) + [None]
 
 
-@pytest.mark.parametrize("producer", ["batch", "slide", "background", "thumbnails", "outline", "usage"])
+@pytest.mark.parametrize("producer", ["batch", "slide", "background", "thumbnails", "outline"])
 def test_expansion_is_shared_by_a_target_pass(linked, monkeypatch, producer):
     from unittest.mock import Mock
-    from slidemage import background_renders, preview_target, preview_thumbnails, slide_usage
+    from slidemage import background_renders, preview_target, preview_thumbnails
 
     ctx, deck, _, _ = linked
     (ctx.slides_dir / "abc-EN-Hello-current.tex").write_text(r"\tableofcontents")
@@ -121,14 +121,4 @@ def test_expansion_is_shared_by_a_target_pass(linked, monkeypatch, producer):
                                              resolution=resolution)
             if row.call.id == "abc":
                 assert target.deck_hash == outline.deck_hash
-    else:
-        slide_usage.call_file_index(ctx, [deck])
-        count = resolve.call_count
-        slide_usage.call_file_index(ctx, [deck])
-        assert resolve.call_count == count
-        block = ctx.blocks_dir / "topic.tex"
-        block.write_text(block.read_text() + "\n% external edit")
-        slide_usage.call_file_index(ctx, [deck])
-        assert resolve.call_count == count + 1
-        return
     assert resolve.call_count == 1

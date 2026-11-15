@@ -27,7 +27,7 @@ def test_model_groups_translations_and_excludes_manual_and_test(qapp, tmp_path):
     bundled_copies.write_manifest(ctx.root, {"manual": {"files": {"slides/man-EN-Manual-current.tex": "hash"}}})
 
     model = SlideModel()
-    model.set_groups(prepare_groups(ctx, {}, "EN"), library_data.LibraryData())
+    model.set_groups(prepare_groups(ctx, {}, {}, "EN"), library_data.LibraryData())
 
     assert model.rowCount() == 2
     rows = [model.index(n).data(Qt.ItemDataRole.UserRole) for n in range(model.rowCount())]

@@ -62,8 +62,8 @@ import shutil
 from pathlib import Path
 from typing import Callable, Iterable
 
-from . import ai_review, languages, library_data
-from .project import ProjectContext, call_files
+from . import ai_review, deck_language, languages, library_data
+from .project import ProjectContext
 from .slide_language import current_name
 from .tex_source import COMMENT_RE
 
@@ -98,7 +98,8 @@ LogCallback = Callable[[str], None]
 def _deck_texts(ctx: ProjectContext) -> list[str]:
     """Text of decks and blocks, with comments and generated wrappers excluded."""
     return [_strip_comments(path.read_text(encoding="utf-8", errors="replace"))
-            for path in call_files(ctx) if path.parent == ctx.blocks_dir or not path.name.startswith("_")]
+            for path in (*(p for p in deck_language.deck_files(ctx) if not p.name.startswith("_")),
+                         *deck_language.block_files(ctx))]
 
 
 def slide_filenames_in(ctx: ProjectContext, text: str) -> set[str]:

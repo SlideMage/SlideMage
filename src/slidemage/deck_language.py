@@ -161,6 +161,21 @@ def resolve(deck: Deck, *, strict_includes: bool = False) -> Resolution:
     return Resolution(expanded, dependencies, result)
 
 
+def deck_files(ctx: ProjectContext) -> list[Path]:
+    """Decks and archived decks, with any fragments beside them."""
+    return [p for directory in ctx.deck_folders for p in sorted(directory.glob("*.tex"))]
+
+
+def block_files(ctx: ProjectContext) -> list[Path]:
+    """Blocks with slide calls (excluding comments and verbatim)."""
+    return [p for p in sorted(ctx.blocks_dir.glob("*.tex"))
+            if deck_editor.SLIDE_CALL_RE.search(masked(p.read_text(encoding="utf-8", errors="replace")))]
+
+
+def call_files(ctx: ProjectContext) -> list[Path]:
+    return deck_files(ctx) + block_files(ctx)
+
+
 def active_calls(deck: Deck) -> list[ExpandedCall]:
     """Executable expanded calls, retaining physical placement and chapter objects."""
     return resolve(deck).calls

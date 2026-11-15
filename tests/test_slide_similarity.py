@@ -6,7 +6,8 @@ import json
 import pytest
 
 from slidemage.project import ProjectContext
-from slidemage.slide_similarity import find_clusters, normalise, tokens, usage_index
+from slidemage.slide_similarity import find_clusters, normalise, tokens
+from slidemage.slide_usage import deck_calls, decks_by
 
 
 @pytest.mark.parametrize("language, other", [("EN", "DE"), ("DE", "EN")])
@@ -77,11 +78,11 @@ def test_sequence_deck(tmp_path):
     block.write_text("\\slide{c-EN-Demo}\n\\slide{d-EN-Demo}")
     (blocks / "linked.tex").write_text("\\slide{g-EN-Demo}")
     (blocks / "second.tex").write_text("\\slide{h-EN-Demo}")
-    usage = usage_index(ctx)
+    usage = decks_by(deck_calls(ctx), "id")
     assert [d.path for d in usage["f"]] == [ctx.decks_dir / "other.tex"]
-    assert [d.path for d in usage["g"]] == [deck, blocks / "linked.tex"]
+    assert [d.path for d in usage["g"]] == [deck]
     assert [(c.ids, c.sequence_deck) for c in find_clusters(ctx, usage=usage)] == [
-        (["a", "b"], deck), (["c", "d"], block), (["e", "f"], None), (["g", "h"], deck)]
+        (["a", "b"], deck), (["c", "d"], None), (["e", "f"], None), (["g", "h"], deck)]
 
 
 def test_verbatim_and_math():

@@ -174,7 +174,8 @@ def test_block_version_asks_once_for_two_decks_and_pins_the_block(ctx, qapp, mon
     assert {d.name for d in usages[0].decks} == set(names)
     assert slide_usage.needs_dialog(usages, [])
     visible = slide_usage.find_usage(ctx, "abc-EN-Demo", language="EN")
-    assert [(u.deck.path, {d.name for d in u.decks}) for u in visible] == [(block, set(names))]
+    assert {u.deck.name: u.calls[0].block for u in visible} == dict.fromkeys(
+        names, "Literaturrecherche" if folder == "blocks" else None)
     deck = usages[0].decks[0]
     with pytest.raises(ValueError, match="source file"):
         slide_usage.set_pin(deck.path, deck.text, deck_language.active_calls(deck), "1-0-0")

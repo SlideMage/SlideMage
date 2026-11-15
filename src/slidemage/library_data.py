@@ -8,10 +8,10 @@ import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from . import bundled_copies, deck_context, deck_language, deck_scan, slide_language
+from . import bundled_copies, deck_context, deck_language, deck_scan, slide_language, slide_usage
 from .fileio import StaleFileError, atomic_write, read_text_exact
 from .filelock import build_lock
-from .project import ProjectContext, call_files
+from .project import ProjectContext
 from .slide_similarity import STRUCTURAL_RE
 
 log = logging.getLogger(__name__)
@@ -153,7 +153,7 @@ class Suggestion:
         return chapter.title if chapter else "Shared slides"
 
 
-def suggestions(ctx: ProjectContext) -> list[Suggestion]:
+def suggestions(ctx: ProjectContext, scanned: list | None = None) -> list[Suggestion]:
     """Maximal shared runs per pair of real decks, then reusable singles outside them.
 
     Already linked occurrences count as deck usage, but need no suggestion alone.
@@ -171,17 +171,16 @@ def suggestions(ctx: ProjectContext) -> list[Suggestion]:
                 or {"contents", "section"}.intersection(deck_context.reasons(text))):
             excluded.add(ids[bare])
     pooled = set(data.pool)
-    for path in call_files(ctx):
-        if path.parent == ctx.blocks_dir:
-            pooled.update(ids[c.id] for c in deck_language.calls_in(
-                deck_language.masked(read_text_exact(path)), []) if c.id in ids)
+    for path in deck_language.block_files(ctx):
+        pooled.update(ids[c.id] for c in deck_language.calls_in(
+            deck_language.masked(read_text_exact(path)), []) if c.id in ids)
 
     segments, usage = [], defaultdict(list)
-    for deck in deck_scan.scan_decks(ctx):
+    for deck, calls in slide_usage.deck_calls(ctx) if scanned is None else scanned:
         if deck.archived or deck.is_test_deck or deck_scan.TAG_MANUAL in deck.groups:
             continue
         segment = []
-        for call in deck_language.active_calls(deck):
+        for call in calls:
             original = ids.get(call.id)
             eligible = original is not None and original not in excluded
             if eligible:

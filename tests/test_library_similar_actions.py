@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 from PySide6.QtWidgets import QCheckBox, QDialog, QLabel, QMessageBox
 
-from slidemage import fileio, project, slide_similarity
+from slidemage import fileio, project, slide_similarity, slide_usage
 from slidemage.project import ProjectContext
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.kit.widgets import Button, ModalSheet
@@ -33,7 +33,7 @@ def copies(tmp_path, monkeypatch):
                           slide_list=SimpleNamespace(_undo={}, _undo_order=[]),
                           refresh_open_deck_editors=lambda: None, after_deck_edit=lambda *args: None)
     view = SimilarView(app)
-    usage = slide_similarity.usage_index(ctx)
+    usage = slide_usage.decks_by(slide_usage.deck_calls(ctx), "id")
     view.set_clusters(prepare_clusters(ctx, slide_similarity.find_clusters(ctx, usage=usage), usage, None, "EN"))
     yield ctx, view
     if view._work is not None:
@@ -66,7 +66,7 @@ def test_archive_unused_copy(qapp, copies, monkeypatch):
 def test_replace_unpinned_calls_and_refuse_translation(qapp, copies, monkeypatch):
     ctx, view = copies
     deck = ctx.decks_dir / "replace.tex"
-    deck.write_text("\\slide{bbb-EN-Demo}\n\\slideversion{bbb-EN-Demo}{1-0-0}\n"
+    deck.write_text("\\documentclass{beamer}\n\\slide{bbb-EN-Demo}\n\\slideversion{bbb-EN-Demo}{1-0-0}\n"
                     "\\omitslideversion{bbb-EN-Demo}{1-0-0}\n% \\slide{bbb-EN-Demo}\n"
                     "\\begin{verbatim}\n\\slide{bbb-EN-Demo}\n\\end{verbatim}\n")
     block = ctx.blocks_dir / "topic.tex"
@@ -77,7 +77,7 @@ def test_replace_unpinned_calls_and_refuse_translation(qapp, copies, monkeypatch
     snapshots = {p: p.read_text() for p in (deck, block, skipped)}
     view.app.slide_list._undo = {p: [snapshots[p]] for p in snapshots}
     view.app.slide_list._undo_order = [(None, p) for p in snapshots]
-    usage = slide_similarity.usage_index(ctx)
+    usage = slide_usage.decks_by(slide_usage.deck_calls(ctx), "id")
     view.set_clusters(prepare_clusters(ctx, slide_similarity.find_clusters(ctx, usage=usage), usage, None, "EN"))
     approvals, warnings = [], []
 

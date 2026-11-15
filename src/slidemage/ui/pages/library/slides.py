@@ -38,7 +38,7 @@ class SlideGroup:
     block_topics: set[str] = field(default_factory=set)
 
 
-def prepare_groups(ctx, usage, language):
+def prepare_groups(ctx, usage, blocks, language):
     """Prepare the collection on the page's scan worker; no widgets or image reads."""
     links = slide_language.links_for(ctx)
     bundled = bundled_copies.read_manifest(ctx.root).get("manual", {}).get("files", {})
@@ -55,15 +55,15 @@ def prepare_groups(ctx, usage, language):
         slug = next((s for s in members if links.own(s) == language),
                     next((s for s in members if slide_language.bare_id(s) == original), members[0]))
         text = "\n".join(links.header(s) for s in members)
-        decks = {d.path: d for s in members for d in usage.get(slide_language.bare_id(s), [])
-                 if d.path.parent != ctx.root / "blocks"}
+        ids = {slide_language.bare_id(s) for s in members}
+        decks = {d.path: d for i in ids for d in usage.get(i, [])}
+        used_in = {key: block for key, block in blocks.items() if ids.intersection(c.id for c in block.calls)}
         rows.append(SlideGroup(original, slug,
                                alt_blocks.plain_title(deck_context.frame_title(links.header(slug)) or slug),
                                text, slide_language.badge_for(ctx, slug, links=links).text(), members,
                                sorted(decks.values(), key=lambda d: d.path.stat().st_mtime_ns),
                                all(slide_language.current_name(s) in unused for s in members),
-                               sorted({d.path.stem for s in members for d in usage.get(slide_language.bare_id(s), [])
-                                       if d.path.parent == ctx.blocks_dir})))
+                               sorted(used_in), {t for block in used_in.values() for t in block.topics}))
     return sorted(rows, key=lambda row: (row.title.casefold(), row.id))
 
 

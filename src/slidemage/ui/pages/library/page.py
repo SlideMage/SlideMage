@@ -7,9 +7,9 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (QAbstractItemView, QHBoxLayout, QInputDialog, QLineEdit,
                                QListWidgetItem, QMessageBox, QScrollArea, QStackedWidget, QVBoxLayout)
 
-from .... import deck_editor, library_data, topic_blocks
+from .... import deck_editor, library_data, slide_usage, topic_blocks
 from ....fileio import read_text_exact
-from ....slide_similarity import find_clusters, usage_index
+from ....slide_similarity import find_clusters
 from ...background import run_in_background
 from ...kit.tokens import SPACE
 from ...kit.widgets import (Button, Card, Field, IconButton, ModalSheet, PlainList, RowButton,
@@ -179,19 +179,18 @@ class LibraryPage(Surface):
         language = self.app.state.language
 
         def scan():
-            usage = usage_index(ctx)
+            scanned = slide_usage.deck_calls(ctx)
+            usage = slide_usage.decks_by(scanned, "id")
             clusters = find_clusters(ctx, usage=usage)
             try:
                 resolver = self.app.background.renderer.resolver
             except Exception:  # Rendering may be disabled or its store unavailable.
                 resolver = None
-            groups = prepare_groups(ctx, usage, language)
-            blocks = topic_blocks.read_blocks(ctx)
-            for group in groups:
-                group.block_topics = {t for key in group.blocks if key in blocks for t in blocks[key].topics}
+            blocks = topic_blocks.read_blocks(ctx, scanned)
+            groups = prepare_groups(ctx, usage, blocks, language)
             return (groups, library_data.read(ctx),
                     prepare_clusters(ctx, clusters, usage, resolver, language),
-                    prepare_suggestions(ctx, library_data.suggestions(ctx), groups, resolver, language),
+                    prepare_suggestions(ctx, library_data.suggestions(ctx, scanned), groups, resolver, language),
                     blocks)
 
         self._scan = run_in_background(scan, self._on_loaded, parent=self)

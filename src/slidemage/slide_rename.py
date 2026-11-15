@@ -37,8 +37,8 @@ from pathlib import Path
 from typing import Optional
 
 from .fileio import read_text_exact, write_text_exact
-from . import ai_review, alt_images, deck_editor, deck_headers, languages, library_data, slide_ids, slide_language
-from .project import ProjectContext, call_files
+from . import ai_review, alt_images, deck_editor, deck_headers, deck_language, languages, library_data, slide_ids, slide_language
+from .project import ProjectContext
 from .processes import delete_file, move_file
 
 _MACROS = "|".join(sorted(deck_editor.ALL_MACROS))
@@ -76,16 +76,11 @@ def count_references(ctx: ProjectContext, id_slug: str) -> int:
     confirmation dialog before set_slide_language() rewrites them."""
     pattern = _reference_pattern(id_slug)
     total = 0
-    deck_paths = _reference_decks(ctx)
+    deck_paths = deck_language.call_files(ctx)
     for deck_path in deck_paths:
         text = read_text_exact(deck_path)
         total += len(pattern.findall(text))
     return total
-
-
-def _reference_decks(ctx: ProjectContext) -> list[Path]:
-    """Every file that can call a slide, #workdeck.tex among them."""
-    return call_files(ctx)
 
 
 def _rewrite_references_in_file(deck_path: Path, id_slug: str, new_id_slug: str) -> int:
@@ -132,7 +127,7 @@ def _apply_id_slug_rename(ctx: ProjectContext, id_slug: str, new_id_slug: str) -
         move_file(src, dest, ctx.root)
         ai_review.rename(ctx, src, dest)
 
-    deck_paths = _reference_decks(ctx)
+    deck_paths = deck_language.call_files(ctx)
     for deck_path in deck_paths:
         _rewrite_references_in_file(deck_path, id_slug, new_id_slug)
 
@@ -406,7 +401,7 @@ def rename_slide_id(ctx: ProjectContext, old_id: str, new_id: str, reserved: boo
             r"(\\(?:" + _MACROS + r")(?:\[[^\]]*\])?\{)("
             + "|".join(re.escape(s) for s in mapping) + r")(\})"
         )
-        deck_paths = _reference_decks(ctx)
+        deck_paths = deck_language.call_files(ctx)
         for deck_path in deck_paths:
             text = read_text_exact(deck_path)
             new_text = pattern.sub(lambda m: m.group(1) + mapping[m.group(2)] + m.group(3), text)
@@ -467,7 +462,7 @@ def deck_names_referencing(ctx: ProjectContext, id_slug: str) -> list[str]:
     to lose a reference before confirming, not just a bare count."""
     pattern = _reference_pattern(id_slug)
     names: list[str] = []
-    deck_paths = _reference_decks(ctx)
+    deck_paths = deck_language.call_files(ctx)
     for deck_path in deck_paths:
         text = read_text_exact(deck_path)
         if pattern.search(text):
@@ -549,7 +544,7 @@ def delete_slide_id(ctx: ProjectContext, id_slug: str, remove_deck_references: b
 
     deck_refs_removed = 0
     if remove_deck_references:
-        deck_paths = _reference_decks(ctx)
+        deck_paths = deck_language.call_files(ctx)
         for deck_path in deck_paths:
             deck_refs_removed += _remove_references_in_file(deck_path, id_slug)
 

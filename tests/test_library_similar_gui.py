@@ -50,7 +50,7 @@ def test_cluster_cards_and_counts(qapp, tmp_path, monkeypatch):
     def scan(ctx, *, usage):
         assert get_ident() != gui_thread
         assert "aaa" not in usage
-        assert [d.name for d in usage["bbb"]] == ["course", "linked"]
+        assert [d.name for d in usage["bbb"]] == ["course"]
         return clusters
 
     (ctx.slides_dir / "gone-EN-Demo-current.tex").touch()

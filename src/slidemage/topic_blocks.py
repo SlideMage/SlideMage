@@ -8,10 +8,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import deck_editor, deck_language
-from .deck_scan import Chapter, Deck, parse_chapters, scan_decks, slugify
+from .deck_scan import Chapter, Deck, parse_chapters, slugify
 from .fileio import StaleFileError, read_text_exact, write_text_exact, write_texts
 from .filelock import build_lock
-from .project import ProjectContext, call_files
+from .project import ProjectContext
+from .slide_usage import deck_calls, decks_by
 from .tex_source import masked_same_length
 
 
@@ -190,12 +191,12 @@ class TopicBlock:
     decks: list[Deck] = field(default_factory=list)
 
 
-def read_blocks(ctx: ProjectContext) -> dict[str, TopicBlock]:
-    """Physical blocks and the decks reached through the shared resolver."""
+def read_blocks(ctx: ProjectContext, scanned: list | None = None) -> dict[str, TopicBlock]:
+    """Physical blocks and the decks that use them (`scanned` is slide_usage.deck_calls)."""
     blocks = {}
     _block_paths(ctx)
-    for path in call_files(ctx):
-        if path.parent != ctx.blocks_dir or not re.fullmatch(r"[A-Za-z0-9_-]+", path.stem):
+    for path in deck_language.block_files(ctx):
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", path.stem):
             continue
         text = read_text_exact(path)
         _calls(text)
@@ -204,10 +205,10 @@ def read_blocks(ctx: ProjectContext) -> dict[str, TopicBlock]:
             path, metadata.get("SlideMage block", "").strip() or path.stem,
             [t.strip() for t in metadata.get("Topics", "").split(",") if t.strip()],
             metadata.get("Description", ""), deck_language.calls_in(deck_language.masked(text), []))
-    for deck in scan_decks(ctx) if blocks else ():
-        for key in {c.block for c in deck_language.active_calls(deck)}:
-            if key in blocks:
-                blocks[key].decks.append(deck)
+    if blocks:
+        users = decks_by(deck_calls(ctx) if scanned is None else scanned, "block")
+        for key, block in blocks.items():
+            block.decks = users.get(key, [])
     return blocks
 
 

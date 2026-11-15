@@ -35,7 +35,7 @@ def test_reorder_writes_only_the_block_and_ctrl_z_restores_it(block_list, qapp, 
     header = slide_list.tree.section_items()[0]
     assert header.data(0, BLOCK).title == "Shared topic"
     assert header.childCount() == 2
-    assert slide_list.blocks[block] == ("Shared topic", [deck.stem])
+    assert slide_list.blocks[block] == "Shared topic"
     first, second = [slide_list.tree.data_of(item_of(slide_list, slide_id)) for slide_id in ("aaa", "bbb")]
     slide_list.tree.moved.emit([second], first, ABOVE_ITEM)
     qapp.processEvents()

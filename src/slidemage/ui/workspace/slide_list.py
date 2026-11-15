@@ -105,7 +105,7 @@ class SlideList(QWidget):
         self._returning: Optional[DeckWork] = None     # show_deck(): the deck's work the next rebuild restores
         self._undo: dict[Path, list[str]] = {}
         self._undo_order: list[tuple[Path, Path]] = []   # displayed deck, edited file
-        self.blocks: dict[Path, tuple[str, list[str]]] = {}
+        self.blocks: dict[Path, str] = {}   # block file -> title, for the block rows shown
         self._block_work = None
         self.setMinimumWidth(MIN_WIDTH)
         self.setMaximumWidth(MAX_WIDTH)
@@ -550,15 +550,12 @@ class SlideList(QWidget):
                 if deck else None)
         self.state.outline = self._resolved
         self._outline = self._resolved.sections if self._resolved else []
-        sources = {r.deck_call.source for r in self.rows() if r.deck_call.block}
         self.blocks = {}
-        if sources:
-            from ...slide_usage import call_file_index
-            files, users = call_file_index(self.app.project, getattr(self.app, "decks", None))
-            for source in sources:
-                title = next((line.partition(":")[2].strip() for line in files[source].text.splitlines()
-                              if line.startswith("%% SlideMage block:")), "") or source.stem
-                self.blocks[source] = (title, [d.name for d in users.get(source, [])])
+        for row in self.rows():
+            call = row.deck_call
+            if call.block and call.source not in self.blocks:
+                self.blocks[call.source] = next((line.partition(":")[2].strip() for line in call.source_text.splitlines()
+                                                 if line.startswith("%% SlideMage block:")), "") or call.source.stem
         # Keep the images on show while the background pass revalidates them.
         if previous_rows:
             self._set_outline([replace(section, rows=[
@@ -574,7 +571,7 @@ class SlideList(QWidget):
         self.tree.blockSignals(True)
         with timing.span("slide_list.populate"):
             self.tree.populate(self._outline, VIEW_LABELS[self.state.view], self.state.language,
-                               {path: title for path, (title, _) in self.blocks.items()})
+                               self.blocks)
         if deck and self._background_thumbnails:
             with timing.span("slide_list.queue_previews"):
                 self._queue_preview_images(self._outline)

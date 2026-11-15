@@ -54,7 +54,7 @@ from pathlib import Path
 
 from . import deck_editor, deck_language, deck_scan, languages, slide_language, timing
 from .fileio import StaleFileError, atomic_write, read_text_exact
-from .project import ProjectContext, call_files
+from .project import ProjectContext
 
 # Serialize header passes within the app. Atomic expected-text writes below also
 # protect edits from other writers; after three conflicts leave the file untouched
@@ -105,10 +105,9 @@ def _regenerate_headers_impl(ctx: ProjectContext) -> tuple[int, int]:
 
 def _deck_membership(ctx: ProjectContext) -> tuple[dict[str, set[str]], list[Path]]:
     """(slide id -> the names of the decks that include it, the deck files read)."""
-    paths = call_files(ctx)
-    blocks = {p.resolve() for p in paths if p.parent == ctx.blocks_dir}
-    deck_paths = [p for p in paths if p.parent != ctx.blocks_dir
-                  and p.name != "#workdeck.tex" and not p.name.startswith(("zzz_", "_"))]
+    blocks = {p.resolve() for p in deck_language.block_files(ctx)}
+    deck_paths = [p for p in deck_language.deck_files(ctx)
+                  if p.name != "#workdeck.tex" and not p.name.startswith(("zzz_", "_"))]
 
     # id -> sorted list of deck display names that include it
     id_to_decks: dict[str, set[str]] = {}

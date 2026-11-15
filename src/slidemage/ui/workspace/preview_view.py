@@ -49,6 +49,7 @@ from ...fileio import text_sha256
 from ...preview_target import PreviewTarget
 from ...preview_requests import PreviewRequest, RenderOptions, RenderRequest, RenderService, SourceRevision
 from ...preview_metrics import PreviewMetrics
+from ...slide_usage import deck_calls, decks_by
 from ...slide_language import MULT, LanguageBadge, TranslationLink, own_language, translation_group
 from ...step_renders import BACKGROUND, FOREGROUND, StepRenderQueue
 from ..dialogs.transcript_preview import show_transcript_preview
@@ -638,7 +639,8 @@ class PreviewPane(Surface):
         block = row.deck_call.block if row else None
         self._block_notice.setVisible(bool(block))
         if block:
-            block_title, decks = self.app.slide_list.blocks.get(row.deck_call.source, (block, []))
+            block_title = self.app.slide_list.blocks.get(row.deck_call.source, block)
+            decks = [d.name for d in decks_by(deck_calls(self.app.project, getattr(self.app, "decks", None)), "block").get(block, [])]
             count = len(decks)
             self._block_text.setText(
                 f"From the topic block {block_title}. Reordering or removing it here changes the block, "

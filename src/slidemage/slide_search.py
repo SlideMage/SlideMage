@@ -21,8 +21,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import alt_blocks, languages
-from .project import ProjectContext, call_files
+from . import alt_blocks, deck_language, languages
+from .project import ProjectContext
 from .slide_language import CURRENT_SUFFIX
 
 # Characters of context kept on each side of the match: a palette row shows one line.
@@ -44,7 +44,7 @@ def project_files(root: Path) -> list[Path]:
     files = sorted((root / "slides").glob(f"*{SLIDE_SUFFIX}"))
     # "_slidemage_preview-*.tex" are the preview's throwaway wrappers.
     ctx = ProjectContext.at(root)
-    files += [p for p in call_files(ctx) if p.parent == ctx.blocks_dir or not p.name.startswith("_")]
+    files += [p for p in deck_language.deck_files(ctx) if not p.name.startswith("_")] + deck_language.block_files(ctx)
     bib = root / BIB_NAME
     return files + ([bib] if bib.is_file() else [])
 
