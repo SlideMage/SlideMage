@@ -903,6 +903,20 @@ def insert_slide_call(
     return apply(deck_path, expected_text, mutate)
 
 
+def insert_block(deck_path: Path, expected_text: str, insert_at: int, indent: str, key: str, title: str) -> str:
+    """Insert a block and its section heading together, as one undoable edit."""
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", key):
+        raise ValueError("Invalid topic block key.")
+    title = _section_title(title)
+
+    def mutate(text: str) -> str:
+        newline = eol(text)
+        return _splice(text, insert_at,
+                       f"{indent}\\section{{{title}}}{newline}{indent}\\slideblock{{{key}}}{newline}")
+
+    return apply(deck_path, expected_text, mutate)
+
+
 def insert_slide_calls(
     deck_path: Path, expected_text: str, insert_at: int, indent: str, id_slugs: list[str],
 ) -> str:

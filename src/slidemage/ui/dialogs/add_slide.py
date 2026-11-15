@@ -2,11 +2,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The Add slide sheet (UI_REDESIGN_PLAN.md, step 9): one place to put a slide into the open deck.
 
-The slide comes from one of four sources:
+The slide comes from one of five sources:
 
 * New: a blank slide of a frame from the gallery, with a title, a slug and a language.
 * Existing: a slide of the project, loaded live, as one of its frozen versions, or as one
   reveal step (\\slidestep).
+* Block: a linked topic block, preceded by its section heading.
 * Duplicate: a copy of a slide in its own language, independent of the original.
 * Translate: a copy in another language, linked to the original; EN to DE can be machine-
   translated first (the model picker, the route and the cloud consent are those of the active AI route, AI setup).
@@ -18,6 +19,7 @@ and reports what went wrong. A new or copied slide opens in the Source view afte
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -33,29 +35,30 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QProgressBar,
+    QRadioButton,
     QVBoxLayout,
     QWidget,
 )
 
-from ... import ai_review, alt_draft, deck_editor, languages, preview_target, render_key, render_lookup, slide_add, slide_import, slide_language, slide_versioning
+from ... import ai_review, alt_draft, deck_editor, deck_language, deck_scan, languages, library_data, preview_target, render_key, render_lookup, slide_add, slide_import, slide_language, slide_versioning
 from ...ai import ai_profile, resolver, routes
 from ...deck_scan import Deck
-from ...project import ProjectContext
+from ...project import ProjectContext, call_files
 from ..ai_models import add_route_badge, built, fill_model_combo, picked_route
 from .. import background
 from ..kit import kit_qss as q
 from ..kit.tokens import SPACE
-from ..kit.widgets import Field, ModalSheet, SegmentedControl, Surface, ThumbnailGrid, ToggleChip, caption, set_property
+from ..kit.widgets import Field, ModalSheet, RowButton, SegmentedControl, Surface, ThumbnailGrid, ToggleChip, caption, set_property
 from ..workspace.menus import VIEW_LABELS
 from ..workspace.topbar import VIEW_TONES
 
-SOURCES = (("new", "New"), ("existing", "Existing"), ("duplicate", "Duplicate"), ("translate", "Translate"))
+SOURCES = (("new", "New"), ("existing", "Existing"), ("duplicate", "Duplicate"), ("translate", "Translate"), ("block", "Block"))
 LOAD_LABELS = (("live", "Live slide"), ("frozen", "Frozen version"), ("step", "One reveal step"))
 LOAD_TIPS = {"live": "Follows every edit of the slide.", "frozen": "Stays as it was when it was frozen.",
              "step": "One reveal step of the slide, as a slide of its own."}
 LANGUAGE_LABELS = {"mult": "Multilingual"}      # a language code is its own label
 SLUG_HINT = "The slug is letters and digits with single hyphens between words, e.g. MM-Theorem."
-PICKER_LABELS = {"existing": "Slide", "duplicate": "Slide to duplicate", "translate": "Slide to translate"}
+PICKER_LABELS = {"existing": "Slide", "duplicate": "Slide to duplicate", "translate": "Slide to translate", "block": "Topic block"}
 TRANSLATION_WARNING = ("Sends the whole slide text to the model as one block. LaTeX commands are not "
                        "guaranteed to survive untouched: review the result before you rely on it.")
 WIDTH = 720
@@ -91,7 +94,24 @@ class AddSlideSheet(ModalSheet):
         self._worker: Optional[background.Handle] = None
         self._route: Optional[ai_profile.Route] = None      # of the running translation
         self._translator = None                            # the running translator, including abort()
-        self._slides = slide_add.project_slides(self.app.project)
+        ctx = self.app.project
+        self._slides = slide_add.project_slides(ctx)
+        self._groups = library_data.group_ids(ctx)
+        self._pool = set(library_data.read(ctx).pool)
+        self._blocks = {}
+        for path in call_files(ctx):
+            if path.parent != ctx.blocks_dir or not re.fullmatch(r"[A-Za-z0-9_-]+", path.stem):
+                continue
+            text = path.read_text(encoding="utf-8")
+            calls = deck_language.calls_in(deck_language.masked(text), [])
+            metadata = dict(re.findall(r"^%% (SlideMage block|Topics):[ \t]*(.*)$", text, re.MULTILINE))
+            title = metadata.get("SlideMage block", path.stem).strip() or path.stem
+            self._blocks[path.stem] = (title, metadata.get("Topics", ""), len(calls), set())
+            self._pool.update(self._groups.get(call.id, call.id) for call in calls)
+        for other in deck_scan.scan_decks(ctx) if self._blocks else ():
+            for key in {call.block for call in deck_language.expanded_calls(ctx, other)}:
+                if key in self._blocks:
+                    self._blocks[key][3].add(other.path)
 
         body = Surface()
         self._layout = QVBoxLayout(body)
@@ -262,6 +282,7 @@ class AddSlideSheet(ModalSheet):
     def _build_footer(self) -> None:
         self.call_preview = QLabel()
         self.call_preview.setObjectName(q.PANEL_MONO)
+        self.call_preview.setWordWrap(True)
         self.add_footer_note(self.call_preview)
         self.cancel_button = self.add_button("Cancel", role="reject")
         self.ok = self.add_button("Add slide", kind="primary")
@@ -274,7 +295,7 @@ class AddSlideSheet(ModalSheet):
         return self.source.current() or "new"
 
     def picked(self) -> Optional[str]:
-        """The id-slug chosen in the list."""
+        """The slide id-slug or block key chosen in the list."""
         item = self.listbox.currentItem()
         return item.data(Qt.ItemDataRole.UserRole) if item is not None else None
 
@@ -297,6 +318,8 @@ class AddSlideSheet(ModalSheet):
     def problem(self) -> Optional[str]:
         """Why Add cannot go ahead yet, or None."""
         source = self.current_source()
+        if source == "block":
+            return None if self.picked() in self._blocks else "Pick a block from the list."
         if source == "new":
             if not self.slug():
                 return "Give the slide a title or a slug."
@@ -340,13 +363,18 @@ class AddSlideSheet(ModalSheet):
         picks = source != "new"
         self.picker.setVisible(picks)
         self.picker.label.setText(PICKER_LABELS.get(source, ""))
+        self.search.setPlaceholderText("Find a block by title or topic" if source == "block"
+                                       else "Find a slide in the project by id or title")
+        self.listbox.setObjectName(q.PLAIN_LIST if source == "block" else "")
+        self.views_field.setVisible(source != "block")
+        self.ok.setText("Insert block" if source == "block" else "Add slide")
         self.existing.setVisible(source == "existing")
         self.new.setVisible(source == "new")
         self.copy.setVisible(source in ("duplicate", "translate"))
         self.translation.setVisible(source == "translate")
         if picks:
             self._fill_list()
-            if source != "existing" and self.picked() is None and self._context:
+            if source in ("duplicate", "translate") and self.picked() is None and self._context:
                 self._select(self._context)
         if source == "translate":
             self._fill_models()
@@ -356,13 +384,42 @@ class AddSlideSheet(ModalSheet):
         query = self.search.text().strip().lower()
         keep = self.picked()
         self.listbox.clear()
+        if self.current_source() == "block":
+            for key, (title, topics, size, decks) in self._blocks.items():
+                if query and query not in f"{key} {title} {topics}".lower():
+                    continue
+                usage = "already in this deck" if self.deck.path in decks else f"used by {len(decks)} {'deck' if len(decks) == 1 else 'decks'}"
+                row = RowButton(None, title, " · ".join(filter(None, (topics, usage))),
+                                chip=(f"{size} {'slide' if size == 1 else 'slides'}", "neutral"))
+                radio = QRadioButton()
+                radio.setAccessibleName(title)
+                radio.setAutoExclusive(False)
+                row.layout().insertWidget(0, radio)
+                item = QListWidgetItem()
+                item.setData(Qt.ItemDataRole.UserRole, key)
+                item.setSizeHint(row.sizeHint())
+                self.listbox.addItem(item)
+                self.listbox.setItemWidget(item, row)
+                row.clicked.connect(lambda item=item: self.listbox.setCurrentItem(item))
+                radio.clicked.connect(lambda _checked, item=item: self.listbox.setCurrentItem(item))
+                radio.clicked.connect(lambda _checked: self._on_picked())
+            if keep:
+                self._select(keep)
+            self._on_picked()
+            return
         ctx = self.app.project
         resolver = self.app.centre.preview._renders.renderer(ctx).resolver
         codes = languages.project_languages(ctx).codes
-        for slide in self._slides:
+        slides = self._slides
+        if self.current_source() == "existing":
+            slides = sorted(slides, key=lambda slide:
+                            self._groups.get(slide_language.bare_id(slide.id_slug)) not in self._pool)
+        for slide in slides:
             if query and query not in slide.id_slug.lower() and query not in slide.title.lower():
                 continue
-            item = QListWidgetItem(f"{slide_language.bare_id(slide.id_slug)}   {slide.title}   {slide.badge}".rstrip())
+            pooled = self._groups.get(slide_language.bare_id(slide.id_slug)) in self._pool
+            mark = "   Pool" if self.current_source() == "existing" and pooled else ""
+            item = QListWidgetItem(f"{slide_language.bare_id(slide.id_slug)}   {slide.title}   {slide.badge}{mark}".rstrip())
             item.setData(Qt.ItemDataRole.UserRole, slide.id_slug)
             item.setToolTip(slide.id_slug)
             target = preview_target.PreviewTarget(ctx, "slide", slide.id_slug, None, None, None, None, self.deck.preamble_text)
@@ -386,6 +443,16 @@ class AddSlideSheet(ModalSheet):
     def _on_picked(self) -> None:
         """The slide in the list changed: what depends on it follows (frozen versions, the
         languages to translate into, the suggested slug)."""
+        if self.current_source() == "block":
+            for index in range(self.listbox.count()):
+                item = self.listbox.item(index)
+                row = self.listbox.itemWidget(item)
+                if row is not None:
+                    selected = item is self.listbox.currentItem()
+                    row.set_selected(selected)
+                    row.findChild(QRadioButton).setChecked(selected)
+            self._sync()
+            return
         slide = self.picked()
         self.version.blockSignals(True)
         self.version.clear()
@@ -437,7 +504,7 @@ class AddSlideSheet(ModalSheet):
         slide = self.picked()
         has_ai = bool(routes.all())
         self.machine.setVisible(has_ai)
-        can_translate = has_ai and slide is not None and self.chosen_target() is not None \
+        can_translate = source == "translate" and has_ai and slide is not None and self.chosen_target() is not None \
             and slide_add.can_machine_translate(self.app.project, slide, self.chosen_target())
         if can_translate != self.machine.isEnabled():
             self.machine.setEnabled(can_translate)
@@ -459,6 +526,9 @@ class AddSlideSheet(ModalSheet):
         self.call_preview.setText(self._call_text() if problem is None else "")
 
     def _call_text(self) -> str:
+        if self.current_source() == "block":
+            title = self._blocks[self.picked()][0]
+            return f"Writes \\section{{{title}}} and \\slideblock{{{self.picked()}}}. The deck then follows the block."
         spec = self.call_spec()
         shown = self.picked() if self.current_source() == "existing" else "the new slide"
         return deck_editor.format_call(spec.macro, shown, spec.version, spec.conditions, spec.steps)
@@ -481,7 +551,7 @@ class AddSlideSheet(ModalSheet):
             return
         source = self.current_source()
         try:
-            if source == "existing":
+            if source in ("existing", "block"):
                 self._finish(self.picked(), None)
             elif source == "new":
                 created = slide_add.create_new(self.app.project, self.slug(), self.language.current() or languages.project_languages(self.app.project).codes[0],
@@ -501,13 +571,17 @@ class AddSlideSheet(ModalSheet):
 
     def _finish(self, id_slug: str, new_path) -> None:
         """Put the slide's call into the deck; a new file opens in the Source view."""
-        spec = self.call_spec()
+        spec = None if self.current_source() == "block" else self.call_spec()
         previous_text = self.deck.text
         insert_at, indent, _where = self._place()
         try:
-            deck_editor.insert_slide_call(
-                self.deck.path, self.deck.text, insert_at, indent,
-                spec.macro, id_slug, spec.version, spec.conditions, spec.steps)
+            if self.current_source() == "block":
+                deck_editor.insert_block(self.deck.path, self.deck.text, insert_at, indent,
+                                         id_slug, self._blocks[id_slug][0])
+            else:
+                deck_editor.insert_slide_call(
+                    self.deck.path, self.deck.text, insert_at, indent,
+                    spec.macro, id_slug, spec.version, spec.conditions, spec.steps)
         except (deck_editor.StaleFileError, ValueError) as exc:
             note = "" if new_path is None else f" The new slide file {new_path.name} was created; it is not in the deck."
             QMessageBox.critical(self, "Add slide failed", f"{exc}{note}")
@@ -515,8 +589,9 @@ class AddSlideSheet(ModalSheet):
         if new_path is not None and ai_review.is_unreviewed(self.app.project, new_path):
             ai_review.mark(self.app.project, new_path, "translation", "Add slide translation", deck=self.deck.path)
         self.accept()
+        macro = "slideblock" if self.current_source() == "block" else spec.macro
         self.app.after_deck_edit(
-            self.deck.path, f"Added \\{spec.macro}{{{id_slug}}} to {self.deck.name}", previous_text=previous_text)
+            self.deck.path, f"Added \\{macro}{{{id_slug}}} to {self.deck.name}", previous_text=previous_text)
         if new_path is not None:
             self.app.open_slide_editor(new_path)
 

@@ -453,3 +453,46 @@ def test_route_provided_translator_is_used_directly(qapp, tmp_path):
             return f"translated {body}", None
 
     assert _translate(ProjectContext.at(tmp_path), PluginTranslator(), "source") == ("translated source", None)
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_inserting_a_block_writes_its_heading_and_call_at_the_chosen_position(make, project, newline):
+    blocks = project.slides.parent / "blocks"
+    blocks.mkdir()
+    block = blocks / "Literature.tex"
+    block.write_text("%% SlideMage block: Literature search\n%% Topics: Research, Writing\n"
+                     "\\slideversion{xyz-EN-Other}{1-0-0}\n\\slide{ccc-DE-Drei}\n", encoding="utf-8")
+    (blocks / "colors.tex").write_text("\\definecolor{test}{RGB}{0,0,0}\n", encoding="utf-8")
+    other = project.deck_path.with_name("other.tex")
+    other.write_text(HEAD + "\\slideblock{Literature}\n\\end{document}\n", encoding="utf-8")
+    original = deck_text(project).replace("\n", newline)
+    project.deck_path.write_bytes(original.encode())
+    sheet, window = make(source="existing")
+    assert [sheet.listbox.item(i).data(Qt.ItemDataRole.UserRole) for i in range(3)] == [
+        "ccc-DE-Drei", "xyz-EN-Other", "abc-EN-Demo"]
+    assert "Pool" in sheet.listbox.item(0).text()
+    pick(sheet, "abc-EN-Demo")
+    sheet.load.set_current("frozen")
+    sheet._sync()
+    sheet._on_source("block")
+    assert sheet.listbox.count() == 1 and sheet.views_field.isHidden()
+    row = sheet.listbox.itemWidget(sheet.listbox.item(0))
+    assert row.sub.text() == "Research, Writing · used by 1 deck"
+    sheet.search.setText("absent")
+    assert sheet.listbox.count() == 0 and not sheet.ok.isEnabled()
+    sheet.search.setText("writing")
+    row = sheet.listbox.itemWidget(sheet.listbox.item(0))
+    row.clicked.emit()
+    assert sheet.ok.isEnabled() and row.selected()
+    assert "\\section{Literature search} and \\slideblock{Literature}" in sheet.call_preview.text()
+    sheet.insert_at = original.index("\\slide{abc-EN-Demo}")
+    sheet.indent = "  "
+    sheet.ok.click()
+    inserted = f"  \\section{{Literature search}}{newline}  \\slideblock{{Literature}}{newline}"
+    expected = original[:sheet.insert_at] + inserted + original[sheet.insert_at:]
+    assert deck_text(project) == expected
+    assert block.read_text(encoding="utf-8").endswith("\\slide{ccc-DE-Drei}\n")
+    assert window.edits == [(project.deck_path, "Added \\slideblock{Literature} to course", original)]
+    assert window.opened == [] and sheet.result() == sheet.DialogCode.Accepted
+    deck_editor.restore_deck_text(project.deck_path, expected, original)
+    assert deck_text(project) == original
