@@ -43,7 +43,7 @@ from ... import ai_review, deck_editor, deck_language, deck_outline, deck_scan, 
 from ...deck_editor import BASE_MACROS, StaleFileError, VERSIONED_MACROS
 from ...deck_outline import SectionRow, SlideRow
 from ...deck_scan import Chapter, Deck
-from ...fileio import text_sha256
+from ...fileio import read_text_exact, text_sha256
 from .. import layout_settings
 from ..dialogs.remove_section import ALL_SECTIONS, WITH_SLIDES, RemoveSectionSheet
 from ..kit.tokens import SPACE
@@ -815,10 +815,29 @@ class SlideList(QWidget):
         self._popup(menu, self.tree.viewport(), pos)
 
     def _block_menu(self, block: BlockRow, pos: QPoint) -> None:
-        menu = PopoverMenu(self, min_width=220)
+        menu = PopoverMenu(self, min_width=320)
         menu.add_header(block.title)
+        menu.add_item("unlink", "Unlink", detail="The deck gets plain calls it can change")
+        menu.add_item("remove", "Remove from deck", detail="The block and its slides stay")
         menu.add_item("library", "Show in Library")
-        menu.triggered.connect(lambda _key: self.show_in_library())
+
+        def chosen(key: str) -> None:
+            call = block.rows[0].deck_call
+            if key == "unlink":
+                try:
+                    block_text = read_text_exact(call.source)
+                except OSError as exc:
+                    QMessageBox.critical(self, "Unlink failed", str(exc))
+                    return
+                self.edit("Unlink failed", f"Unlinked {block.title} in {self.deck.name}",
+                          lambda path, text: deck_editor.unlink_block(path, text, call, block_text))
+            elif key == "remove":
+                self.edit("Remove failed", f"Removed {block.title} from {self.deck.name}",
+                          lambda path, text: deck_editor.remove_block(path, text, call))
+            elif key == "library":
+                self.show_in_library()
+
+        menu.triggered.connect(chosen)
         self._popup(menu, self.tree.viewport(), pos)
 
     def show_in_library(self) -> None:

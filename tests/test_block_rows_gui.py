@@ -4,7 +4,7 @@
 from unittest.mock import Mock
 
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
 
 from slidemage import deck_scan
@@ -66,3 +66,31 @@ def test_drag_across_the_block_edge_changes_nothing(block_list, qapp):
         assert (read(deck), read(block)) == before
         slide_list.toast.show_message.assert_called_with(
             "Moving a slide out of a topic block is refused. Unlink the block first.")
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_unlink_then_undo_restores_exact_deck_text(block_list, make_list, monkeypatch, newline):
+    slide_list, window, deck, block = block_list
+    before = read(deck).replace("\\slideblock{topic}", "\t\\slideblock{topic}").replace("\n", newline)
+    deck.write_bytes(before.encode())
+    window.state.set_deck(deck_scan.read_deck(deck))
+    slide_list.rebuild()
+    block_before = block.read_bytes()
+    menus = []
+    monkeypatch.setattr(slide_list, "_popup", lambda menu, *_args: menus.append(menu))
+    header = slide_list.tree.section_items()[0]
+    slide_list.tree.block_menu.emit(header.data(0, BLOCK), QPoint())
+    menu = menus[0]
+    assert [entry[2] for entry in menu._entries if entry[0] == "item"] == [
+        "Unlink", "Remove from deck", "Show in Library"]
+    menu.triggered.emit("unlink")
+    body = newline.join("\t" + line for line in block_before.decode().splitlines()) + newline
+    assert read(deck) == before.replace("\t\\slideblock{topic}" + newline,
+                                        "\t% from block topic" + newline + body)
+    assert ids(slide_list) == ["aaa", "bbb", "ccc"]
+    assert block.read_bytes() == block_before
+    slide_list.undo()
+    assert deck.read_bytes() == before.encode()
+    assert block.read_bytes() == block_before
+    assert slide_list.tree.section_items()[0].data(0, BLOCK) is not None
+    assert not make_list.errors

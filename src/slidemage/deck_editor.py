@@ -25,13 +25,16 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from .project import ProjectContext
 from .fileio import StaleFileError as StaleFileError, read_text_exact, write_text_exact
 from .deck_scan import DOCUMENT_BEGIN_LINE_RE, DOCUMENT_END_RE, Chapter, Deck, parse_chapters, SECTION_RE, find_decktags
 from .slide_language import FROZEN_RE, current_name, frozen_name
 from .tex_source import COMMENT_RE, is_commented
+
+if TYPE_CHECKING:
+    from .deck_language import ExpandedCall
 
 
 # Macros that take a pinned version as a second brace argument.
@@ -364,6 +367,35 @@ def remove_slide_calls(deck_path: Path, expected_text: str, calls: list[SlideCal
         return _cut(text, [(c.line_start, c.line_end) for c in calls])
 
     return apply(deck_path, expected_text, mutate)
+
+
+def _block_marker(text: str, call: ExpandedCall) -> tuple[int, int]:
+    """Check the deck's block marker, rather than the expanded slide's editability."""
+    token = text[call.call_start:call.call_end]
+    if not call.block or re.fullmatch(r"\\slideblock\s*\{" + re.escape(call.block) + r"\}", token) is None:
+        raise ValueError("This block marker changed; reload the deck and retry.")
+    start, end = line_span(text, call.call_start, call.call_end)
+    editable, reason = _editability(text, start, call.call_start, call.call_end, end)
+    if not editable:
+        raise ValueError(f"can't edit this block marker -- {reason}")
+    return start, end
+
+
+def unlink_block(path: Path, text: str, call: ExpandedCall, block_text: str) -> str:
+    """Replace one block marker with its body, leaving the section heading in place."""
+    start, end = _block_marker(text, call)
+    newline = eol(text)
+    indent = text[start:call.call_start]
+    body = "".join((indent + line if line else "") + newline for line in block_text.splitlines()
+                   if not line.startswith("%%"))   # the block's own metadata stays in the block
+    replacement = f"{indent}% from block {call.block}{newline}{body}"
+    return apply(path, text, lambda current: current[:start] + replacement + current[end:])
+
+
+def remove_block(path: Path, text: str, call: ExpandedCall) -> str:
+    """Remove one block marker, keeping its section and the block file."""
+    start, end = _block_marker(text, call)
+    return apply(path, text, lambda current: current[:start] + current[end:])
 
 
 def _refuse_blocked(calls: list[SlideCall]) -> None:
