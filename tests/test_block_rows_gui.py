@@ -84,7 +84,8 @@ def test_unlink_then_undo_restores_exact_deck_text(block_list, make_list, monkey
     assert [entry[2] for entry in menu._entries if entry[0] == "item"] == [
         "Unlink", "Remove from deck", "Show in Library"]
     menu.triggered.emit("unlink")
-    body = newline.join("\t" + line for line in block_before.decode().splitlines()) + newline
+    body = newline.join("\t" + line for line in block_before.decode().splitlines()
+                       if not line.startswith("%%")) + newline
     assert read(deck) == before.replace("\t\\slideblock{topic}" + newline,
                                         "\t% from block topic" + newline + body)
     assert ids(slide_list) == ["aaa", "bbb", "ccc"]
