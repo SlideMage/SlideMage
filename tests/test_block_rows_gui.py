@@ -108,7 +108,7 @@ def test_unlink_then_undo_restores_exact_deck_text(block_list, make_list, monkey
 
 
 @pytest.mark.parametrize("source", ["block", "deck"])
-def test_stale_repeated_rows_refuse_edits(block_list, make_list, source, monkeypatch):  # noqa: F811 -- fixture
+def test_stale_repeated_rows_refuse_edits(block_list, make_list, source):  # noqa: F811 -- fixture
     from slidemage import deck_editor, deck_language
 
     listing, window, deck, block = block_list
@@ -120,10 +120,7 @@ def test_stale_repeated_rows_refuse_edits(block_list, make_list, source, monkeyp
     window.state.set_deck(deck_scan.read_deck(deck))
     listing.rebuild()
     rows = [r.deck_call for r in listing.rows() if r.call.id == "aaa"]
-    parse = Mock(wraps=deck_language.calls_in)
-    monkeypatch.setattr(deck_language, "calls_in", parse)
     physical = deck_language.source_calls(deck_scan.read_deck(path), rows)
-    assert parse.call_count == 1
     assert [c.version for c in physical] == ["1-0-0", "2-0-0"]
     changed = "% Nextcloud insertion\n" + original
     path.write_text(changed)

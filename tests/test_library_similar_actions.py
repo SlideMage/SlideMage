@@ -63,7 +63,6 @@ def test_archive_unused_copy(qapp, copies, monkeypatch):
     assert not [b for b in view._cards[0][1].findChildren(Button) if b.text() == "Archive the unused copy"]
 
 
-
 def test_replace_unpinned_calls_and_refuse_translation(qapp, copies, monkeypatch):
     ctx, view = copies
     deck = ctx.decks_dir / "replace.tex"
@@ -101,36 +100,49 @@ def test_replace_unpinned_calls_and_refuse_translation(qapp, copies, monkeypatch
     assert block.read_text() == snapshots[block].replace("bbb-EN-Demo", "aaa-EN-Demo")
     assert skipped.read_text() == snapshots[skipped]
     assert view.app.slide_list.forgotten == [{deck, block}]
-    # Adding a translation after the approval snapshot must also prevent every write.
-    files = slide_similarity.replacement_files(ctx, "aaa", "bbb")
+    # A translation added after the approval must refuse the next replacement, through the UI.
     translation = ctx.slides_dir / "ccc-DE-Demo-current.tex"
     translation.write_text("%% Translation of: bbb-EN-Demo\nEine Übersetzung.")
-    before = {p: p.read_bytes() for p in (deck, block, skipped)}
-    with pytest.raises(ValueError, match="translation.*DE"):
-        slide_similarity.replace_exact_copy(ctx, "aaa", "bbb", files)
-    assert {p: p.read_bytes() for p in before} == before
-    # The view reports the refusal without asking for a second approval.
     view._replace("aaa", "bbb")
     assert view._work.wait(5000)
     qapp.processEvents()
     assert len(approvals) == 1
     assert "translation" in warnings[-1]
-    translation.unlink()
-    # ID-bearing core metadata is not plugin data. Unknown plugin formats are refused.
+
+
+@pytest.mark.parametrize("trigger, reason", [
+    ("translation", "translation.*DE"),
+    ("alt-text summary", "alt-text"),
+    ("alt-text takeaway", "alt-text"),
+    ("plugin data", "plugin data"),
+])
+def test_replacement_refuses_translations_and_unregistered_data(qapp, copies, trigger, reason):
+    ctx, _view = copies
+    deck, block, skipped = ctx.decks_dir / "replace.tex", ctx.blocks_dir / "topic.tex", ctx.decks_dir / "skip.tex"
+    deck.write_text("\\slide{bbb-EN-Demo}\n")
+    block.write_text("\\slidestep{bbb-EN-Demo}[instructor]{1,2}\n")
+    skipped.write_text("\\omitslide{bbb-EN-Demo}\n")
+    before = {p: p.read_bytes() for p in (deck, block, skipped)}
+    files = slide_similarity.replacement_files(ctx, "aaa", "bbb")
+    # ID-bearing core metadata is not plugin data.
     (ctx.settings_dir / "library.json").write_text(json.dumps({"topics": {"bbb": ["Demo"]}}))
-    plugin = ctx.settings_dir / "exam-forge" / "questions.json"
-    plugin.parent.mkdir()
     alt = ctx.media_dir / "alt-text.json"
     alt.parent.mkdir()
-    for path, data, reason in (
-            (alt, {"images": {}, "slides": {"bbb": {"summary": "A slide description"}}}, "alt-text"),
-            (alt, {"images": {"media/a.png": {"used_on": {"bbb": {"takeaway": {"en": "Detail"}}}}}}, "alt-text"),
-            (plugin, {"sources": [{"slide_id": "bbb"}]}, "plugin data")):
+    plugin = ctx.settings_dir / "exam-forge" / "questions.json"
+    plugin.parent.mkdir()
+    path, data = {
+        "translation": (ctx.slides_dir / "ccc-DE-Demo-current.tex", "%% Translation of: bbb-EN-Demo\nEine Übersetzung."),
+        "alt-text summary": (alt, {"images": {}, "slides": {"bbb": {"summary": "A slide description"}}}),
+        "alt-text takeaway": (alt, {"images": {"media/a.png": {"used_on": {"bbb": {"takeaway": {"en": "Detail"}}}}}}),
+        "plugin data": (plugin, {"sources": [{"slide_id": "bbb"}]}),
+    }[trigger]
+    if isinstance(data, str):
+        path.write_text(data, encoding="utf-8")
+    else:
         path.write_text(json.dumps(data))
-        with pytest.raises(ValueError, match=reason):
-            slide_similarity.replace_exact_copy(ctx, "aaa", "bbb", files)
-        assert {p: p.read_bytes() for p in before} == before
-        path.unlink()
+    with pytest.raises(ValueError, match=reason):
+        slide_similarity.replace_exact_copy(ctx, "aaa", "bbb", files)
+    assert {p: p.read_bytes() for p in before} == before
 
 
 def test_replacement_restores_prior_writes_and_checks_external_banks(qapp, copies, monkeypatch):

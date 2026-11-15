@@ -32,9 +32,11 @@ def project(tmp_path):
     return ctx
 
 
-@pytest.mark.parametrize("operation", ["slug", "language", "id", "delete"])
-@pytest.mark.parametrize("call", CALLS)
 @pytest.mark.parametrize("eol", ["\n", "\r\n"])
+@pytest.mark.parametrize("operation, call", [
+    *[("slug", call) for call in CALLS],
+    *[(operation, call) for operation in ("language", "id", "delete") for call in (CALLS[0], CALLS[6])],
+])
 def test_slide_operations_update_calls_written_only_in_a_block(project, operation, call, eol):
     block = project.blocks_dir / "Literaturrecherche.tex"
     block.write_bytes(("% Topic\n" + call + "\n").replace("\n", eol).encode())

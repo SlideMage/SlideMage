@@ -99,3 +99,21 @@ def test_block_commit_rolls_back_and_refuses_case_collisions(tmp_path, monkeypat
     target.write_text(text)
     with pytest.raises(ValueError, match="collide ignoring case"):
         topic_blocks.read_blocks(ctx)
+
+
+def test_edit_topics_changes_only_its_header_line(tmp_path):
+    path = tmp_path / "Research.tex"
+    before = (b"% User note\r\n%% SlideMage block: Research\r\n"
+              b"%% Topics: Old topic\r\n%% Description: Keep this text.\r\n"
+              b"\r\n\\slide{abc-First} % keep comment\r\n"
+              b"\\slideversion{def-Second}{1-2-0}")
+    path.write_bytes(before)
+
+    topic_blocks.update_metadata(path, "Topics", "Literature search, Academic writing")
+
+    assert path.read_bytes() == before.replace(
+        b"%% Topics: Old topic", b"%% Topics: Literature search, Academic writing")
+
+    with pytest.raises(fileio.StaleFileError, match="Topics changed"):
+        topic_blocks.update_metadata(path, "Topics", "Old topic, Local", expected="Old topic")
+    assert b"Literature search, Academic writing" in path.read_bytes()
