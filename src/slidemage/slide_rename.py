@@ -37,7 +37,7 @@ from pathlib import Path
 from typing import Optional
 
 from .fileio import read_text_exact, write_text_exact
-from . import ai_review, alt_images, deck_editor, deck_headers, languages, slide_ids, slide_language
+from . import ai_review, alt_images, deck_editor, deck_headers, languages, library_data, slide_ids, slide_language
 from .project import ProjectContext, call_files
 from .processes import delete_file, move_file
 
@@ -390,6 +390,7 @@ def rename_slide_id(ctx: ProjectContext, old_id: str, new_id: str, reserved: boo
     if not old_files:
         raise FileNotFoundError(f"no slides/{old_id}-*.tex")
 
+    library = library_data.read(ctx)
     mapping: dict[str, str] = {}
     for src in old_files:
         dest = ctx.slides_dir / (new_id + src.name[len(old_id):])
@@ -439,6 +440,18 @@ def rename_slide_id(ctx: ProjectContext, old_id: str, new_id: str, reserved: boo
 
     with contextlib.suppress(alt_images.NewerStoreError):   # a newer SlideMage's store is left as it is
         alt_images.update_slide_notes(ctx, _move_notes)
+
+    if library != library_data.LibraryData():
+        for members in (library.pool, library.not_reusable):
+            if old_id in members:
+                members.remove(old_id)
+                members.add(new_id)
+        if old_id in library.topics:
+            library.topics[new_id] = library.topics.pop(old_id)
+        library.different_on_purpose = {
+            (frozenset(new_id if i == old_id else i for i in ids), fingerprint)
+            for ids, fingerprint in library.different_on_purpose}
+        library_data.write(ctx, library)
 
     slide_ids.append_slide_id(ctx, new_id)
     deck_headers.regenerate_headers(ctx)
@@ -530,6 +543,7 @@ def delete_slide_id(ctx: ProjectContext, id_slug: str, remove_deck_references: b
     if not current.exists():
         raise FileNotFoundError(f"{current} does not exist")
 
+    library = library_data.read(ctx)
     files = sorted(ctx.slides_dir.glob(f"{id_slug}-*.tex"))
     for path in files:
         delete_file(path, ctx.root)
@@ -565,4 +579,6 @@ def delete_slide_id(ctx: ProjectContext, id_slug: str, remove_deck_references: b
 
     deck_headers.regenerate_headers(ctx)
     regenerate_translation_links(ctx)
+    if library != library_data.LibraryData():
+        library_data.write(ctx, library)
     return {"files_removed": len(files), "deck_references_removed": deck_refs_removed}

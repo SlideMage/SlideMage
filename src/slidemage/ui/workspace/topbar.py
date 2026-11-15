@@ -135,6 +135,10 @@ class TopBar(QWidget):
         self._images.clicked.connect(lambda: self.command.emit("images"))
         self._images.hide()
         add(self._images)
+        self._library = IconButton("collections_bookmark", "Library")
+        self._library.setCheckable(True)
+        self._library.clicked.connect(lambda: self.command.emit("library"))
+        add(self._library)
         self._right_column = IconButton("last_page")
         self._right_column.setCheckable(True)
         self._right_column.clicked.connect(lambda: self.command.emit("column:right"))
@@ -182,7 +186,7 @@ class TopBar(QWidget):
         policy, whatever the density."""
         stops = [self._left_column, self._deck_button,
                  *self._views.buttons(), *self._languages.buttons(), *self._modes.buttons(), *self._compile.buttons(),
-                 self._images, self._right_column]
+                 self._images, self._library, self._right_column]
         for before, after in zip(stops, stops[1:]):
             QWidget.setTabOrder(before, after)
 
@@ -207,7 +211,7 @@ class TopBar(QWidget):
         tight = density in ("tight", "tiny")
         tiny = density == "tiny"
         # The full toolbar keeps a broader edge inset than its compact density modes.
-        margin = SPACE.md if tiny else SPACE.xl if tight else 2 * SPACE.xl
+        margin = SPACE.xs if tiny else SPACE.xl if tight else 2 * SPACE.xl
         self._row_layout.setContentsMargins(margin, 0, margin, 0)
         self._row_layout.setSpacing(SPACE.xs if tiny else SPACE.md if tight else SPACE.xl)
         self._view_as.setVisible(full)
@@ -270,6 +274,11 @@ class TopBar(QWidget):
     def set_images_open(self, is_open: bool) -> None:
         self._images.setVisible(is_open)
         self._update_density()
+
+    def set_library_open(self, is_open: bool) -> None:
+        self._library.setChecked(is_open)
+        self._library.set_active(is_open)
+        self._library.setToolTip("Close library" if is_open else "Library")
 
     # -- reacting to the state ---------------------------------------------
 

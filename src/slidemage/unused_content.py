@@ -62,7 +62,7 @@ import shutil
 from pathlib import Path
 from typing import Callable, Iterable
 
-from . import ai_review, languages
+from . import ai_review, languages, library_data
 from .project import ProjectContext, call_files
 from .slide_language import current_name
 from .tex_source import COMMENT_RE
@@ -120,15 +120,20 @@ def slide_filenames_in(ctx: ProjectContext, text: str) -> set[str]:
 
 
 def find_used_slide_filenames(ctx: ProjectContext) -> set[str]:
-    """Every slides/*.tex filename actually referenced from any deck."""
+    """Every slides/*.tex filename referenced by a deck or kept in the library pool."""
     used: set[str] = set()
     for text in _deck_texts(ctx):
         used |= slide_filenames_in(ctx, text)
+    pool = library_data.read(ctx).pool
+    if pool:
+        ids = library_data.group_ids(ctx)
+        used.update(path.name for path in ctx.slides_dir.glob("*-current.tex")
+                    if ids.get(path.name.split("-", 1)[0]) in pool)
     return used
 
 
 def find_unused_slides(ctx: ProjectContext) -> list[Path]:
-    """slides/*.tex files not referenced by any deck."""
+    """slides/*.tex files not referenced by a deck or kept in the library pool."""
     if not ctx.slides_dir.is_dir():
         return []
     used = find_used_slide_filenames(ctx)
