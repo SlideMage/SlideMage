@@ -34,6 +34,7 @@ class SlideGroup:
     decks: list
     unused: bool
     blocks: list[str] = field(default_factory=list)
+    block_topics: set[str] = field(default_factory=set)
 
 
 def prepare_groups(ctx, usage, language):
@@ -107,7 +108,7 @@ class SlideModel(QAbstractListModel):
         self.rows = [row for row in self.groups
                      if (scope != "pool" or row.id in self.library.pool or row.blocks)
                      and (scope != "unused" or row.unused)
-                     and (not topic or topic in self.library.topics.get(row.id, set()))
+                     and (not topic or topic in self.library.topics.get(row.id, set()) | row.block_topics)
                      and matches(words, row.title, *row.members, row.text)]
         self.endResetModel()
 
@@ -176,6 +177,9 @@ class SlideDelegate(QStyledItemDelegate):
 class SlidesView(Surface):
     library_changed = Signal(object)
     scope_changed = Signal(str, str)
+    block_requested = Signal(str)
+    new_block_requested = Signal(object)
+    add_to_block_requested = Signal(object)
 
     def __init__(self, app):
         super().__init__()
@@ -206,7 +210,12 @@ class SlidesView(Surface):
         actions.addWidget(self.selection_count)
         for title, action in (("Add to pool", lambda: self.update_library("pool")),
                               ("Not reusable", lambda: self.update_library("not_reusable")),
-                              ("Add topic", self._add_topic), ("Clear", lambda: self.grid.clearSelection())):
+                              ("Add topic", self._add_topic),
+                              ("Add to block…", lambda: self.add_to_block_requested.emit(
+                                  [i.data(Qt.ItemDataRole.UserRole).slug for i in self.grid.selectedIndexes()])),
+                              ("New block from selection", lambda: self.new_block_requested.emit(
+                                  [i.data(Qt.ItemDataRole.UserRole).slug for i in self.grid.selectedIndexes()])),
+                              ("Clear", lambda: self.grid.clearSelection())):
             button = Button(title)
             button.clicked.connect(action)
             actions.addWidget(button)
@@ -259,6 +268,11 @@ class SlidesView(Surface):
         self.pool_switch = ToggleChip("In the pool", "instructor")
         self.pool_switch.clicked.connect(lambda checked: self.update_library("pool", checked, detail=True))
         detail.addWidget(self.pool_switch)
+        self.pool_reason = caption()
+        self.pool_reason.setWordWrap(True)
+        detail.addWidget(self.pool_reason)
+        self.block_chips = FlowLayout()
+        detail.addLayout(self.block_chips)
         detail.addWidget(text_label("Topics", "heading"))
         self.topics = FlowLayout()
         detail.addLayout(self.topics)
@@ -316,7 +330,7 @@ class SlidesView(Surface):
     def _rebuild_topics(self):
         clear_layout(self.topic_chips)
         for topic in ["", *sorted({t for row in self.model.groups
-                                  for t in self.model.library.topics.get(row.id, set())}, key=str.casefold)]:
+                                  for t in self.model.library.topics.get(row.id, set()) | row.block_topics}, key=str.casefold)]:
             chip = ToggleChip(topic or "All topics")
             chip.setChecked(topic == self._topic)
             chip.clicked.connect(lambda _checked=False, topic=topic: self.set_scope(self._scope, topic))
@@ -408,6 +422,13 @@ class SlidesView(Surface):
         self.pool_switch.setChecked(row.id in self.model.library.pool or bool(row.blocks))
         self.pool_switch.setEnabled(self._write is None and not row.blocks)
         self.pool_switch.setToolTip("In the pool through block " + ", ".join(row.blocks) if row.blocks else "")
+        self.pool_reason.setText("In the pool through block " + ", ".join(row.blocks) if row.blocks else "")
+        self.pool_reason.setVisible(bool(row.blocks))
+        clear_layout(self.block_chips)
+        for key in row.blocks:
+            chip = Chip(key, pressable=True)
+            chip.clicked.connect(lambda key=key: self.block_requested.emit(key))
+            self.block_chips.addWidget(chip)
         self.open_source.setEnabled(True)
         self.show_deck.setEnabled(bool(row.decks))
         self.detail_status.setText("")
@@ -416,6 +437,10 @@ class SlidesView(Surface):
             chip = Chip(topic + " ×", pressable=True)
             chip.setToolTip("Remove topic " + topic)
             chip.clicked.connect(lambda topic=topic: self.update_library("remove_topic", topic, detail=True))
+            self.topics.addWidget(chip)
+        for topic in sorted(row.block_topics - self.model.library.topics.get(row.id, set())):
+            chip = Chip(topic)
+            chip.setToolTip("Inherited from a topic block")
             self.topics.addWidget(chip)
         clear_layout(self.used_in)
         clear_layout(self.similar)

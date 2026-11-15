@@ -508,8 +508,10 @@ class WorkspaceWindow(QMainWindow):
     def _toggle_images(self) -> None:
         self.stack.setCurrentWidget(self.centre if self.stack.currentWidget() is self.images_page else self.images_page)
 
-    def show_library(self) -> None:
+    def show_library(self, *, block: str | None = None) -> None:
         self.stack.setCurrentWidget(self.library_page)
+        if block is not None:
+            self.library_page.show_block(block)
 
     def _toggle_library(self) -> None:
         self.stack.setCurrentWidget(self.centre if self.stack.currentWidget() is self.library_page else self.library_page)

@@ -4,12 +4,13 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import deck_editor, deck_language
-from .deck_scan import Chapter, Deck, parse_chapters, slugify
+from .deck_scan import Chapter, Deck, parse_chapters, scan_decks, slugify
 from .fileio import StaleFileError, read_text_exact, write_text_exact
-from .project import ProjectContext
+from .project import ProjectContext, call_files
 from .tex_source import masked_same_length
 
 
@@ -27,11 +28,13 @@ def _calls(text: str) -> list[re.Match]:
     return calls
 
 
-def _block(ctx: ProjectContext, tokens: list[str], title: str, newline: str) -> tuple[Path, str]:
+def prepare_calls_block(ctx: ProjectContext, tokens: list[str], title: str, newline: str = "\n") -> tuple[Path, str]:
     """Reuse exact call tokens, including pins and conditions, or propose a unique key."""
     title = title.strip()
     if not title or "\n" in title or "\r" in title:
         raise ValueError("Enter a block title on one line.")
+    if not tokens:
+        raise ValueError("Choose at least one slide for the block.")
     paths = sorted(ctx.blocks_dir.glob("*.tex"))
     for path in paths:
         if not re.fullmatch(r"[A-Za-z0-9_-]+", path.stem):
@@ -68,7 +71,7 @@ def prepare_block(ctx: ProjectContext, deck: Deck, chapter: Chapter, title: str)
     start = deck_editor.section_line_span(deck.text, chapter)[1]
     body = deck.text[start:chapter.end]
     calls = _calls(body)
-    target, block_text = _block(ctx, [body[c.start():c.end()] for c in calls], title, deck_editor.eol(deck.text))
+    target, block_text = prepare_calls_block(ctx, [body[c.start():c.end()] for c in calls], title, deck_editor.eol(deck.text))
     body = _replace(body, calls, target)
     return target, block_text, deck.text[:start] + body + deck.text[chapter.end:]
 
@@ -120,7 +123,7 @@ def prepare_run_block(ctx: ProjectContext, occurrences: list[tuple[Deck, list[de
     if linked:
         target, block_text = next(iter(linked.items()))
     else:
-        target, block_text = _block(ctx, tokens, title, deck_editor.eol(occurrences[0][0].text))
+        target, block_text = prepare_calls_block(ctx, tokens, title, deck_editor.eol(occurrences[0][0].text))
     edits = {}
     for path, runs in spans.items():
         text = decks[path].text
@@ -174,3 +177,45 @@ def make_run_block(ctx: ProjectContext, occurrences: list[tuple[Deck, list[deck_
     target, block_text, edits = proposal
     before = {deck.path: deck.text for deck, _calls in occurrences}
     return _write(target, block_text, {path: (before[path], text) for path, text in edits.items()})
+
+
+@dataclass
+class TopicBlock:
+    path: Path
+    title: str
+    topics: list[str]
+    description: str
+    calls: list[deck_editor.SlideCall]
+    decks: list[Deck] = field(default_factory=list)
+
+
+def read_blocks(ctx: ProjectContext) -> dict[str, TopicBlock]:
+    """Physical blocks and the decks reached through the shared resolver."""
+    blocks = {}
+    for path in call_files(ctx):
+        if path.parent != ctx.blocks_dir or not re.fullmatch(r"[A-Za-z0-9_-]+", path.stem):
+            continue
+        text = read_text_exact(path)
+        metadata = dict(re.findall(r"^%% (SlideMage block|Topics|Description):[^\S\r\n]*([^\r\n]*)", text, re.MULTILINE))
+        blocks[path.stem] = TopicBlock(
+            path, metadata.get("SlideMage block", "").strip() or path.stem,
+            [t.strip() for t in metadata.get("Topics", "").split(",") if t.strip()],
+            metadata.get("Description", ""), deck_language.calls_in(deck_language.masked(text), []))
+    for deck in scan_decks(ctx) if blocks else ():
+        for key in {c.block for c in deck_language.expanded_calls(ctx, deck)}:
+            if key in blocks:
+                blocks[key].decks.append(deck)
+    return blocks
+
+
+def update_metadata(path: Path, field: str, value: str) -> None:
+    """Change just one managed header line, keeping calls, comments and line endings."""
+    if field not in ("SlideMage block", "Topics", "Description") or "\n" in value or "\r" in value:
+        raise ValueError("Block metadata must be a single header line.")
+    before = read_text_exact(path)
+    pattern = re.compile(r"^%% " + re.escape(field) + r":[^\r\n]*", re.MULTILINE)
+    line = f"%% {field}: {value.strip()}"
+    after = (pattern.sub(lambda _m: line, before, count=1) if pattern.search(before)
+             else line + deck_editor.eol(before) + before)
+    if after != before:
+        write_text_exact(path, after, expected_text=before)

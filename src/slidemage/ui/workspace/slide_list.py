@@ -835,15 +835,17 @@ class SlideList(QWidget):
                 self.edit("Remove failed", f"Removed {block.title} from {self.deck.name}",
                           lambda path, text: deck_editor.remove_block(path, text, call))
             elif key == "library":
-                self.show_in_library()
+                self.show_in_library(block=block.block)
 
         menu.triggered.connect(chosen)
         self._popup(menu, self.tree.viewport(), pos)
 
-    def show_in_library(self) -> None:
-        show = getattr(self.app, "show_library", None)   # the window's, once the Library page is merged
+    def show_in_library(self, *, block: str | None = None) -> None:
+        row = self._current_row()
+        block = block or (getattr(row.deck_call, "block", None) if row else None)
+        show = getattr(self.app, "show_library", None)
         if show is not None:
-            show()
+            show(block=block)
         else:
             self.toast.show_message("The Library is not available in this build yet.")
 
