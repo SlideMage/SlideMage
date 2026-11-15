@@ -116,7 +116,7 @@ def for_call(ctx: project.ProjectContext, deck: Deck, call: SlideCall, position:
     if not found:
         return target
     return replace(target, needs_context=found,
-                   deck_hash=text_sha256(deck_language.expand_fragments(deck)[0].text))
+                   deck_hash=shared.deck_hash if shared else text_sha256(deck_language.expand_fragments(deck)[0].text))
 
 
 def requested_views(view: str | None, selected_view: str = VIEW_INSTRUCTOR) -> tuple[str, ...]:

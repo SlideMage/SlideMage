@@ -40,7 +40,7 @@ from PySide6.QtCore import QPointF, QRectF, QSize, Qt, Signal, QTimer
 from PySide6.QtGui import QColor, QImage, QKeySequence, QPainter, QPixmap, QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QInputDialog, QLabel, QMessageBox, QVBoxLayout, QWidget
 
-from ... import (deck_context, deck_editor, languages, latex_lint, render_lookup, reveal_steps, slide_preview, slide_snapshot, slide_source,
+from ... import (deck_context, deck_editor, deck_language, languages, latex_lint, render_lookup, reveal_steps, slide_preview, slide_snapshot, slide_source,
                  slide_versioning, timing)
 from ...ai.workspace import WorkspaceContext
 from ...ai.tools.slidemage import slide_target
@@ -1260,11 +1260,13 @@ class PreviewPane(Surface):
         deck = self.state.deck
         if row is None or deck is None:
             return [], []
-        calls = deck_editor.parse_slide_calls(deck)
-        physical = row.deck_call
-        if not any(c.call_start == physical.call_start for c in calls):
+        expanded, _, calls = deck_language._resolve_calls(deck)
+        physical = next((c for c in calls if c.identity == row.deck_call.identity), None)
+        if physical is None:
             return calls, []
-        return calls, deck_editor.step_block(deck.text, calls, physical)
+        group = deck_editor.step_block(expanded.text, [c.expanded for c in calls], physical.expanded)
+        identities = {c.call_start for c in group}
+        return calls, [c for c in calls if c.expanded.call_start in identities]
 
     def _served_views(self) -> list[str]:
         """The versions the selected place of the deck typesets; all of them for a slide shown without the deck."""

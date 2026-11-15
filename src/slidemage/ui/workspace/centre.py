@@ -496,7 +496,7 @@ class CentreColumn(QFrame):
                                          outline=state.outline if deck is state.deck else None)
         if any(row.matches(slide_id) for row in rows):
             return True
-        return any(bare_id(call.id_slug) == slide_id for call in deck_editor.parse_slide_calls(deck))
+        return any(bare_id(call.id_slug) == slide_id for call in deck_language.active_calls(deck))
 
     def _has_list(self, tab: CentreTab) -> bool:
         """Whether the slide list is the tab's: it follows the deck on show, or has a deck of its own that is open."""

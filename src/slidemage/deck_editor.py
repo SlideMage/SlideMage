@@ -91,6 +91,10 @@ class SlideCall:
     chapter: Optional[Chapter]
 
     @property
+    def identity(self) -> tuple[int, int | None]:
+        return self.call_start, None
+
+    @property
     def id_slug(self) -> str:
         return f"{self.id}-{self.slug}"
 

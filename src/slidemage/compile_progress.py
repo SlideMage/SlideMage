@@ -87,8 +87,7 @@ def count_job_slides(ctx: project.ProjectContext, deck, version: Optional[str], 
     from . import deck_language
     from .deck_settings import read_settings
     language = (language or read_settings(text).language).upper()
-    resolved_deck, _inputs = deck_language.expand_fragments(deck)
-    for slot in deck_language.deck_slots(ctx, resolved_deck, language):
+    for slot in deck_language.deck_slots(ctx, deck, language):
         call = slot.call
         if chapter is not None and (call.chapter is None or call.chapter.order != chapter.order):
             continue

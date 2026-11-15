@@ -141,15 +141,16 @@ class ResolvedSlot:
 
 
 def resolve_slots(ctx: ProjectContext, deck: Deck, view: str, language: str, *,
-                  links: slide_language.TranslationLinks | None = None) -> tuple[ResolvedSlot, ...]:
+                  links: slide_language.TranslationLinks | None = None,
+                  calls: list[SlideCall] | None = None) -> tuple[ResolvedSlot, ...]:
     """Logical occurrences and their per-view frame counters (hidden steps consume none)."""
     if view not in deck_editor.VIEWS:
         raise ValueError(f"Invalid preview view: {view!r}")
     occurrences = {}
     frame = 0
     result = []
-    for position, slot in enumerate(deck_language._slots(deck_language.active_calls(deck), language,
-                                                      links or slide_language.links_for(ctx)), 1):
+    for position, slot in enumerate(deck_language.slots(
+            ctx, calls if calls is not None else deck_language.expanded_calls(ctx, deck), language, links=links), 1):
         base = _call_key(slot.original)
         occurrence = occurrences.get(base, 0)
         occurrences[base] = occurrence + 1
@@ -228,10 +229,11 @@ class Outline:
 def resolve_outline(ctx: ProjectContext, deck: Deck, view: str, language: str) -> Outline:
     """`build_outline`, with what resolving it learnt kept for others to reuse."""
     links = slide_language.links_for(ctx)
-    resolved = resolve_slots(ctx, deck, view, language, links=links)
+    expanded, _, calls = deck_language._resolve_calls(deck)
+    resolved = resolve_slots(ctx, deck, view, language, links=links, calls=calls)
     instructor = resolved if view == deck_editor.VIEW_INSTRUCTOR else resolve_slots(
-        ctx, deck, deck_editor.VIEW_INSTRUCTOR, language, links=links)
-    return Outline(ctx, deck.path, text_sha256(deck_language.expand_fragments(deck)[0].text), view, language,
+        ctx, deck, deck_editor.VIEW_INSTRUCTOR, language, links=links, calls=calls)
+    return Outline(ctx, deck.path, text_sha256(expanded.text), view, language,
                    _sections(ctx, deck, view, language, resolved, links), links,
                    {r.key: r.frame_number for r in instructor})
 

@@ -946,7 +946,7 @@ class SlideList(QWidget):
             self.edit("Remove sections failed", f"Removed all {len(deck.chapters)} sections from {deck.name}",
                       lambda path, text: deck_editor.remove_all_sections(path, text, list(deck.chapters)))
         elif sheet.choice == WITH_SLIDES:
-            calls = list({c.call_start: c for r in section.rows for c in (r.deck_call, *r.folded_calls)}.values())
+            calls = list({c.identity: c for r in section.rows for c in (r.deck_call, *r.folded_calls)}.values())
             self.edit("Remove section failed",
                       f"Removed section {section.title} and its {len(calls)} slide calls from {deck.name}",
                       lambda path, text: deck_editor.remove_section_and_calls(path, text, section.chapter, calls))
@@ -1071,7 +1071,7 @@ class SlideList(QWidget):
     def _remove(self, rows: list[SlideRow]) -> None:
         if not rows:
             return
-        calls = list({c.call_start: c for r in rows for c in (r.deck_call, *r.folded_calls)}.values())
+        calls = list({c.identity: c for r in rows for c in (r.deck_call, *r.folded_calls)}.values())
         what = calls[0].id_slug if len(calls) == 1 else f"{len(calls)} slides ({', '.join(c.id_slug for c in calls)})"
         self.edit("Remove failed", f"Removed {what} from {self.deck.name}",
                    lambda path, text: deck_editor.remove_slide_calls(path, text, calls))

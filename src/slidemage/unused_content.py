@@ -105,10 +105,9 @@ def slide_filenames_in(ctx: ProjectContext, text: str) -> set[str]:
     """Every slides/*.tex filename the \\slide{}-family calls of this deck text load, the
     translation partners (any language) of each included. The text is read as it is: a deck's
     commented-out calls count unless the comments were stripped first."""
-    from types import SimpleNamespace
-    from . import deck_editor, deck_language
+    from . import deck_language
     used: set[str] = set()
-    calls = deck_editor.parse_slide_calls(SimpleNamespace(text=text, chapters=[]))
+    calls = deck_language.calls_in(text, [], comments=True)
     # Keep explicit pins even when a translation call is folded into another slot.
     used.update(call.source_filename for call in calls)
     for language in languages.project_languages(ctx).codes:

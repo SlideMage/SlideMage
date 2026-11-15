@@ -13,11 +13,10 @@ earlier side of Compare rendered for the edits that left no diff card, Claude Co
 from __future__ import annotations
 
 from collections import Counter
-from types import SimpleNamespace
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import deck_editor, fileio, slide_language
+from . import deck_language, fileio, slide_language
 from .filelock import build_lock
 from .project import ProjectContext, call_files
 
@@ -117,8 +116,7 @@ def inserted_slides(ctx: ProjectContext, path: Path, before: str, after: str, so
                                  and path.resolve().parent != ctx.blocks_dir.resolve()):
         return
     def calls(text):
-        return Counter(call.source_filename for call in deck_editor.parse_slide_calls(
-            SimpleNamespace(text=text, chapters=[])))
+        return Counter(call.source_filename for call in deck_language.calls_in(text, [], comments=True))
     for filename in (calls(after) - calls(before)):
         slide = ctx.slides_dir / filename
         entry = unreviewed(ctx).get(_key(ctx, slide), {})

@@ -696,8 +696,8 @@ def check_deck_job(ctx: ProjectContext, deck: Deck, version: Optional[str] = Non
 
     from .deck_settings import read_settings
     language = (language or read_settings(deck.text).language).upper()
-    resolved_deck, inline_inputs = deck_language.expand_fragments(deck)
-    calls = [s.call for s in deck_language.deck_slots(ctx, resolved_deck, language)]
+    _, inline_inputs, expanded_calls = deck_language._resolve_calls(deck)
+    calls = [s.call for s in deck_language.slots(ctx, expanded_calls, language)]
     for path in inline_inputs:
         if path.parent != ctx.slides_dir:
             check_file(path)
@@ -708,10 +708,9 @@ def check_deck_job(ctx: ProjectContext, deck: Deck, version: Optional[str] = Non
             continue
         path = ctx.slides_dir / call.source_filename
         if not path.is_file():
-            line = text.count("\n", 0, call.call_start) + 1
             result.issues.append(LintIssue(
                 "slide-file", f"{path.name} does not exist (called as \\{call.macro}{{{call.id_slug}}})",
-                line, deck.path.name, deck.path))
+                call.source_line, call.source.name, call.source))
             continue
         check_file(path)
 

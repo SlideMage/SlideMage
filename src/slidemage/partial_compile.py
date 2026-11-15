@@ -247,7 +247,8 @@ def _full_compile(ctx: project.ProjectContext, job: CompileJob) -> _FullCompile:
             break
 
     groups = frame_groups(page_infos(full_pdf))
-    calls = [s.call for s in deck_language.deck_slots(ctx, deck, deck_language.language_for_job(job))
+    calls = [replace(s.call, chapter=s.call.expanded.chapter)
+             for s in deck_language.deck_slots(ctx, job.deck, deck_language.language_for_job(job))
              if s.call.included_in(job.version)]
     matched: list[tuple[FrameGroup, SlideCall]] = []
     unmatched: list[FrameGroup] = []
@@ -271,8 +272,7 @@ def frames_for_slides(ctx: project.ProjectContext, job: CompileJob, slide_ids: l
     wanted = {i.lower() for i in slide_ids}
     full = _full_compile(ctx, job)
     from . import deck_language
-    deck, _ = deck_language.expand_fragments(job.deck)
-    for slot in deck_language.deck_slots(ctx, deck, deck_language.language_for_job(job)):
+    for slot in deck_language.deck_slots(ctx, job.deck, deck_language.language_for_job(job)):
         if any(slot.matches(i) for i in slide_ids):
             wanted.add(slot.call.id.lower())
     return sorted(f for group, call in full.matched if call.id.lower() in wanted for f in group.frames)
@@ -300,7 +300,7 @@ def plan(ctx: project.ProjectContext, job: CompileJob, spec: str | list[int]) ->
     if deck_changed_at is not None:
         # a change after the last kept slide moves no number before it
         # (2026-10-08, direct instruction); anything earlier may.
-        late = [k for k in kept if k.call.line_end > deck_changed_at]
+        late = [k for k in kept if k.call.expanded.line_end > deck_changed_at]
         if deck_changed_at < (job.deck.preamble_end or 0) or late:
             where = ("in its preamble" if deck_changed_at < (job.deck.preamble_end or 0)
                      else f"before or at page {late[0].first_frame}")
@@ -360,7 +360,7 @@ def wrapper_text(plan: PartialPlan) -> str:
     whole-deck compile, without the generated appendix."""
     job = plan.job
     from . import deck_language
-    deck, _ = deck_language.expand_fragments(job.deck)
+    deck, _, calls = deck_language._resolve_calls(job.deck)
     # The appendix itself isn't generated (its pages stay as they are),
     # but the footers' "Slide previews" link to it must be there.
     lines = compiler.override_lines(plan.context, job, appendix_link=job._appendix_applies,
@@ -370,7 +370,7 @@ def wrapper_text(plan: PartialPlan) -> str:
         raise PartialError(f"{deck.name}: no \\begin{{document}}")
     end = compiler.DOCUMENT_END_RE.search(text, deck.preamble_end)
     body_end = end.start() if end else len(text)
-    kept = {k.call.line_start: k for k in plan.kept}
+    kept = {k.call.identity: k for k in plan.kept}
     out: list[str] = [text[:deck.preamble_end]]
     language = deck_language.language_for_job(job)
     if language_lines := deck_language.language_lines(plan.context, language if job.language else None, deck=language):
@@ -379,11 +379,12 @@ def wrapper_text(plan: PartialPlan) -> str:
         out.append("\n" + plan.extra_lines)
     pos = deck.preamble_end
     # Include folded translation calls here so they are removed too.
-    for call in sorted(deck_language.calls_in(text, deck.chapters), key=lambda c: c.line_start):
+    for occurrence in calls:
+        call = occurrence.expanded
         if call.line_start < pos or call.line_start >= body_end:
             continue
         out.append(text[pos:call.line_start])
-        keep = kept.get(call.line_start)
+        keep = kept.get(occurrence.identity)
         if keep is not None:
             out.append(f"\\setcounter{{framenumber}}{{{keep.first_frame - 1}}}"
                        f"\\setcounter{{page}}{{{keep.first_page}}}%\n")

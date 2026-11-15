@@ -3,6 +3,8 @@
 """What the Preview renders: the call, the deck context, the view and language."""
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from slidemage import batch_render, deck_editor, preview_target, slide_preview
@@ -15,7 +17,7 @@ PREAMBLE = "\\documentclass{beamer}\n\\input{SlideMage_template_acme-two}\n\\beg
 
 def make_deck(body):
     text = PREAMBLE + "\n" + body + "\\end{document}\n"
-    return Deck(name="course", path=None, archived=False, text=text, supports_version=True,
+    return Deck(name="course", path=Path("course.tex"), archived=False, text=text, supports_version=True,
                 uses_biblatex=False, preamble_end=len(PREAMBLE), chapters=parse_chapters(text),
                 output_folders={})
 
