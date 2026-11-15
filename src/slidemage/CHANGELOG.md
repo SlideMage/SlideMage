@@ -4163,3 +4163,8 @@ v0.16.45 (2026-11-13, direct request: a title bar set in the theme form stayed d
 
 NEW: A title bar color set in the theme form takes effect.
 - Fixed: a title bar, title text or bullet color set in the theme form of a theme that did not set it before had no effect on the slides. Open the theme form and set the color again, or follow the new warning of the syntax check.
+
+v0.17.0 (2026-11-15, Slide Library stage 1, docs/plans/slide-library.md and slide-library-steps.md): A Library page (top bar, View menu, palette; Esc closes it) with its first view, Similar slides. slide_similarity.find_clusters compares the user's current slides within one language, without a cache (about 0.6 s on 750 slides, on a worker): exact copies (identical source once comments and version lines are removed, verbatim kept), same words (identical tokens, different markup) and similar text (Jaccard of word triples >= 0.5, triples in more than 5 % of slides ignored). Translations, title and section slides, the bundled manual and ZZ test slides are left out. Clusters whose members are all called in one deck are folded into "Sequences in one deck". Each card shows the members' thumbnails, where they are used (from the expanded, active calls), and a word diff or source diff; "Different on purpose" hides a cluster for the session (it is remembered from stage 3 on), "Open both" opens the slides. Tests in tests/test_slide_similarity.py, tests/test_library_similar_gui.py.
+
+NEW: The Library shows slides that are copies or near copies of each other.
+- New: open the Library from the top bar to see exact copies, copies with other markup, and slides with similar text, with what differs between them.
