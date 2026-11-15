@@ -20,7 +20,6 @@ and reports what went wrong. A new or copied slide opens in the Source view afte
 from __future__ import annotations
 
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Callable, Optional
 
 from PySide6.QtCore import QEvent, QSize, Qt
@@ -46,7 +45,7 @@ from ...deck_scan import Deck
 from ...project import ProjectContext
 from ..ai_models import add_route_badge, built, fill_model_combo, picked_route
 from .. import background
-from ..pages.library.pictures import load_picture
+from ..pages.library.shared import load_picture
 from ..kit import kit_qss as q
 from ..kit.tokens import SPACE
 from ..kit.widgets import Field, ModalSheet, RowButton, SegmentedControl, Surface, ThumbnailGrid, ToggleChip, caption, set_property
@@ -377,14 +376,13 @@ class AddSlideSheet(ModalSheet):
             resolver = renders.renderer(ctx).resolver
             slides = slide_add.project_slides(ctx)
             groups = library_data.group_ids(ctx)
-            pool = set(library_data.read(ctx).pool)
             blocks = topic_blocks.read_blocks(ctx)
-            pool.update(groups.get(c.id, c.id) for block in blocks.values() for c in block.calls)
+            pool = library_data.pooled_ids(library_data.read(ctx), (b.calls for b in blocks.values()), groups)
             icons = {}
             for slide in slides:
                 if cancel.is_set():
                     break
-                icons[slide.id_slug] = load_picture(ctx, SimpleNamespace(slug=slide.id_slug, decks=[deck]), resolver, language)
+                icons[slide.id_slug] = load_picture(ctx, slide.id_slug, [deck], resolver, language)
             return slides, groups, pool, blocks, icons
 
         def done(result, error):

@@ -42,8 +42,7 @@ def test_section_becomes_a_block_and_another_deck_reuses_it(make_list, ctx, monk
     monkeypatch.setattr(module.QMessageBox, "question", approve)
     monkeypatch.setattr(module.QInputDialog, "getText", title)
     # A prior one-file edit must not let Undo restore a deck from before the conversion.
-    slide_list._undo[deck_path] = [before]
-    slide_list._undo_order.append((deck_path, deck_path))
+    slide_list._undo.append((deck_path, before))
     menu = slide_list._section_menu()
     assert "Make this section a block" in [entry[2] for entry in menu._entries if entry[0] == "item"]
     menu.triggered.emit("make_block")

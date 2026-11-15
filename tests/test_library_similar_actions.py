@@ -28,13 +28,14 @@ def copies(tmp_path, monkeypatch):
             r"\begin{standardframe}{Demo} An exact copy with distinctive words.\end{standardframe}")
     (ctx.decks_dir / "keep.tex").write_text("\\documentclass{beamer}\n\\begin{document}\n"
                                              "\\slide{aaa-EN-Demo}\n\\end{document}\n")
+    forgotten = []
     app = SimpleNamespace(project=ctx, theme=ThemeManager(dark=False),
                           state=SimpleNamespace(language="EN"), background=SimpleNamespace(renderer=None),
-                          slide_list=SimpleNamespace(_undo={}, _undo_order=[]),
+                          slide_list=SimpleNamespace(forgotten=forgotten, forget_undo=lambda paths: forgotten.append(set(paths))),
                           refresh_open_deck_editors=lambda: None, after_deck_edit=lambda *args: None)
     view = SimilarView(app)
     usage = slide_usage.decks_by(slide_usage.deck_calls(ctx), "id")
-    view.set_clusters(prepare_clusters(ctx, slide_similarity.find_clusters(ctx, usage=usage), usage, None, "EN"))
+    view.set_clusters(prepare_clusters(ctx, slide_similarity.find_clusters(ctx, usage=usage), usage, {}, None, "EN"))
     yield ctx, view
     if view._work is not None:
         view._work.stop(wait_ms=5000)
@@ -58,7 +59,7 @@ def test_archive_unused_copy(qapp, copies, monkeypatch):
     (ctx.slides_dir / "bbb-EN-Demo-current.tex").write_bytes(
         (ctx.slides_dir / "aaa-EN-Demo-current.tex").read_bytes())
     (ctx.decks_dir / "keep.tex").unlink()
-    view.set_clusters(prepare_clusters(ctx, slide_similarity.find_clusters(ctx), {}, None, "EN"))
+    view.set_clusters(prepare_clusters(ctx, slide_similarity.find_clusters(ctx), {}, {}, None, "EN"))
     assert not [b for b in view._cards[0][1].findChildren(Button) if b.text() == "Archive the unused copy"]
 
 
@@ -75,10 +76,8 @@ def test_replace_unpinned_calls_and_refuse_translation(qapp, copies, monkeypatch
     skipped = ctx.decks_dir / "skip.tex"
     skipped.write_text("\\omitslide{bbb-EN-Demo}\n")
     snapshots = {p: p.read_text() for p in (deck, block, skipped)}
-    view.app.slide_list._undo = {p: [snapshots[p]] for p in snapshots}
-    view.app.slide_list._undo_order = [(None, p) for p in snapshots]
     usage = slide_usage.decks_by(slide_usage.deck_calls(ctx), "id")
-    view.set_clusters(prepare_clusters(ctx, slide_similarity.find_clusters(ctx, usage=usage), usage, None, "EN"))
+    view.set_clusters(prepare_clusters(ctx, slide_similarity.find_clusters(ctx, usage=usage), usage, {}, None, "EN"))
     approvals, warnings = [], []
 
     def approve(sheet):
@@ -101,8 +100,7 @@ def test_replace_unpinned_calls_and_refuse_translation(qapp, copies, monkeypatch
     assert deck.read_text() == snapshots[deck].replace("\\slide{bbb-EN-Demo}", "\\slide{aaa-EN-Demo}", 1)
     assert block.read_text() == snapshots[block].replace("bbb-EN-Demo", "aaa-EN-Demo")
     assert skipped.read_text() == snapshots[skipped]
-    assert view.app.slide_list._undo == {skipped: [snapshots[skipped]]}
-    assert view.app.slide_list._undo_order == [(None, skipped)]
+    assert view.app.slide_list.forgotten == [{deck, block}]
     # Adding a translation after the approval snapshot must also prevent every write.
     files = slide_similarity.replacement_files(ctx, "aaa", "bbb")
     translation = ctx.slides_dir / "ccc-DE-Demo-current.tex"

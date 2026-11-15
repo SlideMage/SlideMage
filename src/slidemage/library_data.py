@@ -8,11 +8,11 @@ import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from . import bundled_copies, deck_context, deck_language, deck_scan, slide_language, slide_usage
+from . import deck_language, deck_scan, slide_language, slide_usage
 from .fileio import StaleFileError, atomic_write, read_text_exact
 from .filelock import build_lock
 from .project import ProjectContext
-from .slide_similarity import STRUCTURAL_RE
+from .slide_similarity import is_structural, user_slides
 
 log = logging.getLogger(__name__)
 
@@ -104,6 +104,11 @@ def update(ctx: ProjectContext, change) -> LibraryData:
             return data
 
 
+def pooled_ids(data: LibraryData, block_calls, ids: dict[str, str]) -> set[str]:
+    """Group IDs in the pool: marked, or called by a topic block (`block_calls`: one call list per block)."""
+    return data.pool | {ids.get(call.id, call.id) for calls in block_calls for call in calls}
+
+
 def change_members(data: LibraryData, ids, action, value=True) -> None:
     if action == "pool":
         if value:
@@ -162,18 +167,13 @@ def suggestions(ctx: ProjectContext, scanned: list | None = None) -> list[Sugges
     """
     data, ids = read(ctx), group_ids(ctx)
     links = slide_language.links_for(ctx)
-    bundled = bundled_copies.read_manifest(ctx.root).get("manual", {}).get("files", {})
+    users = set(user_slides(ctx))
     excluded = set(data.not_reusable)
     for bare, path in links.paths.items():
-        text = links.header(path.name[:-len(slide_language.CURRENT_SUFFIX)])
-        if (path.name.startswith("ZZ") or path.relative_to(ctx.root).as_posix() in bundled
-                or STRUCTURAL_RE.search(deck_language.masked(text))
-                or {"contents", "section"}.intersection(deck_context.reasons(text))):
+        if path not in users or is_structural(links.header(path.name[:-len(slide_language.CURRENT_SUFFIX)])):
             excluded.add(ids[bare])
-    pooled = set(data.pool)
-    for path in deck_language.block_files(ctx):
-        pooled.update(ids[c.id] for c in deck_language.calls_in(
-            deck_language.masked(read_text_exact(path)), []) if c.id in ids)
+    pooled = pooled_ids(data, (deck_language.calls_in(deck_language.masked(read_text_exact(path)), [])
+                               for path in deck_language.block_files(ctx)), ids)
 
     segments, usage = [], defaultdict(list)
     for deck, calls in slide_usage.deck_calls(ctx) if scanned is None else scanned:

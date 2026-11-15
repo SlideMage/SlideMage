@@ -11,9 +11,9 @@ from PySide6.QtGui import QColor, QPainter, QPixmap
 from PySide6.QtWidgets import (QAbstractItemView, QHBoxLayout, QLineEdit, QListView,
                                QScrollArea, QStyle, QStyledItemDelegate, QVBoxLayout)
 
-from .... import (alt_blocks, bundled_copies, deck_context, deck_editor, deck_scan,
-                  library_data, preview_target, slide_language,
-                  slide_usage, slide_versioning, unused_content)
+from .... import (alt_blocks, deck_context, deck_editor, deck_scan, library_data, slide_language,
+                  slide_usage, slide_versioning)
+from ....slide_similarity import user_slides
 from ...background import run_in_background
 from ...kit.flow import FlowLayout
 from ...kit.tokens import RADIUS_LG
@@ -21,7 +21,7 @@ from ...kit.widgets import (Button, Card, Chip, Field, ModalSheet, Surface, Togg
                             RowButton, caption, clear_layout, text_label)
 from ...workspace.palette import matches, words_of
 from .similar import CLASSES
-from .pictures import load_picture
+from .shared import instructor_target, load_picture, resolver_of, save_library, show_picture
 
 
 @dataclass
@@ -33,7 +33,6 @@ class SlideGroup:
     badge: str
     members: list[str]
     decks: list
-    unused: bool
     blocks: list[str] = field(default_factory=list)
     block_topics: set[str] = field(default_factory=set)
 
@@ -41,11 +40,10 @@ class SlideGroup:
 def prepare_groups(ctx, usage, blocks, language):
     """Prepare the collection on the page's scan worker; no widgets or image reads."""
     links = slide_language.links_for(ctx)
-    bundled = bundled_copies.read_manifest(ctx.root).get("manual", {}).get("files", {})
-    unused = {p.name for p in unused_content.find_unused_slides(ctx)}
+    users = set(user_slides(ctx))
     groups = {}
     for bare, path in sorted(links.paths.items()):
-        if path.name.startswith("ZZ") or path.relative_to(ctx.root).as_posix() in bundled:
+        if path not in users:
             continue
         group = links.group(bare)
         original = slide_language.bare_id(group.original or bare)
@@ -62,7 +60,6 @@ def prepare_groups(ctx, usage, blocks, language):
                                alt_blocks.plain_title(deck_context.frame_title(links.header(slug)) or slug),
                                text, slide_language.badge_for(ctx, slug, links=links).text(), members,
                                sorted(decks.values(), key=lambda d: d.path.stat().st_mtime_ns),
-                               all(slide_language.current_name(s) in unused for s in members),
                                sorted(used_in), {t for block in used_in.values() for t in block.topics}))
     return sorted(rows, key=lambda row: (row.title.casefold(), row.id))
 
@@ -72,18 +69,25 @@ class SlideModel(QAbstractListModel):
         super().__init__(parent)
         self.groups = []
         self.rows = []
-        self.library = library_data.LibraryData()
+        self.set_library(library_data.LibraryData())
+
+    def set_library(self, library):
+        self.library = library
+        self.pooled = library.pool | {row.id for row in self.groups if row.blocks}
 
     def set_groups(self, groups, library):
-        self.groups, self.library = groups, library
-        self.filter()
+        self.groups = groups
+        self.set_library(library)
+
+    def in_scope(self, row, scope):
+        return (scope == "all" or scope == "pool" and row.id in self.pooled
+                or scope == "unused" and not row.decks and row.id not in self.pooled)
 
     def filter(self, scope="all", topic="", query=""):
         words = words_of(query)
         self.beginResetModel()
         self.rows = [row for row in self.groups
-                     if (scope != "pool" or row.id in self.library.pool or row.blocks)
-                     and (scope != "unused" or row.unused)
+                     if self.in_scope(row, scope)
                      and (not topic or topic in self.library.topics.get(row.id, set()) | row.block_topics)
                      and matches(words, row.title, *row.members, row.text)]
         self.endResetModel()
@@ -135,7 +139,7 @@ class SlideDelegate(QStyledItemDelegate):
         painter.setPen(QColor(t.text_2))
         meta = f"{row.id}  {row.badge}"
         painter.drawText(QRect(rect.x() + 10, rect.y() + 186, rect.width() - 20, 20), meta)
-        pooled = row.id in view.model.library.pool or bool(row.blocks)
+        pooled = row.id in view.model.pooled
         painter.setPen(QColor(t.ok_fg if pooled else t.text_3))
         count = len(row.decks)
         status = "Pool · " if pooled else ""
@@ -289,8 +293,6 @@ class SlidesView(Surface):
             self._thumbs.stop(wait_ms=0)
         self._thumbs = None
         self._pictures, self._visible = {}, ()
-        self._current = None
-        self.details.hide()
         self._clusters = clusters
         self.model.set_groups(groups, library)
         self._rebuild_topics()
@@ -360,14 +362,14 @@ class SlidesView(Surface):
         if self._thumbs:
             self._thumbs.stop(wait_ms=0)
         ctx, language = self.app.project, self.app.state.language
-        resolver = getattr(self.app.background.renderer, "resolver", None)
+        resolver = resolver_of(self.app)
 
         def load(cancel):
             pictures = {}
             for row in rows:
                 if cancel.is_set():
                     break
-                pictures[row.id] = load_picture(ctx, row, resolver, language)
+                pictures[row.id] = load_picture(ctx, row.slug, row.decks, resolver, language)
             return pictures
 
         def done(pictures, error):
@@ -390,7 +392,7 @@ class SlidesView(Surface):
         self.render_button.show()
         self.render_button.setEnabled(self._render is None)
         self.versions.setText("Loading versions and languages…")
-        self.pool_switch.setChecked(row.id in self.model.library.pool or bool(row.blocks))
+        self.pool_switch.setChecked(row.id in self.model.pooled)
         self.pool_switch.setEnabled(self._write is None and not row.blocks)
         self.pool_switch.setToolTip("In the pool through block " + ", ".join(row.blocks) if row.blocks else "")
         self.pool_reason.setText("In the pool through block " + ", ".join(row.blocks) if row.blocks else "")
@@ -431,7 +433,7 @@ class SlidesView(Surface):
         if self._detail:
             return
         ctx, language = self.app.project, self.app.state.language
-        resolver = getattr(self.app.background.renderer, "resolver", None)
+        resolver = resolver_of(self.app)
 
         def load():
             decks = deck_scan.scan_decks(ctx)
@@ -443,7 +445,7 @@ class SlidesView(Surface):
                 frozen = [slide_versioning.version_label(v) for v in deck_editor.available_versions(ctx, slug)]
                 versions.append(f"{slug}\nCurrent: {current or 'unversioned'}" +
                                 (" · Saved: " + ", ".join(frozen) if frozen else ""))
-            return usages, "\n\n".join(versions), load_picture(ctx, row, resolver, language, large=True)
+            return usages, "\n\n".join(versions), load_picture(ctx, row.slug, row.decks, resolver, language, large=True)
 
         def done(result, error):
             self._detail = None
@@ -456,9 +458,7 @@ class SlidesView(Surface):
                 return
             usages, versions, picture = result
             self.versions.setText(f"ID: {row.id}  {row.badge}\n\n{versions}")
-            if not picture.isNull():
-                self.preview.setPixmap(QPixmap.fromImage(picture).scaled(
-                    self.preview.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            if show_picture(self.preview, picture):
                 self.render_button.hide()
             for usage in usages:
                 for deck in usage.decks if usage.block else [usage.deck]:
@@ -488,12 +488,7 @@ class SlidesView(Surface):
         row = self._current
         self.app.stack.setCurrentWidget(self.app.centre)
         self.app.state.set_deck(deck_scan.read_deck(deck.path))
-        ids = {slide_language.bare_id(s) for s in row.members}
-        target = next((r for r in self.app.slide_list.rows()
-                       if (block is None or r.deck_call.block == block)
-                       and (r.call.id in ids or r.deck_call.id in ids or ids.intersection(r.related_ids))), None)
-        if target is not None:
-            self.app.state.set_focused_slide(target.call.id, occurrence_key=target.key)
+        self.app.slide_list.focus(block, {slide_language.bare_id(s) for s in row.members})
         self.app.state.set_mode("preview")
 
     def _add_topic(self, _checked=False, *, detail=False):
@@ -516,33 +511,23 @@ class SlidesView(Surface):
         ids = {row.id for row in rows}
         if not ids:
             return
-        ctx = self.app.project
         self.actions.setEnabled(False)
         self.pool_switch.setEnabled(False)
 
-        def write():
-            data = library_data.update(ctx, lambda data: library_data.change_members(data, ids, action, value))
-            unused = {p.name for p in unused_content.find_unused_slides(ctx)}
-            return data, unused
-
-        def done(result, error):
+        def done(library):
             self._write = None
             self.actions.setEnabled(True)
             self.pool_switch.setEnabled(not (self._current and self._current.blocks))
-            if error is not None:
-                self.status.setText(f"Could not save library: {error}")
-                self.status.show()
+            if library is None:
                 if self._current:
-                    self.pool_switch.setChecked(self._current.id in self.model.library.pool or bool(self._current.blocks))
+                    self.pool_switch.setChecked(self._current.id in self.model.pooled)
                 return
-            self.model.library, unused = result
-            for row in self.model.groups:
-                row.unused = all(slide_language.current_name(s) in unused for s in row.members)
+            self.model.set_library(library)
             self._rebuild_topics()
             self._filter()
-            self.library_changed.emit(self.model.library)
+            self.library_changed.emit(library)
 
-        self._write = run_in_background(write, done, parent=self)
+        self._write = save_library(self, lambda data: library_data.change_members(data, ids, action, value), done)
 
     def _render_current(self):
         if self._render is not None or self._current is None:
@@ -555,11 +540,8 @@ class SlidesView(Surface):
 
         def render(cancel):
             path = ctx.slides_dir / slide_language.current_name(row.slug)
-            target = preview_target.PreviewTarget(ctx, "slide", row.slug, None, None, None, None,
-                                                  row.decks[-1].preamble_text if row.decks else None)
-            own = slide_language.own_language(row.slug, slide_language.links_for(ctx).codes)
-            request = service.request(target, path.read_text(encoding="utf-8"), "instructor",
-                                      own if own not in (None, "mult") else language, self.app.log,
+            target, own = instructor_target(ctx, row.slug, row.decks, language)
+            request = service.request(target, path.read_text(encoding="utf-8"), "instructor", own, self.app.log,
                                       saved=True, all_steps=True)
             request.wait(cancel)
 

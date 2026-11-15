@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 from PySide6.QtCore import Qt
 
-from slidemage import bundled_copies, deck_language, deck_scan, library_data
+from slidemage import bundled_copies, library_data
 from slidemage.project import ProjectContext
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.kit.widgets import RowButton
@@ -28,6 +28,7 @@ def test_model_groups_translations_and_excludes_manual_and_test(qapp, tmp_path):
 
     model = SlideModel()
     model.set_groups(prepare_groups(ctx, {}, {}, "EN"), library_data.LibraryData())
+    model.filter()
 
     assert model.rowCount() == 2
     rows = [model.index(n).data(Qt.ItemDataRole.UserRole) for n in range(model.rowCount())]
@@ -89,6 +90,10 @@ def test_pool_switch_writes_library(qapp, tmp_path, monkeypatch):
         path = ctx.settings_dir / "library.json"
         assert json.loads(path.read_text(encoding="utf-8"))["pool"] == ["abc"]
         assert page.rows["pool"].chip.text() == "1"
+        while page._scan is not None:
+            assert page._scan.wait(5000)
+            qapp.processEvents()
+        assert view.details.isVisible() and view._current.id == "abc"  # the rescan keeps the details open
         page.rows["pool"].clicked.emit()
         assert view.model.rowCount() == 1
         view.pool_switch.click()
@@ -111,10 +116,8 @@ def test_pool_switch_writes_library(qapp, tmp_path, monkeypatch):
         path = ctx.decks_dir / "course.tex"
         path.write_text("\\documentclass{beamer}\n\\begin{document}\n"
                         "\\slide{abc-EN-Demo}\n\\slideblock{Topic}\n\\end{document}\n")
-        deck = deck_scan.read_deck(path)
-        calls = deck_language.active_calls(deck)
-        app.slide_list = SimpleNamespace(rows=lambda: [
-            SimpleNamespace(call=c, deck_call=c, related_ids=(), key=(n,)) for n, c in enumerate(calls)])
+        focused = []
+        app.slide_list = SimpleNamespace(focus=lambda block, slide_ids: focused.append((block, slide_ids)))
         app.centre = object()
         app.stack = SimpleNamespace(setCurrentWidget=lambda widget: None)
         page.ensure_loaded()
@@ -129,7 +132,7 @@ def test_pool_switch_writes_library(qapp, tmp_path, monkeypatch):
                     and "via block Topic" in view.used_in.itemAt(n).widget().sub.text())
         used.clicked.emit()
         assert app.state.deck.path == path
-        assert app.state.focused_occurrence == (1,)
+        assert focused == [("Topic", {"abc"})]
     finally:
         page.shutdown()
         assert page.slides_view._viewport is None

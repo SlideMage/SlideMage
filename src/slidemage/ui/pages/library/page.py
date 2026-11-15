@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (QAbstractItemView, QHBoxLayout, QInputDialog, QLineEdit,
-                               QListWidgetItem, QMessageBox, QScrollArea, QStackedWidget, QVBoxLayout)
+                               QListWidgetItem, QMessageBox, QStackedWidget, QVBoxLayout)
 
 from .... import deck_editor, library_data, slide_usage, topic_blocks
 from ....fileio import read_text_exact
@@ -15,6 +15,7 @@ from ...kit.tokens import SPACE
 from ...kit.widgets import (Button, Card, Field, IconButton, ModalSheet, PlainList, RowButton,
                             Surface, clear_layout, text_label)
 from .blocks import BlockView
+from .shared import resolver_of, scroll_column
 from .similar import SimilarView, prepare_clusters
 from .slides import SlidesView, prepare_groups
 from .suggestions import SuggestionsView, prepare_suggestions
@@ -56,24 +57,10 @@ class LibraryPage(Surface):
             rail.addWidget(row)
             self.rows[scope] = row
         rail.addWidget(text_label("Topics", "heading"))
-        topics = QScrollArea()
-        topics.setWidgetResizable(True)
-        topics.setFrameShape(QScrollArea.Shape.NoFrame)
-        content = Surface()
-        self.topics = QVBoxLayout(content)
-        self.topics.setContentsMargins(0, 0, 0, 0)
-        self.topics.setSpacing(SPACE.xs)
-        topics.setWidget(content)
+        topics, self.topics = scroll_column(SPACE.xs)
         rail.addWidget(topics, 1)
         rail.addWidget(text_label("Topic blocks", "heading"))
-        block_scroll = QScrollArea()
-        block_scroll.setWidgetResizable(True)
-        block_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        block_content = Surface()
-        self.block_list = QVBoxLayout(block_content)
-        self.block_list.setContentsMargins(0, 0, 0, 0)
-        self.block_list.setSpacing(SPACE.xs)
-        block_scroll.setWidget(block_content)
+        block_scroll, self.block_list = scroll_column(SPACE.xs)
         rail.addWidget(block_scroll, 1)
         new_block = Button("+ New block", "ghost")
         new_block.clicked.connect(lambda: self._new_block())
@@ -120,6 +107,7 @@ class LibraryPage(Surface):
             self._select_row(scope)
 
     def _select_row(self, scope, topic=""):
+        self._scope, self._topic = scope, topic
         self.similar_row.set_selected(scope == "similar")
         for key, row in self.block_rows.items():
             row.set_selected(scope == "block" and key == self._block_key)
@@ -130,9 +118,8 @@ class LibraryPage(Surface):
 
     def _update_rail(self, library):
         groups = self.slides_view.model.groups
-        for scope, count in (("pool", sum(r.id in library.pool or bool(r.blocks) for r in groups)),
-                             ("all", len(groups)), ("unused", sum(r.unused for r in groups))):
-            self.rows[scope].chip.set_text(str(count))
+        for scope in ("pool", "all", "unused"):
+            self.rows[scope].chip.set_text(str(sum(self.slides_view.model.in_scope(r, scope) for r in groups)))
         clear_layout(self.topics)
         self.topic_rows.clear()
         counts = {}
@@ -158,10 +145,7 @@ class LibraryPage(Surface):
             row.show()
             self.block_rows[key] = row
         self.block_list.addStretch(1)
-        scope = ("block" if self.views.currentWidget() is self.block_view else
-                 "similar" if self.views.currentWidget() is self.similar_view else
-                 "suggestions" if self.views.currentWidget() is self.suggestions_view else self.slides_view._scope)
-        self._select_row(scope, self.slides_view._topic if self.views.currentWidget() is self.slides_view else "")
+        self._select_row(self._scope, self._topic)
 
     def ensure_loaded(self) -> None:
         """Rescan on every opening: workspace state has no project/slide-changed signal."""
@@ -182,14 +166,11 @@ class LibraryPage(Surface):
             scanned = slide_usage.deck_calls(ctx)
             usage = slide_usage.decks_by(scanned, "id")
             clusters = find_clusters(ctx, usage=usage)
-            try:
-                resolver = self.app.background.renderer.resolver
-            except Exception:  # Rendering may be disabled or its store unavailable.
-                resolver = None
+            resolver = resolver_of(self.app)
             blocks = topic_blocks.read_blocks(ctx, scanned)
             groups = prepare_groups(ctx, usage, blocks, language)
             return (groups, library_data.read(ctx),
-                    prepare_clusters(ctx, clusters, usage, resolver, language),
+                    prepare_clusters(ctx, clusters, usage, blocks, resolver, language),
                     prepare_suggestions(ctx, library_data.suggestions(ctx, scanned), groups, resolver, language),
                     blocks)
 
@@ -210,7 +191,7 @@ class LibraryPage(Surface):
             groups, library, clusters, suggestions, self.blocks = result
             self.similar_view.set_clusters(clusters)
             self.slides_view.set_groups(groups, library, [c.cluster for c in clusters])
-            pool_empty = not any(row.id in library.pool or row.blocks for row in groups)
+            pool_empty = not any(self.slides_view.model.in_scope(row, "pool") for row in groups)
             self.suggestions_view.set_suggestions(suggestions, pool_empty=pool_empty)
             self.rows["suggestions"].chip.set_text(str(len(suggestions)))
             self._update_rail(library)
@@ -324,10 +305,7 @@ class LibraryPage(Surface):
             self._scan.stop(wait_ms=0)
         if self._write is not None:
             self._write.stop(wait_ms=0)
-        if self.similar_view._work is not None:
-            self.similar_view._work.stop(wait_ms=0)
-        if self.block_view._write is not None:
-            self.block_view._write.stop(wait_ms=0)
+        self.similar_view.shutdown()
         self.block_view.shutdown()
         self.slides_view.shutdown()
         self.suggestions_view.shutdown()

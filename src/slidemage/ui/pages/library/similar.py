@@ -6,17 +6,16 @@ from __future__ import annotations
 import difflib
 import re
 from dataclasses import dataclass, replace
-from types import SimpleNamespace
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QImage, QPixmap
+from PySide6.QtGui import QImage
 from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QDialog, QGridLayout, QHBoxLayout,
-                               QMessageBox, QScrollArea, QVBoxLayout)
+                               QMessageBox, QVBoxLayout)
 
 from .... import alt_blocks, deck_context, library_data, slide_language, slide_similarity
 from ....slide_similarity import Cluster, normalise, uncomment
 from ...background import run_in_background
-from .pictures import load_picture
+from .shared import load_picture, picture_label, save_library, scroll_column
 from ...kit.flow import FlowLayout
 from ...kit.tokens import RADIUS_LG, SPACE
 from ...kit.widgets import Button, Card, Chip, ModalSheet, Surface, ToggleChip, caption, text_label
@@ -42,11 +41,12 @@ class PreparedCluster:
     diffs: list[list[tuple[str, str, bool]]]
 
 
-def prepare_clusters(ctx, clusters, usage, resolver, language):
+def prepare_clusters(ctx, clusters, usage, blocks, resolver, language):
     """Read sources and renders and compute diffs on the scan worker, before building widgets."""
     library = library_data.read(ctx)
     ids = library_data.group_ids(ctx)
-    pool = {i for i, original in ids.items() if original in library.pool}
+    pooled = library_data.pooled_ids(library, (b.calls for b in blocks.values()), ids)
+    pool = {i for i, original in ids.items() if original in pooled}
     prepared = []
     for cluster in sorted(clusters, key=lambda c: (not pool.intersection(c.ids),
                                                  list(CLASSES).index(c.kind), -len(c.ids))):
@@ -64,7 +64,7 @@ def prepare_clusters(ctx, clusters, usage, resolver, language):
                 continue
             slug = path.name[:-len(slide_language.CURRENT_SUFFIX)]
             decks = usage.get(slide_id, [])
-            image = load_picture(ctx, SimpleNamespace(slug=slug, decks=decks), resolver, language)
+            image = load_picture(ctx, slug, decks, resolver, language)
             members.append(Member(slide_id, alt_blocks.plain_title(deck_context.frame_title(source) or slug),
                                   ", ".join(deck.name for deck in decks), image))
             sources.append(source)
@@ -131,15 +131,8 @@ class SimilarView(Surface):
         body.addLayout(filters)
         self.status = caption("Finding similar slides…")
         body.addWidget(self.status)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        content = Surface()
-        self.cards = QVBoxLayout(content)
-        self.cards.setContentsMargins(0, 0, 0, 0)
-        self.cards.setSpacing(SPACE.xl)
+        scroll, self.cards = scroll_column(SPACE.xl)
         self.cards.setAlignment(Qt.AlignmentFlag.AlignTop)
-        scroll.setWidget(content)
         body.addWidget(scroll, 1)
         remove_listener = app.theme.add_listener(self._style_diffs)
         self.destroyed.connect(lambda: remove_listener())
@@ -182,15 +175,7 @@ class SimilarView(Surface):
                 member = Surface()
                 column = QVBoxLayout(member)
                 column.setContentsMargins(0, 0, 0, 0)
-                picture = text_label("No render yet", "secondary")
-                picture.setFixedSize(256, 144)
-                picture.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                column.addWidget(picture)
-                if data.image is not None:
-                    pixmap = QPixmap.fromImage(data.image)
-                    if not pixmap.isNull():
-                        picture.setPixmap(pixmap.scaled(picture.size(), Qt.AspectRatioMode.KeepAspectRatio,
-                                                       Qt.TransformationMode.SmoothTransformation))
+                column.addWidget(picture_label(data.image, 256, 144))
                 column.addWidget(text_label(data.id, "mono"))
                 usage = caption(data.usage or "in no deck", "" if data.usage else "warning")
                 usage.setTextFormat(Qt.TextFormat.PlainText)
@@ -316,11 +301,7 @@ class SimilarView(Surface):
             # Earlier snapshots must not undo part of a change across several files,
             # even if a later write or the refresh failed.
             if files:
-                slide_list = self.app.slide_list
-                for path in files:
-                    slide_list._undo.pop(path, None)
-                slide_list._undo_order = [(owner, path) for owner, path in slide_list._undo_order if path not in files]
-            if files:
+                self.app.slide_list.forget_undo(files)
                 self.app.after_deck_edit(next(iter(files)), "Replaced exact-copy slide calls")
             else:
                 self.app.refresh_open_deck_editors()
@@ -367,24 +348,24 @@ class SimilarView(Surface):
         if self._work is not None:
             return
 
-        def work():
+        def change(data):
             ids = library_data.group_ids(ctx)
-            library_data.update(ctx, lambda data: data.different_on_purpose.add((
-                frozenset(ids[i] for i in cluster.ids if i in ids), cluster.fingerprint)))
+            data.different_on_purpose.add((frozenset(ids[i] for i in cluster.ids if i in ids), cluster.fingerprint))
 
-        def done(_result, error):
+        def done(data):
             self._work = None
-            if error is not None:
-                self.status.setText(f"Could not save library: {error}")
-                self.status.show()
-            else:
+            if data is not None:
                 self._dismissed.add(cluster.fingerprint)
                 self._filter(self._kind)
 
-        self._work = run_in_background(work, done, parent=self)
+        self._work = save_library(self, change, done)
 
     def _open(self, ids) -> None:
         for slide_id in ids:
             path = slide_language.current_path_for_bare_id(self.app.project, slide_id)
             if path is not None:
                 self.app.open_slide_editor(path, tab=True)
+
+    def shutdown(self) -> None:
+        if self._work is not None:
+            self._work.stop(wait_ms=0)

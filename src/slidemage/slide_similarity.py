@@ -186,20 +186,29 @@ def replace_exact_copy(ctx: ProjectContext, kept: str, other: str, files: dict[P
     write_texts(edits)
 
 
+def user_slides(ctx: ProjectContext) -> list[Path]:
+    """The project's own current slide files: no ZZ slides and no bundled manual."""
+    bundled = bundled_copies.read_manifest(ctx.root).get("manual", {}).get("files", {})
+    return [path for path in sorted(ctx.slides_dir.glob("*-current.tex"))
+            if not path.name.startswith("ZZ") and path.relative_to(ctx.root).as_posix() not in bundled]
+
+
+def is_structural(text: str) -> bool:
+    """A title, section or contents slide: it never counts as reusable content."""
+    return bool(STRUCTURAL_RE.search(deck_language.masked(text))
+                or {"contents", "section"}.intersection(deck_context.reasons(text)))
+
+
 def find_clusters(ctx: ProjectContext, *, usage=None) -> list[Cluster]:
     """Connected components per kind; each pair belongs to its strongest kind only."""
-    bundled = bundled_copies.read_manifest(ctx.root).get("manual", {}).get("files", {})
     codes = languages.project_languages(ctx).codes
     texts, words, own, hashes = {}, {}, {}, {}
-    for path in sorted(ctx.slides_dir.glob("*-current.tex")):
-        if path.name.startswith("ZZ") or path.relative_to(ctx.root).as_posix() in bundled:
-            continue
+    for path in user_slides(ctx):
         try:
             text = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        if (STRUCTURAL_RE.search(deck_language.masked(text))
-                or {"contents", "section"}.intersection(deck_context.reasons(text))):
+        if is_structural(text):
             continue
         slug = path.name[:-len(slide_language.CURRENT_SUFFIX)]
         slide_id = slide_language.bare_id(slug)

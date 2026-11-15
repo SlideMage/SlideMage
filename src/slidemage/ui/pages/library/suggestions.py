@@ -6,15 +6,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPixmap
-from PySide6.QtWidgets import QInputDialog, QMessageBox, QScrollArea, QVBoxLayout
+from PySide6.QtWidgets import QInputDialog, QMessageBox, QVBoxLayout
 
 from .... import alt_blocks, library_data, topic_blocks
 from ...background import run_in_background
 from ...kit.flow import FlowLayout
 from ...kit.tokens import SPACE
 from ...kit.widgets import Button, Card, Chip, Surface, caption, clear_layout, text_label
-from .pictures import load_picture
+from .shared import load_picture, picture_label, save_library, scroll_column
 
 
 @dataclass
@@ -30,7 +29,7 @@ def prepare_suggestions(ctx, suggestions, groups, resolver, language):
     rows = {row.id: row for row in groups}
     prepared = []
     for suggestion in suggestions:
-        slides = [(rows[i], load_picture(ctx, rows[i], resolver, language)) for i in suggestion.ids[:5] if i in rows]
+        slides = [(rows[i], load_picture(ctx, rows[i].slug, rows[i].decks, resolver, language)) for i in suggestion.ids[:5] if i in rows]
         item = PreparedSuggestion(suggestion, slides)
         if suggestion.kind == "run":
             try:
@@ -62,15 +61,8 @@ class SuggestionsView(Surface):
         body.addWidget(self.pool_hint)
         self.status = caption("Finding suggestions…")
         body.addWidget(self.status)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        content = Surface()
-        self.cards = QVBoxLayout(content)
-        self.cards.setContentsMargins(0, 0, 0, 0)
-        self.cards.setSpacing(SPACE.lg)
+        scroll, self.cards = scroll_column(SPACE.lg)
         self.cards.setAlignment(Qt.AlignmentFlag.AlignTop)
-        scroll.setWidget(content)
         body.addWidget(scroll, 1)
 
     def set_suggestions(self, prepared, *, pool_empty):
@@ -117,13 +109,7 @@ class SuggestionsView(Surface):
                     member = Surface()
                     column = QVBoxLayout(member)
                     column.setContentsMargins(0, 0, 0, 0)
-                    picture = text_label("No render yet", "secondary")
-                    picture.setFixedSize(132, 75)
-                    picture.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    if not image.isNull():
-                        picture.setPixmap(QPixmap.fromImage(image).scaled(
-                            picture.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-                    column.addWidget(picture)
+                    column.addWidget(picture_label(image, 132, 75))
                     label = caption(row.title)
                     label.setTextFormat(Qt.TextFormat.PlainText)
                     label.setFixedWidth(132)
@@ -143,21 +129,14 @@ class SuggestionsView(Surface):
     def _mark(self, slide_id, reusable):
         if self._write is not None:
             return
-        ctx = self.app.project
 
-        def write():
-            return library_data.update(ctx, lambda data: library_data.change_members(
-                data, {slide_id}, "pool" if reusable else "not_reusable"))
-
-        def done(_result, error):
+        def done(data):
             self._write = None
-            if error is not None:
-                self.status.setText(f"Could not save library: {error}")
-                self.status.show()
-            else:
+            if data is not None:
                 self.changed.emit()
 
-        self._write = run_in_background(write, done, parent=self)
+        self._write = save_library(self, lambda data: library_data.change_members(
+            data, {slide_id}, "pool" if reusable else "not_reusable"), done)
 
     def _make_block(self, prepared):
         if self._write is not None:
@@ -180,10 +159,7 @@ class SuggestionsView(Surface):
                 return
             paths = {deck.path for deck, _calls in suggestion.occurrences}
             # Old one-file snapshots must not undo part of this multi-file conversion.
-            slide_list = self.app.slide_list
-            for path in paths:
-                slide_list._undo.pop(path, None)
-            slide_list._undo_order = [(owner, path) for owner, path in slide_list._undo_order if path not in paths]
+            self.app.slide_list.forget_undo(paths)
             self.app.after_deck_edit(next(iter(paths)), f"Linked shared run to block {target.stem}")
             self.changed.emit()
 

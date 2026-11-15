@@ -606,10 +606,10 @@ def test_an_edit_rescans_and_the_slide_list_keeps_what_it_takes_to_undo_it(windo
     monkeypatch.setattr(window, "resync_deck", rescans.append)
     window.after_deck_edit(WORK.path, "Removed x", previous_text="the text before")
     assert rescans == [WORK.path]
-    assert window.slide_list._undo[WORK.path] == ["the text before"]
+    assert window.slide_list._undo == [(WORK.path, "the text before")]
     assert not window.slide_list.toast.isHidden()
     window.after_deck_edit(WORK.path, "Undid last change")        # an undo has nothing to undo itself
-    assert window.slide_list._undo[WORK.path] == ["the text before"]
+    assert window.slide_list._undo == [(WORK.path, "the text before")]
 
 
 def test_the_slide_lists_slides_are_compiled_as_the_frames_they_have_in_the_last_pdf(ctx, window, monkeypatch):

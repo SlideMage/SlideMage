@@ -1023,7 +1023,8 @@ def _call_placements(deck: Deck) -> list[tuple[int, int, str, str]]:
     places = [(c.line_start, c.line_end, c.indent, f"{i}. {c.id_slug}")
               for i, c in enumerate(calls, 1)]
     text = masked(deck.text)
-    begin = deck.preamble_end if deck.preamble_end is not None else 0
+    # Plugins pass their own deck objects (plugin_api.Deck), which need not carry preamble_end.
+    begin = getattr(deck, "preamble_end", None) or 0
     for match in INPUT_RE.finditer(text, begin):
         start, end = line_span(deck.text, match.start(), match.end())
         indent = deck.text[start:match.start()]

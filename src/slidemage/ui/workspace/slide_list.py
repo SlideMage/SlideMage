@@ -103,8 +103,7 @@ class SlideList(QWidget):
         self._resolved: Optional[deck_outline.Outline] = None   # what `_outline` was resolved from (state.outline)
         self._deck_path: Optional[Path] = None
         self._returning: Optional[DeckWork] = None     # show_deck(): the deck's work the next rebuild restores
-        self._undo: dict[Path, list[str]] = {}
-        self._undo_order: list[tuple[Path, Path]] = []   # displayed deck, edited file
+        self._undo: list[tuple[Path, str]] = []   # (edited file, its text before), oldest first
         self.blocks: dict[Path, str] = {}   # block file -> title, for the block rows shown
         self._block_work = None
         self.setMinimumWidth(MIN_WIDTH)
@@ -835,12 +834,22 @@ class SlideList(QWidget):
 
     def show_in_library(self, *, block: str | None = None) -> None:
         row = self._current_row()
-        block = block or (row.deck_call.block if row else None)
-        show = getattr(self.app, "show_library", None)
-        if show is not None:
-            show(block=block)
-        else:
-            self.toast.show_message("The Library is not available in this build yet.")
+        self.app.show_library(block=block or (row.deck_call.block if row else None))
+
+    def focus(self, block: str | None = None, slide_ids: set[str] | None = None) -> None:
+        """Focus the first slide of `block` that shows one of `slide_ids`; with no ids, select the whole block call."""
+        row = next((r for r in self.rows()
+                    if (block is None or r.deck_call.block == block)
+                    and (slide_ids is None or r.call.id in slide_ids or r.deck_call.id in slide_ids
+                         or slide_ids.intersection(r.related_ids))), None)
+        if row is None:
+            return
+        self.state.set_focused_slide(row.call.id, occurrence_key=row.key)
+        if slide_ids is None:
+            call = row.deck_call
+            for item in self.tree.slide_items():
+                other = self.tree.data_of(item).deck_call
+                item.setSelected((other.source, other.call_start) == (call.source, call.call_start))
 
     def _popup(self, menu: PopoverMenu, anchor: QWidget, pos: Optional[QPoint] = None) -> None:
         menu.closed.connect(menu.deleteLater)
@@ -1025,8 +1034,7 @@ class SlideList(QWidget):
             if error is not None:
                 QMessageBox.critical(self, "Make block failed", str(error))
                 return
-            self._undo.pop(deck.path, None)
-            self._undo_order = [(owner, path) for owner, path in self._undo_order if path != deck.path]
+            self.forget_undo({deck.path})
             self.app.after_deck_edit(deck.path, f"Linked section {section.title} to block {target.stem}")
 
         def approve(result, error):
@@ -1152,40 +1160,32 @@ class SlideList(QWidget):
         if previous_text is None:
             self.toast.show_message(summary)
             return
-        stack = self._undo.setdefault(deck_path, [])
-        if len(stack) == UNDO_LIMIT:
-            oldest = next(i for i, (_, path) in enumerate(self._undo_order) if path == deck_path)
-            self._undo_order.pop(oldest)
-        stack.append(previous_text)
-        del stack[:-UNDO_LIMIT]
-        self._undo_order.append((self.deck.path, deck_path))
+        mine = [i for i, (path, _text) in enumerate(self._undo) if path == deck_path]
+        if len(mine) == UNDO_LIMIT:
+            del self._undo[mine[0]]
+        self._undo.append((deck_path, previous_text))
         self.toast.show_message(summary, [("undo", "Undo")])
+
+    def forget_undo(self, paths) -> None:
+        """Drop the undo entries of files a multi-file change rewrote: an old snapshot must not undo part of it."""
+        self._undo = [(path, text) for path, text in self._undo if path not in paths]
 
     def undo(self) -> None:
         deck = self.deck
         if deck is None:
             return
-        sources = {r.deck_call.source or deck.path for r in self.rows()}
-        seen = set()
-        for index in range(len(self._undo_order) - 1, -1, -1):
-            owner, path = self._undo_order[index]
-            if path not in seen and (owner == deck.path or path in sources):
-                break
-            seen.add(path)
-        else:
+        paths = {deck.path, *(r.deck_call.source for r in self.rows() if r.deck_call.source)}
+        index = next((i for i in reversed(range(len(self._undo))) if self._undo[i][0] in paths), None)
+        if index is None:
             return
-        stack = self._undo.get(path)
-        if not stack:
-            return
-        previous = stack.pop()
+        path, previous = self._undo[index]
         try:
             expected = deck.text if path == deck.path else previous.after
             deck_editor.restore_deck_text(path, expected, previous)
         except StaleFileError as exc:
-            stack.append(previous)
             QMessageBox.critical(self, "Undo failed", str(exc))
             return
-        self._undo_order.pop(index)
+        del self._undo[index]
         slide = getattr(previous, "slide", None)
         note = ""
         if slide is not None and not reveal_steps.restore_final_flag(self.app.project, *slide):
