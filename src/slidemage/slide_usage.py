@@ -145,6 +145,13 @@ def set_pin(deck_path: Path, expected_text: str, calls: list[deck_editor.SlideCa
     \\omitslideversion and back; a call that is pinned already moves to another
     version. A call of a kind with no pinned form is left alone. As one edit,
     through the deck editor's stale-checked rewrite; returns the new deck text."""
+    if any(getattr(call, "source", deck_path) != deck_path for call in calls):
+        raise ValueError("Pin this slide in its topic block's source file, not in the deck that links it.")
+    from . import deck_language
+    from .deck_scan import deck_from_text
+
+    deck = deck_from_text(deck_path, expected_text)
+    calls = list({c.call_start: c for c in (deck_language.source_call(deck, c) for c in calls)}.values())
     text = expected_text
     for call in sorted(calls, key=lambda c: c.call_start, reverse=True):
         if version is None:

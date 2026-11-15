@@ -81,6 +81,10 @@ def _insertion(ctx: ToolContext, deck: Deck, after: str) -> tuple[int, str, str]
         anchor = next((c for c in deck_language.active_calls(deck) if after in (c.id, c.id_slug)), None)
         if anchor is None:
             raise ToolError(f"The deck has no slide '{after}'. list_slides shows the ids.")
+        if anchor.source != deck.path:
+            # Expanded spans belong to the include line: insertion stays outside the block.
+            return (anchor.line_end, deck.text[anchor.line_start:anchor.call_start],
+                    f"after topic block {anchor.block or anchor.source.stem} in {deck.name}")
         return anchor.line_end, anchor.indent, f"after {anchor.id} in {deck.name}"
     insert_at, indent = deck_editor.append_position(deck)
     return insert_at, indent, f"at the end of {deck.name}"

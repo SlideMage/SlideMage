@@ -48,7 +48,7 @@ class FakeWindow:
         self.edits = []
 
     def after_deck_edit(self, path, summary, previous_text=None):
-        text = read(path)
+        text = read(self.state.deck.path)
         self.state.set_deck(replace(self.state.deck, text=text, chapters=parse_chapters(text)))
         self.list.rebuild()
         self.list.deck_edited(path, summary, previous_text)

@@ -14,6 +14,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton
 
 from ....deck_editor import VISIBILITY_MACROS, SlideCall, set_calls_visibility
+from .... import deck_language, deck_scan
 from ...kit.tokens import SPACE
 from ...kit import kit_qss as q
 from ..menus import VIEW_LABELS
@@ -91,9 +92,12 @@ class Visibility(SidePanel):
         return slot
 
     def _set(self, call: SlideCall, view: str, visible: bool) -> None:
+        source = getattr(call, "source", self.state.deck.path)
         done = self.actions.edit_deck(
             "Change failed",
             f"{'Showed' if visible else 'Hid'} {call.id_slug} in {VIEW_LABELS[view]} of {self.state.deck.name}",
-            lambda path, deck_text: set_calls_visibility(path, deck_text, [call], view, visible))
+            lambda path, deck_text: set_calls_visibility(
+                path, deck_text, [deck_language.source_call(deck_scan.deck_from_text(path, deck_text), call)],
+                view, visible), source=source)
         if not done:
             self.refresh()   # refused: the cell goes back to what the deck says

@@ -161,6 +161,19 @@ def active_calls(deck: Deck) -> list[ExpandedCall]:
     return _resolve_calls(deck)[2]
 
 
+def source_call(deck: Deck, call: SlideCall) -> SlideCall:
+    """Locate an expanded occurrence in the physical file being edited."""
+    if not isinstance(call, ExpandedCall):
+        return call
+    if call.source != deck.path:
+        raise ValueError("Edit this call in its source file, not in the deck that links it.")
+    for physical in calls_in(deck.text, deck.chapters):
+        if (deck.text.count("\n", 0, physical.call_start) + 1 == call.source_line
+                and (physical.macro, physical.id_slug) == (call.macro, call.id_slug)):
+            return physical
+    raise ValueError("The slide call changed. Refresh the slide list and try again.")
+
+
 def deck_slots(ctx: ProjectContext, deck: Deck, language: str, *,
                links: slide_language.TranslationLinks | None = None) -> list[SlideSlot]:
     return slots(ctx, expanded_calls(ctx, deck), language, links=links)

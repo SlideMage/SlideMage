@@ -502,6 +502,8 @@ def step_block(text: str, calls: list[SlideCall], call: SlideCall) -> list[Slide
     r"""The calls that together decide which versions typeset which steps at `call`'s place: for a \slidestep, the
     run of \slidestep calls of the same slide next to each other (alternatives: each version has one of them), with
     only blank or comment lines between; any other call stands alone."""
+    if getattr(call, "index", None) is not None:
+        raise ValueError("Edit reveal steps in the topic block's source file.")
     if call.macro != "slidestep":
         return [call]
     index = next(i for i, c in enumerate(calls) if c.call_start == call.call_start)
@@ -509,6 +511,7 @@ def step_block(text: str, calls: list[SlideCall], call: SlideCall) -> list[Slide
     def joined(first: SlideCall, second: SlideCall) -> bool:
         between = text[first.line_end:second.line_start]
         return (first.macro == second.macro == "slidestep" and first.id_slug == second.id_slug == call.id_slug
+                and getattr(first, "source", None) == getattr(second, "source", None)
                 and all(_BLANK_OR_COMMENT_RE.match(line) for line in between.split("\n")))
 
     low = index
@@ -522,6 +525,8 @@ def step_block(text: str, calls: list[SlideCall], call: SlideCall) -> list[Slide
 
 def step_edit_problem(call: SlideCall, view: str) -> Optional[str]:
     r"""Why the steps of `call` cannot be changed for `view` from the step bar, or None when they can."""
+    if getattr(call, "index", None) is not None:
+        return "Edit reveal steps in the topic block's source file."
     if not call.editable:
         return call.readonly_reason or "This call cannot be edited."
     if call.macro not in STEP_EDIT_MACROS:

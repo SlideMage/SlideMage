@@ -39,7 +39,7 @@ from PySide6.QtWidgets import (
 )
 
 from ... import timing
-from ... import ai_review, deck_editor, deck_outline, preview_thumbnails, reveal_steps
+from ... import ai_review, deck_editor, deck_language, deck_outline, deck_scan, preview_thumbnails, reveal_steps
 from ...deck_editor import BASE_MACROS, StaleFileError, VERSIONED_MACROS
 from ...deck_outline import SectionRow, SlideRow
 from ...deck_scan import Chapter, Deck
@@ -51,10 +51,11 @@ from ..kit import kit_qss as q
 from ..kit.theme import ThemeManager
 from ..kit.widgets import Button, IconButton, PopoverMenu, Toast
 from .menus import VIEW_LABELS, add_commands
-from .slide_tree import SlideTree, tooltip_text
+from .slide_tree import BlockRow, SlideTree, tooltip_text
 from .state import VIEWS, DeckWork, WorkspaceState
 
 UNDO_LIMIT = 20
+BLOCK_MOVE_REFUSED = "Moving a slide out of a topic block is refused. Unlink the block first."
 
 
 class DeckUndo(str):
@@ -62,6 +63,7 @@ class DeckUndo(str):
     compares and stores as the plain text, and Undo puts the slide back too."""
 
     slide: Optional[tuple[Path, str, str]] = None
+    after: Optional[str] = None
 WIDTH = 280   # the default width of the column
 MIN_WIDTH = 220
 MAX_WIDTH = 520
@@ -102,6 +104,8 @@ class SlideList(QWidget):
         self._deck_path: Optional[Path] = None
         self._returning: Optional[DeckWork] = None     # show_deck(): the deck's work the next rebuild restores
         self._undo: dict[Path, list[str]] = {}
+        self._undo_order: list[tuple[Path, Path]] = []   # displayed deck, edited file
+        self.blocks: dict[Path, tuple[str, list[str]]] = {}
         self.setMinimumWidth(MIN_WIDTH)
         self.setMaximumWidth(MAX_WIDTH)
 
@@ -135,6 +139,7 @@ class SlideList(QWidget):
         self.tree.delegate.renamed.connect(self._rename_section)
         self.tree.delegate.reviewed.connect(
             lambda row: self.mark_reviewed([self.app.project.slides_dir / row.call.source_filename]))
+        self.tree.block_menu.connect(self._block_menu)
         self.placeholder = self._build_placeholder()
         self.stack = QStackedWidget()           # the list, or the placeholder of a tab with no deck (tab-contexts.md section 5)
         self.stack.addWidget(self.tree)
@@ -544,6 +549,20 @@ class SlideList(QWidget):
                 if deck else None)
         self.state.outline = self._resolved
         self._outline = self._resolved.sections if self._resolved else []
+        sources = {r.deck_call.source for r in self.rows() if getattr(r.deck_call, "block", None)}
+        self.blocks = {}
+        for source in sources:
+            title = next((line.partition(":")[2].strip() for line in
+                          deck_scan.read_deck(source).text.splitlines()
+                          if line.startswith("%% SlideMage block:")), "") or source.stem
+            self.blocks[source] = (title, [])
+        if sources:
+            decks = {d.path: d for d in deck_scan.scan_decks(self.app.project)}
+            decks[deck.path] = deck
+            for used_deck in decks.values():
+                dependencies = set(deck_language.expand_fragments(used_deck)[1])
+                for source in sources & dependencies:
+                    self.blocks[source][1].append(used_deck.name)
         # Keep the images on show while the background pass revalidates them.
         if previous_rows:
             self._set_outline([replace(section, rows=[
@@ -558,7 +577,8 @@ class SlideList(QWidget):
         self._thumbnail_timer.stop()
         self.tree.blockSignals(True)
         with timing.span("slide_list.populate"):
-            self.tree.populate(self._outline, VIEW_LABELS[self.state.view], self.state.language)
+            self.tree.populate(self._outline, VIEW_LABELS[self.state.view], self.state.language,
+                               {path: title for path, (title, _) in self.blocks.items()})
         if deck and self._background_thumbnails:
             with timing.span("slide_list.queue_previews"):
                 self._queue_preview_images(self._outline)
@@ -597,10 +617,19 @@ class SlideList(QWidget):
             shown = 0
             for i in range(head.childCount()):
                 row = self.tree.data_of(head.child(i))
+                if isinstance(row, BlockRow):
+                    continue
                 hit = all(w in f"{row.call.id_slug} {row.deck_call.id_slug} {row.title}".lower() for w in words)
                 hit = hit and (not self.review_filter.isChecked() or row.unreviewed)
                 head.child(i).setHidden(not hit)
                 shown += hit
+            for i in range(head.childCount()):
+                item = head.child(i)
+                block = self.tree.data_of(item)
+                if isinstance(block, BlockRow):
+                    keys = {r.key for r in block.rows}
+                    item.setHidden(not any(not child.isHidden() for child in self.tree.slide_items()
+                                           if self.tree.data_of(child).key in keys))
             head.setHidden((bool(words) or self.review_filter.isChecked()) and not shown)
             matches += shown
         self.tree.show_sections(all_open=bool(words) or self.review_filter.isChecked())
@@ -749,6 +778,16 @@ class SlideList(QWidget):
             return
         neighbor = items[position + delta]
         call = current.deck_call
+        if (getattr(call, "source", deck.path) != deck.path or
+                isinstance(neighbor, SlideRow) and getattr(neighbor.deck_call, "source", deck.path) != deck.path):
+            if (not isinstance(neighbor, SlideRow) or call.source != neighbor.deck_call.source
+                    or call.call_start != neighbor.deck_call.call_start):
+                self.toast.show_message(BLOCK_MOVE_REFUSED)
+                return
+            self.edit_calls("Move failed", f"Moved {call.id_slug} in {call.source.stem}",
+                            [call, neighbor.deck_call],
+                            lambda path, text, calls: deck_editor.move_slide_call(path, text, *calls))
+            return
         direction = "up" if delta < 0 else "down"
         if isinstance(neighbor, Chapter):
             move = lambda path, text: deck_editor.move_slide_past_section(path, text, call, neighbor)  # noqa: E731
@@ -761,6 +800,9 @@ class SlideList(QWidget):
     def _on_context_menu(self, pos: QPoint) -> None:
         item = self.tree.itemAt(pos)
         data = self.tree.data_of(item)
+        if isinstance(data, BlockRow):
+            self._block_menu(data, pos)
+            return
         if isinstance(data, SlideRow):
             if not item.isSelected():
                 self.tree.setCurrentItem(item, 0, QItemSelectionModel.SelectionFlag.ClearAndSelect)
@@ -771,6 +813,20 @@ class SlideList(QWidget):
         else:
             return
         self._popup(menu, self.tree.viewport(), pos)
+
+    def _block_menu(self, block: BlockRow, pos: QPoint) -> None:
+        menu = PopoverMenu(self, min_width=220)
+        menu.add_header(block.title)
+        menu.add_item("library", "Show in Library")
+        menu.triggered.connect(lambda _key: self.show_in_library())
+        self._popup(menu, self.tree.viewport(), pos)
+
+    def show_in_library(self) -> None:
+        show = getattr(self.app, "show_library", None)   # the window's, once the Library page is merged
+        if show is not None:
+            show()
+        else:
+            self.toast.show_message("The Library is not available in this build yet.")
 
     def _popup(self, menu: PopoverMenu, anchor: QWidget, pos: Optional[QPoint] = None) -> None:
         menu.closed.connect(menu.deleteLater)
@@ -946,7 +1002,8 @@ class SlideList(QWidget):
             self.edit("Remove sections failed", f"Removed all {len(deck.chapters)} sections from {deck.name}",
                       lambda path, text: deck_editor.remove_all_sections(path, text, list(deck.chapters)))
         elif sheet.choice == WITH_SLIDES:
-            calls = list({c.identity: c for r in section.rows for c in (r.deck_call, *r.folded_calls)}.values())
+            calls = list({(c.line_start, c.line_end): c for r in section.rows
+                          for c in (r.deck_call, *r.folded_calls)}.values())
             self.edit("Remove section failed",
                       f"Removed section {section.title} and its {len(calls)} slide calls from {deck.name}",
                       lambda path, text: deck_editor.remove_section_and_calls(path, text, section.chapter, calls))
@@ -966,13 +1023,14 @@ class SlideList(QWidget):
     # -- edits ---------------------------------------------------------------------
 
     def edit(self, failed: str, summary: str, change: Callable[[Path, str], str],
-             cleanup: Optional[Callable[[], Optional[tuple[Path, str, str]]]] = None) -> bool:
+             cleanup: Optional[Callable[[], Optional[tuple[Path, str, str]]]] = None,
+             *, source: Optional[Path] = None) -> bool:
         """Run `change(deck path, deck text)` (a deck_editor function); on success the
         window rescans and calls deck_edited(). False when it was refused or changed nothing.
         `cleanup()` runs once the deck is written: it may change a slide the edit made redundant work in (a
         \\SMFinalStateForStudents no deck needs any longer) and says (path, text before, text after); Undo then
         takes that back with the deck edit."""
-        deck = self.deck
+        deck = deck_scan.read_deck(source) if source is not None and source != self.deck.path else self.deck
         previous = deck.text
         try:
             new = change(deck.path, previous)
@@ -981,14 +1039,30 @@ class SlideList(QWidget):
             return False
         if new == previous:
             return False
-        undo_text = previous
+        undo_text = DeckUndo(previous)
+        undo_text.after = new
         slide_change = cleanup() if cleanup is not None else None
         if slide_change is not None:
-            undo_text = DeckUndo(previous)
             undo_text.slide = slide_change
             summary += f" (and took \\SMFinalStateForStudents out of {slide_change[0].name}: no deck needs it now)"
         self.app.after_deck_edit(deck.path, summary, previous_text=undo_text)
         return True
+
+    def edit_calls(self, failed: str, summary: str, calls: list, change: Callable,
+                   cleanup: Optional[Callable] = None) -> bool:
+        """Route one file's occurrences to raw calls before invoking deck_editor."""
+        sources = {getattr(call, "source", self.deck.path) for call in calls}
+        if len(sources) != 1:
+            self.toast.show_message("Select slides from one source file at a time.")
+            return False
+        source = sources.pop()
+
+        def write(path, text):
+            deck = deck_scan.deck_from_text(path, text)
+            physical = {c.call_start: c for c in (deck_language.source_call(deck, c) for c in calls)}
+            return change(path, text, list(physical.values()))
+
+        return self.edit(failed, summary, write, cleanup, source=source)
 
     def _flag_cleanup(self, id_slugs: list[str]) -> Callable[[], Optional[tuple[Path, str, str]]]:
         """The `cleanup` of an edit that changed the calls of `id_slugs`: take a \\SMFinalStateForStudents out of
@@ -1014,27 +1088,44 @@ class SlideList(QWidget):
             self.toast.show_message(summary)
             return
         stack = self._undo.setdefault(deck_path, [])
+        if len(stack) == UNDO_LIMIT:
+            oldest = next(i for i, (_, path) in enumerate(self._undo_order) if path == deck_path)
+            self._undo_order.pop(oldest)
         stack.append(previous_text)
         del stack[:-UNDO_LIMIT]
+        self._undo_order.append((self.deck.path, deck_path))
         self.toast.show_message(summary, [("undo", "Undo")])
 
     def undo(self) -> None:
         deck = self.deck
-        stack = self._undo.get(deck.path) if deck else None
+        if deck is None:
+            return
+        sources = {getattr(r.deck_call, "source", deck.path) for r in self.rows()}
+        seen = set()
+        for index in range(len(self._undo_order) - 1, -1, -1):
+            owner, path = self._undo_order[index]
+            if path not in seen and (owner == deck.path or path in sources):
+                break
+            seen.add(path)
+        else:
+            return
+        stack = self._undo.get(path)
         if not stack:
             return
         previous = stack.pop()
         try:
-            deck_editor.restore_deck_text(deck.path, deck.text, previous)
+            expected = deck.text if path == deck.path else previous.after
+            deck_editor.restore_deck_text(path, expected, previous)
         except StaleFileError as exc:
             stack.append(previous)
             QMessageBox.critical(self, "Undo failed", str(exc))
             return
+        self._undo_order.pop(index)
         slide = getattr(previous, "slide", None)
         note = ""
         if slide is not None and not reveal_steps.restore_final_flag(self.app.project, *slide):
             note = f" ({slide[0].name} changed since: its \\SMFinalStateForStudents stays out)"
-        self.app.after_deck_edit(deck.path, f"Undid last change to {deck.name}{note}")
+        self.app.after_deck_edit(path, f"Undid last change to {path.stem}{note}")
 
     def _change_variant(self, row: SlideRow, macro: str, version: Optional[str]) -> None:
         call = row.deck_call
@@ -1047,20 +1138,20 @@ class SlideList(QWidget):
             if not accepted:
                 return
         conditions = call.conditions if macro in deck_editor.CONDITIONAL_MACROS else None
-        self.edit(
+        self.edit_calls(
             "Change variant failed",
             f"Changed {call.id_slug} in {self.deck.name}: \\{call.macro} -> \\{macro}",
-            lambda path, text: deck_editor.change_slide_call_variant(
-                path, text, call, macro, version, conditions, steps),
+            [call], lambda path, text, calls: deck_editor.change_slide_call_variant(
+                path, text, calls[0], macro, version, conditions, steps),
             cleanup=self._flag_cleanup([call.id_slug]))
 
     def _set_visibility(self, rows: list[SlideRow], view: str, visible: bool) -> None:
         calls = [r.deck_call for r in rows]
         what = ", ".join(c.id_slug for c in calls)
-        self.edit(
+        self.edit_calls(
             "Change failed",
             f"{'Showed' if visible else 'Hid'} {what} in {VIEW_LABELS[view]} of {self.deck.name}",
-            lambda path, text: deck_editor.set_calls_visibility(path, text, calls, view, visible),
+            calls, lambda path, text, physical: deck_editor.set_calls_visibility(path, text, physical, view, visible),
             cleanup=self._flag_cleanup([c.id_slug for c in calls]))
 
     def _bulk_toggle_visibility(self) -> None:
@@ -1073,8 +1164,8 @@ class SlideList(QWidget):
             return
         calls = list({c.identity: c for r in rows for c in (r.deck_call, *r.folded_calls)}.values())
         what = calls[0].id_slug if len(calls) == 1 else f"{len(calls)} slides ({', '.join(c.id_slug for c in calls)})"
-        self.edit("Remove failed", f"Removed {what} from {self.deck.name}",
-                   lambda path, text: deck_editor.remove_slide_calls(path, text, calls))
+        self.edit_calls("Remove failed", f"Removed {what} from {self.deck.name}", calls,
+                        lambda path, text, physical: deck_editor.remove_slide_calls(path, text, physical))
 
     def _end_point(self) -> int:
         return deck_editor.end_insert_point(self.deck.text)
@@ -1114,6 +1205,16 @@ class SlideList(QWidget):
 
     def _open_add(self, insert_at: int, indent: str, where: str, slide: Optional[str], source: str = "new",
                   target: Optional[str] = None) -> None:
+        for row in self.rows():
+            call = row.deck_call
+            if getattr(call, "source", self.deck.path) != self.deck.path:
+                if call.line_start < insert_at < call.line_end:
+                    self.toast.show_message("Insert before or after the topic block, not inside it.")
+                    return
+                if insert_at in (call.line_start, call.line_end):
+                    where = f"{'before' if insert_at == call.line_start else 'after'} topic block {call.block or call.source.stem}"
+                    indent = self.deck.text[call.line_start:call.call_start]
+                    break
         self.app.open_add_slide_dialog(self.deck, insert_at, indent, where=where, source=source, slide=slide,
                                        target=target)
 
@@ -1158,6 +1259,9 @@ class SlideList(QWidget):
         self._move_slides(rows, insert_at, f"to {section.title}")
 
     def _move_slides(self, rows: list[SlideRow], insert_at: int, where: str) -> None:
+        if any(getattr(r.deck_call, "source", self.deck.path) != self.deck.path for r in rows):
+            self.toast.show_message(BLOCK_MOVE_REFUSED)
+            return
         calls = [r.deck_call for r in rows]
         self.edit("Move failed", f"Moved {', '.join(c.id_slug for c in calls)} {where}",
                    lambda path, text: deck_editor.move_slide_calls(path, text, calls, insert_at))
@@ -1172,6 +1276,26 @@ class SlideList(QWidget):
             return
         if isinstance(sources[0], SectionRow):
             self._move_section_to(sources[0], target)
+            return
+        target_call = target.deck_call if isinstance(target, SlideRow) else None
+        source_calls = [r.deck_call for r in sources]
+        if any(getattr(c, "source", deck.path) != deck.path for c in
+               source_calls + ([target_call] if target_call else [])):
+            if (target_call is None or any(
+                    (getattr(c, "source", deck.path), c.call_start) !=
+                    (target_call.source, target_call.call_start) for c in source_calls)):
+                self.toast.show_message(BLOCK_MOVE_REFUSED)
+                return
+
+            def move(path, text, calls):
+                anchor = deck_language.source_call(deck_scan.deck_from_text(path, text), target_call)
+                insert_at = anchor.line_start if position == ABOVE_ITEM else anchor.line_end
+                return deck_editor.move_slide_calls(path, text, calls, insert_at)
+
+            self.edit_calls("Move failed", f"Moved slides in {target_call.source.stem}", source_calls, move)
+            return
+        if isinstance(target, BlockRow):
+            self.toast.show_message(BLOCK_MOVE_REFUSED)
             return
         if isinstance(target, SlideRow):
             insert_at = target.call.line_start if position == ABOVE_ITEM else target.call.line_end
