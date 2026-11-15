@@ -109,7 +109,7 @@ class AddSlideSheet(ModalSheet):
             self._blocks[path.stem] = (title, metadata.get("Topics", ""), len(calls), set())
             self._pool.update(self._groups.get(call.id, call.id) for call in calls)
         for other in deck_scan.scan_decks(ctx) if self._blocks else ():
-            for key in {call.block for call in deck_language.expanded_calls(ctx, other)}:
+            for key in {call.block for call in deck_language.active_calls(other)}:
                 if key in self._blocks:
                     self._blocks[key][3].add(other.path)
 

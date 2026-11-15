@@ -126,7 +126,7 @@ def suggestions(ctx: ProjectContext) -> list[Suggestion]:
         if deck.archived or deck.is_test_deck or deck_scan.TAG_MANUAL in deck.groups:
             continue
         segment = []
-        for call in deck_language.expanded_calls(ctx, deck):
+        for call in deck_language.active_calls(deck):
             original = ids.get(call.id)
             eligible = original is not None and original not in excluded
             if eligible:

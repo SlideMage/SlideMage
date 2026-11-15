@@ -202,7 +202,7 @@ def read_blocks(ctx: ProjectContext) -> dict[str, TopicBlock]:
             [t.strip() for t in metadata.get("Topics", "").split(",") if t.strip()],
             metadata.get("Description", ""), deck_language.calls_in(deck_language.masked(text), []))
     for deck in scan_decks(ctx) if blocks else ():
-        for key in {c.block for c in deck_language.expanded_calls(ctx, deck)}:
+        for key in {c.block for c in deck_language.active_calls(deck)}:
             if key in blocks:
                 blocks[key].decks.append(deck)
     return blocks

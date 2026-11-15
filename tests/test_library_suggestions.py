@@ -46,7 +46,7 @@ def test_shared_run_and_single(tmp_path):
     changed = deck_scan.read_deck(second)
     with pytest.raises(ValueError, match="do not match exactly"):
         topic_blocks.prepare_run_block(ctx, [run.occurrences[0],
-            (changed, [c for c in deck_language.expanded_calls(ctx, changed)
+            (changed, [c for c in deck_language.active_calls(changed)
                        if c.id in run.ids])], run.title)
     with pytest.raises(StaleFileError):
         topic_blocks.make_run_block(ctx, run.occurrences, run.title, proposal)
