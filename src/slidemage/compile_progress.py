@@ -32,7 +32,7 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
-from . import compile_passes, latex_lint, project
+from . import compile_passes, project
 from .compile_log import (
     COMPILING_RE as _COMPILING_RE,
     FAIL_PREFIX_RE as _FAIL_RE,
@@ -45,7 +45,6 @@ from .compile_log import (
     SKIPPED_RE as _SKIPPED_RE,
     STOPPED_RE as _STOPPED_RE,
 )
-from .tex_source import INPUT_RE, masked_same_length
 
 PASSES_WITH_BIBLIOGRAPHY = 4
 PASSES_WITHOUT_BIBLIOGRAPHY = 3
@@ -88,22 +87,12 @@ def count_job_slides(ctx: project.ProjectContext, deck, version: Optional[str], 
     from . import deck_language
     from .deck_settings import read_settings
     language = (language or read_settings(text).language).upper()
-    resolved_deck, _inputs = deck_language.compile_deck(ctx, deck, language)
-    for slot in deck_language.deck_slots(ctx, resolved_deck, language):
+    for slot in deck_language.deck_slots(ctx, deck, language):
         call = slot.call
         if chapter is not None and (call.chapter is None or call.chapter.order != chapter.order):
             continue
         if call.included_in(version):
             total += 1
-    if deck.preamble_end is not None and resolved_deck.text == text:
-        body = masked_same_length(text)[deck.preamble_end:]
-        for m in INPUT_RE.finditer(body):
-            name = m.group(1).strip()
-            frag = ctx.decks_dir / (name if name.endswith(".tex") else name + ".tex")
-            if frag.is_file():
-                frag_text = latex_lint.read_source(frag) or ""
-                total += sum(1 for s in deck_language.slots(ctx, deck_language.calls_in(frag_text, []), language)
-                             if s.call.included_in(version))
     return total
 
 

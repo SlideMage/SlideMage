@@ -23,7 +23,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from . import deck_editor, deck_settings, languages, project
+from . import deck_language, deck_settings, languages, project
 from .deck_editor import SlideCall
 from .deck_scan import Deck
 from .fileio import atomic_write
@@ -81,9 +81,7 @@ def _sections(deck: Deck, version: str = "instructor") -> list[tuple[int, str, l
     # the place its \hypertarget{} also belongs to.
     calls = []
     step_ids: set[str] = set()
-    for c in deck_editor.parse_slide_calls(deck):
-        if deck_editor.is_commented_out(deck.text, c):
-            continue
+    for c in deck_language.active_calls(deck):
         if not c.included_in(version):
             continue
         if c.macro == "slidestep":

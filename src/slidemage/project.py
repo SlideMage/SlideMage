@@ -614,6 +614,7 @@ class ProjectContext:
     slides_dir = _Under("slides")
     slide_backups_dir = _Under("slides", ".backups")
     decks_dir = _Under("decks")
+    blocks_dir = _Under("blocks")
     archive_dir = _Under("decks", "archive")
     media_dir = _Under("media")
     snippets_dir = _Under("snippets")

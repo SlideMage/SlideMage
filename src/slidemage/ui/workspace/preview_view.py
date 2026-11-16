@@ -40,7 +40,7 @@ from PySide6.QtCore import QPointF, QRectF, QSize, Qt, Signal, QTimer
 from PySide6.QtGui import QColor, QImage, QKeySequence, QPainter, QPixmap, QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QInputDialog, QLabel, QMessageBox, QVBoxLayout, QWidget
 
-from ... import (deck_context, deck_editor, languages, latex_lint, render_lookup, reveal_steps, slide_preview, slide_snapshot, slide_source,
+from ... import (deck_context, deck_editor, deck_language, languages, latex_lint, render_lookup, reveal_steps, slide_preview, slide_snapshot, slide_source,
                  slide_versioning, timing)
 from ...ai.workspace import WorkspaceContext
 from ...ai.tools.slidemage import slide_target
@@ -49,6 +49,7 @@ from ...fileio import text_sha256
 from ...preview_target import PreviewTarget
 from ...preview_requests import PreviewRequest, RenderOptions, RenderRequest, RenderService, SourceRevision
 from ...preview_metrics import PreviewMetrics
+from ...slide_usage import deck_calls, decks_by
 from ...slide_language import MULT, LanguageBadge, TranslationLink, own_language, translation_group
 from ...step_renders import BACKGROUND, FOREGROUND, StepRenderQueue
 from ..dialogs.transcript_preview import show_transcript_preview
@@ -547,6 +548,19 @@ class PreviewPane(Surface):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(PANE_SIDE_MARGIN, SPACE.xl, PANE_SIDE_MARGIN, SPACE.xl)
         layout.setSpacing(SPACE.md)
+        self._block_notice = Surface()
+        self._block_notice.setObjectName(q.CHIP)
+        self._block_notice.setProperty("tone", "info")
+        notice = QHBoxLayout(self._block_notice)
+        notice.setContentsMargins(SPACE.lg, SPACE.md, SPACE.lg, SPACE.md)
+        self._block_text = QLabel()
+        self._block_text.setWordWrap(True)
+        notice.addWidget(self._block_text, 1)
+        library = Button("Show in Library", "secondary", compact=True)
+        library.clicked.connect(lambda: self.app.slide_list.show_in_library())
+        notice.addWidget(library)
+        self._block_notice.hide()
+        layout.addWidget(self._block_notice)
         self._chips = QHBoxLayout()
         self._chips.setSpacing(SPACE.sm)
         layout.addLayout(self._chips)
@@ -632,6 +646,15 @@ class PreviewPane(Surface):
             if target is not None:
                 self._settle.start()
         self._target, self._row, self._title, self._message = target, row, title, message
+        block = row.deck_call.block if row else None
+        self._block_notice.setVisible(bool(block))
+        if block:
+            block_title = self.app.slide_list.blocks.get(row.deck_call.source, block)
+            decks = [d.name for d in decks_by(deck_calls(self.app.project, getattr(self.app, "decks", None)), "block").get(block, [])]
+            count = len(decks)
+            self._block_text.setText(
+                f"From the topic block {block_title}. Reordering or removing it here changes the block, "
+                f"which {count} {'deck uses' if count == 1 else 'decks use'}: {', '.join(decks)}.")
         self._language = language
         self._shown_mtime = mtime
         self._refresh()
@@ -1273,11 +1296,16 @@ class PreviewPane(Surface):
         deck = self.state.deck
         if row is None or deck is None:
             return [], []
-        calls = deck_editor.parse_slide_calls(deck)
-        physical = row.deck_call
-        if not any(c.call_start == physical.call_start for c in calls):
+        resolution = deck_language.resolve(deck)
+        calls = resolution.calls
+        physical = next((c for c in calls if c.identity == row.deck_call.identity), None)
+        if physical is None:
             return calls, []
-        return calls, deck_editor.step_block(deck.text, calls, physical)
+        occurrence = [c.expanded for c in calls if c.source == physical.source and (
+            physical.index is None or c.call_start == physical.call_start)]
+        group = deck_editor.step_block(resolution.deck.text, occurrence, physical.expanded)
+        identities = {c.call_start for c in group}
+        return calls, [c for c in calls if c.expanded.call_start in identities]
 
     def _served_views(self) -> list[str]:
         """The versions the selected place of the deck typesets; all of them for a slide shown without the deck."""

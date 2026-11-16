@@ -356,3 +356,37 @@ def test_slidestep_slide_counts_as_used():
 
     unused = {p.name for p in unused_content.find_unused_slides(EXAMPLE_PROJECT)}
     assert "1mu-EN-Slidestep-Demo-current.tex" not in unused
+
+
+@pytest.mark.parametrize("folder", ["decks", "decks/archive"])
+def test_slideblock_expands_to_the_same_calls_as_inline(project, folder):
+    ctx = ProjectContext.at(project)
+    ctx.slide_ids_csv.write_text('"id"\n')
+    ctx.blocks_dir.mkdir()
+    calls = (
+        "\\slide{aaa-EN-One}\n"
+        "\\slideversion{aaa-EN-One}{1-0-0}\n"
+        "\\omitslide{bbb-EN-Two}\n"
+        "\\omitslideversion{aaa-EN-One}{1-0-0}\n"
+        "\\slidefinal{ccc-mult-Three}\n"
+        "\\conditionalslide[instructor]{bbb-EN-Two}\n"
+        "\\slidestep{ccc-mult-Three}[during-course]{1,2}"
+    )
+    block = ctx.blocks_dir / "topic.tex"
+    block.write_text(calls + "% trailing comment")
+    inline = deck(project, "\\section{Topic}\n" + calls + "\n")
+    path = project / folder / "linked.tex"
+    path.parent.mkdir(exist_ok=True)
+    path.write_text(inline.text.replace(calls, r"\slideblock{topic}"))
+    linked = deck_scan.read_deck(path)
+    before = path.read_bytes(), block.read_bytes()
+
+    expanded, dependencies = deck_language.expand_fragments(linked, strict_includes=True)
+
+    assert [(deck_language.call_text(c), c.chapter.title) for c in deck_language.active_calls(expanded)] == [
+        (deck_language.call_text(c), c.chapter.title) for c in deck_language.active_calls(inline)]
+    assert dependencies == [block]
+    for language in ("EN", "DE"):
+        assert [deck_language.call_text(s.call) for s in deck_language.deck_slots(ctx, expanded, language)] == [
+            deck_language.call_text(s.call) for s in deck_language.deck_slots(ctx, inline, language)]
+    assert (path.read_bytes(), block.read_bytes()) == before

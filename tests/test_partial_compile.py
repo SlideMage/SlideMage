@@ -124,11 +124,18 @@ def deck_on_record(tmp_path, monkeypatch, request):
     deck_text = DECK
     inputs = [deck_file]
     if getattr(request, "param", None):
-        fragment = deck_file.parent / "fragment.tex"
-        fragment.write_text("\\section{Fragment}\n% " + "padding " * 20 + "\n"
-                            "\\slide{1bb-EN-B}\n", encoding="utf-8")
-        inputs.append(fragment)
-        deck_text = DECK.replace("\\slide{1bb-EN-B}\n", f"\\{request.param}{{fragment}}\n")
+        if request.param == "slideblock":
+            fragment = root / "blocks" / "topic.tex"
+            fragment.parent.mkdir()
+            fragment.write_text("\\slide{1bb-EN-B}\n", encoding="utf-8")
+            target = "topic"
+        else:
+            fragment = deck_file.parent / "fragment.tex"
+            fragment.write_text("\\section{Fragment}\n% " + "padding " * 20 + "\n"
+                                "\\slide{1bb-EN-B}\n", encoding="utf-8")
+            inputs.append(fragment)
+            target = "fragment"
+        deck_text = DECK.replace("\\slide{1bb-EN-B}\n", f"\\{request.param}{{{target}}}\n")
     deck_file.write_text(deck_text, encoding="utf-8", newline="")
     for slug in ("1aa-EN-A", "1bb-EN-B", "1cc-EN-C"):
         f = root / "slides" / f"{slug}-current.tex"
@@ -308,3 +315,34 @@ def test_progress_bar_stops_after_a_page_compile():
     assert progress.active and progress.fraction is None          # busy bar
     update = progress.feed("==== PASS: t-D-instructor -> pdf/t-D-instructor.pdf ====")
     assert not progress.active and update[2] is True              # batch finished
+
+
+@pytest.mark.parametrize("deck_on_record", ["slideblock"], indirect=True)
+@pytest.mark.parametrize("content", ["% edited\n\\slide{1bb-EN-B}\n", "", None],
+                         ids=["comment", "emptied", "deleted"])
+def test_editing_a_block_requires_a_full_compile(deck_on_record, content):
+    from slidemage import deck_outline, preview_target
+    from slidemage.deck_editor import parse_slide_calls
+
+    _root, job, _pdf = deck_on_record
+    ctx = ctx_of(job)
+    block = ctx.blocks_dir / "topic.tex"
+    record = compile_records.read_record(ctx.build_dir, job.jobname)
+    assert str(block) in {e["path"] for e in record["inputs"]}
+    assert partial_compile.plan(ctx, job, "1").frames == [1]
+    outline = deck_outline.resolve_outline(ctx, job.deck, "instructor", "EN")
+    # A contents slide depends on the deck, including the block's calls.
+    (ctx.slides_dir / "1aa-EN-A-current.tex").write_text("\\tableofcontents\n", encoding="utf-8")
+    call = parse_slide_calls(job.deck)[0]
+    target = preview_target.for_call(ctx, job.deck, call, 1)
+    assert outline.matches(ctx, job.deck, "EN")
+    if content is None:
+        block.unlink()
+    else:
+        block.write_text(content, encoding="utf-8")
+    assert not outline.matches(ctx, job.deck, "EN")
+    assert preview_target.for_call(ctx, job.deck, call, 1).deck_hash != target.deck_hash
+    with pytest.raises(PartialError, match="topic.tex changed.*compile the whole deck"):
+        partial_compile.plan(ctx, job, "1")
+    with pytest.raises(PartialError, match="topic.tex changed.*compile the whole deck"):
+        partial_compile.frames_for_slides(ctx, job, ["1aa"])

@@ -34,6 +34,8 @@ class UsedInDecks(SidePanel):
         row.setToolTip("Open this deck at this slide")
         row.add_text(usage.deck.name + (" (archived)" if usage.deck.archived else ""), q.PANEL_MONO)
         how = f"{call_text(call)} · slide {position} of {usage.total}"
+        if call.block:
+            how += f" · via block {call.block}"
         hidden = [VIEW_LABELS[v] for v in VIEWS if not call.included_in(v)]
         if hidden:
             how += " · hidden in " + ", ".join(hidden)

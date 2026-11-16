@@ -29,7 +29,7 @@ from ....ai import project_watch
 from ..source_file import SAME
 
 POLL_MS = 1000
-STRUCTURE_FOLDERS = ("slides", "decks")
+STRUCTURE_FOLDERS = ("slides", "decks", "blocks")
 
 
 def _text(path: Path) -> str | None:
@@ -130,8 +130,12 @@ class DiskSync(ExternalEditWatch):
         if review_changed:
             window.refresh_ai_review()
         edited_decks, refresh = [], False
-        for path in (*changes.modified, *changes.added):
+        for path in (*changes.modified, *changes.added, *changes.removed):
             if path == window.project.ai_review_path:
+                continue
+            if path.parent == window.project.blocks_dir:
+                window.centre.disk_changed(path)
+                edited_decks.append(path)
                 continue
             outcome = window.centre.disk_changed(path)
             if outcome == SAME:
@@ -142,9 +146,9 @@ class DiskSync(ExternalEditWatch):
             if deck is None:
                 refresh = True
             elif _text(path) != deck.text:
-                edited_decks.append(deck)
+                edited_decks.append(deck.path)
         for deck in edited_decks:
-            window.after_deck_edit(deck.path, f"Claude Code changed {deck.path.name}")
+            window.after_deck_edit(deck, f"Claude Code changed {deck.name}")
         if edited_decks:
             return                              # after_deck_edit rescans and redraws everything
         if structural:

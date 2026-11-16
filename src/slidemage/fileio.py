@@ -87,6 +87,47 @@ def write_text_exact(path: Path, text: str, *, expected_text: str | None = None)
     atomic_write(path, text, expected_text=expected_text, mode=mode)
 
 
+def write_texts(edits: dict[Path, tuple[str | None, str]]) -> None:
+    """Validate all snapshots, then write in order; restore earlier writes on failure.
+
+    None means a new file, created exclusively. Callers order blocks before decks.
+    """
+    for path, (before, _after) in edits.items():
+        if (path.exists() if before is None else read_text_exact(path) != before):
+            raise StaleFileError(f"{path.name} changed on disk -- reload and retry.")
+    written = []
+    try:
+        for path, (before, after) in edits.items():
+            if before == after:
+                continue
+            if before is None:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                with path.open("x", encoding="utf-8", newline="") as stream:
+                    written.append(path)
+                    stream.write(after)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+            else:
+                write_text_exact(path, after, expected_text=before)
+                written.append(path)
+    except (OSError, StaleFileError) as exc:
+        failures = []
+        for path in reversed(written):
+            before, after = edits[path]
+            try:
+                if before is None:
+                    path.unlink()
+                else:
+                    write_text_exact(path, before, expected_text=after)
+            except (OSError, StaleFileError) as recovery:
+                failures.append(f"{path}: {recovery}")
+        if written:
+            detail = ("Could not restore: " + "; ".join(failures) if failures
+                      else "Restored all files already written.")
+            raise OSError(f"Write failed: {exc}. {detail}") from exc
+        raise
+
+
 def read_json(path: Path, kind: type = dict) -> Any:
     """The JSON in `path`; an empty `kind()` (a dict unless asked otherwise) when the file is missing,
     unreadable, not JSON, or not a `kind`."""

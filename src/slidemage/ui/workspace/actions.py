@@ -381,6 +381,7 @@ def build_registry(mac: bool = sys.platform == "darwin") -> CommandRegistry:
         lambda w: w.set_autosave(not autosave_on()), icon="save",
         meta="Save edits as you type; off, Ctrl+S saves")
     add("images", "Image descriptions", PROJECT, _window("_toggle_images"), icon="image", meta="every slide with images")
+    add("library", "Library", PROJECT, _window("_toggle_library"), icon="collections_bookmark", meta="similar slides")
     add("edit_bib", "Edit .bib", PROJECT, _window("_on_edit_bib"))
     add("edit_test_slides", "Edit test-slides.tex", PROJECT, _window("_on_edit_test_slides"))
     add("open_project", "Open project…", PROJECT, _window("_on_open_project"))
