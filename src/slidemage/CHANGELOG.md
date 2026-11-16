@@ -4177,3 +4177,10 @@ NEW: Mark a slide as under review in one deck.
 - The compiled PDF never shows the mark.
 - `\SMReviewText{...}` in a deck's preamble sets another text for the watermark.
 - A deck with a marked slide needs the framework of this version to compile: update the project's framework files when SlideMage offers it.
+
+v0.16.48 (2026-11-16, direct request: Reindent in the source tabs of decks and the bibliography): (1) latex_edit.reindent_deck: the slide rule (one tab per \begin level, so a deck's body is one tab in) plus a level per TeX conditional on a line of its own (\if<name> not followed by a brace and not closed on the line; \else and \or line up with it, \fi closes it) and per brace group left open at a line's end (multi-line \newcommand bodies); braces count outside comments and \{ \}. Under \section, \subsection and \subsubsection a deck keeps its own habit (section_offsets: one tab deeper when most of the deck's slide calls under that level already are). (2) latex_edit.reindent_bib: an entry's @type{key, line and its closing delimiter flush left, fields one tab in, continuation lines of a value untouched, text between entries flush left; braces counted as BibTeX does, @type(...) entries too. (3) SourceFile.is_deck and reindent_kind; the Tools menu's Reindent is enabled for slides, decks and the .bib with a note on the rules (REINDENT_META), and LatexPlainTextEdit.reindent takes the kind. Checked read-only on the example and fixture decks and on every deck and the .bib of a real project: all well-indented files stay unchanged, only stray indents change.
+
+NEW: Reindent also works for decks and the bibliography.
+- In a deck's source tab, Tools > Reindent indents the body one tab, \if...\else...\fi blocks and multi-line definitions in the preamble. It keeps how the deck indents the slides under its sections and subsections.
+- In the SlideMage.bib tab, Tools > Reindent puts each field one tab in and each entry's first and last line flush left. Values that span several lines are left as they are.
+- As before, one Ctrl+Z undoes it.

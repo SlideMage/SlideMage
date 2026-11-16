@@ -80,6 +80,134 @@ def reindent_latex(text: str) -> str:
     return "\n".join(out_lines)
 
 
+# A deck adds what its preamble uses and slides do not: TeX conditionals on lines of their own
+#   \ifdefined\deckversionoverride / \deckversion[...] / \else / \deckversion[instructor] / \fi
+# and definitions whose body spans lines (\newcommand{\X}{% / body / }). A conditional opens a level only when its
+# line starts with \if<name> not followed by a brace (\ifstrequal{..}, \ifthenelse{..} and \ifdeckversioninlist{..}
+# are macros, not conditionals) and the line does not close it again; braces count outside comments and \{ \}.
+_DECK_IF_RE = re.compile(r"^\\if[a-zA-Z@]*(?![a-zA-Z@])(?!\s*\{)")
+_DECK_ELSE_RE = re.compile(r"^\\(?:else|or)(?![a-zA-Z@])")
+_DECK_FI_RE = re.compile(r"^\\fi(?![a-zA-Z@])")
+_DECK_FI_ANY_RE = re.compile(r"\\fi(?![a-zA-Z@])")
+_ESCAPED_BRACE_RE = re.compile(r"\\[{}%]")
+
+
+def _code_part(line: str) -> str:
+    """`line` without its comment and with \\{, \\} and \\% taken out: what braces are counted in."""
+    return COMMENT_RE.sub("", _ESCAPED_BRACE_RE.sub("", line))
+
+
+_SECTIONING = ("section", "subsection", "subsubsection")
+_DOCUMENT_END_RE = re.compile(r"^\\end\{document\}")
+_SECTIONING_RE = re.compile(r"^\\(section|subsection|subsubsection)(?![a-zA-Z@])")
+_DECK_CALL_RE = re.compile(r"^\\(?:SMReview|slide|slidefinal|slideversion|omitslide|omitslideversion|conditionalslide"
+                           r"|slidestep)(?![a-zA-Z@])")
+
+
+def _indent_width(line: str) -> int:
+    return len(re.match(r"[ \t]*", line).group(0).expandtabs(4))
+
+
+def section_offsets(text: str) -> dict[str, int]:
+    """How a deck indents its slide calls under each sectioning level: 1 when most calls after a \\section
+    (\\subsection, \\subsubsection) sit deeper than that line, else 0. Decks differ here, and Reindent keeps what
+    the deck does."""
+    deeper = {name: 0 for name in _SECTIONING}
+    level = {name: 0 for name in _SECTIONING}
+    current: Optional[tuple[str, int]] = None
+    for line in text.split("\n"):
+        content = line.lstrip(" \t")
+        heading = _SECTIONING_RE.match(content)
+        if heading:
+            current = (heading.group(1), _indent_width(line))
+        elif current is not None and _DECK_CALL_RE.match(content):
+            if _indent_width(line) > current[1]:
+                deeper[current[0]] += 1
+            else:
+                level[current[0]] += 1
+        elif _DOCUMENT_END_RE.match(content):
+            current = None
+    return {name: int(deeper[name] > level[name]) for name in _SECTIONING}
+
+
+def reindent_deck(text: str) -> str:
+    """reindent_latex() for a deck: one tab per \\begin{} level (so a deck's body, inside \\begin{document}, is one
+    tab in), and also per TeX conditional and per brace group left open at a line's end. A line that starts with
+    \\end{}, \\else, \\or, \\fi or a closing brace lines up with the line that opened it. What follows a \\section
+    (\\subsection, \\subsubsection) is one tab deeper when the deck already does that (section_offsets()). Comment
+    lines follow the code around them; blank lines are left empty."""
+    offsets = section_offsets(text)
+    extra = {name: 0 for name in _SECTIONING}    # the extra levels of the headings above the current line
+    depth = 0
+    out_lines = []
+    for line in text.split("\n"):
+        if not line.strip():
+            out_lines.append("")
+            continue
+        content = line.lstrip(" \t")
+        code = _code_part(content)
+        heading = _SECTIONING_RE.match(content)
+        if heading:                              # a heading drops its own level's extra and those below it
+            for name in _SECTIONING[_SECTIONING.index(heading.group(1)):]:
+                extra[name] = 0
+        elif _DOCUMENT_END_RE.match(content):    # the end of the body ends the sections' levels
+            extra = {name: 0 for name in _SECTIONING}
+        shown = depth + sum(extra.values())
+        if heading:
+            extra[heading.group(1)] = offsets[heading.group(1)]
+        if content.startswith("%"):
+            out_lines.append(("\t" * shown) + content)
+            continue
+        leading_closers = len(code) - len(code.lstrip("}"))
+        opens_if = bool(_DECK_IF_RE.match(content)) and not _DECK_FI_ANY_RE.search(code)
+        own = shown - leading_closers
+        if _REINDENT_END_RE.match(content) or _DECK_ELSE_RE.match(content) or _DECK_FI_RE.match(content):
+            own -= 1
+        out_lines.append(("\t" * max(0, own)) + content)
+        if _REINDENT_END_RE.match(content) or _DECK_FI_RE.match(content):
+            depth -= 1
+        if _REINDENT_BEGIN_RE.match(content) or opens_if:
+            depth += 1
+        depth = max(0, depth + code.count("{") - code.count("}"))
+    return "\n".join(out_lines)
+
+
+def reindent_bib(text: str) -> str:
+    """A .bib file: an entry's @type{key, line and its closing brace flush left, each field one tab in. A line that
+    continues a field's value (inside its braces or quotes) keeps its own leading whitespace, and so does everything
+    else inside a value; text between entries is flushed left. Braces are counted as BibTeX does (all of them)."""
+    depth = 0           # brace (or entry parenthesis) depth: 0 between entries, 1 at the fields
+    closer = "}"        # the entry's own closing delimiter: } or )
+    in_quote = False    # inside a "..." value at field level
+    out_lines = []
+    for line in text.split("\n"):
+        content = line.lstrip(" \t")
+        if not content:
+            out_lines.append("")
+        elif depth == 0:
+            out_lines.append(content)
+        elif depth == 1 and not in_quote:
+            out_lines.append(content if content.startswith(closer) else "\t" + content)
+        else:
+            out_lines.append(line)
+        for char in content if depth or content.startswith("@") else "":
+            if depth == 0:
+                if char in "{(":
+                    depth, closer = 1, "}" if char == "{" else ")"
+            elif char == '"' and depth == 1:
+                in_quote = not in_quote
+            elif char == "{":
+                depth += 1
+            elif char == closer and depth == 1 and not in_quote:
+                depth, in_quote = 0, False
+            elif char == "}" and depth > 1:
+                depth -= 1
+    return "\n".join(out_lines)
+
+
+REINDENTERS = {"slide": reindent_latex, "deck": reindent_deck, "bib": reindent_bib}
+
+
 def comment_ops(lines: list[str]) -> list[tuple[int, int, str]]:
     """Ctrl+/ on `lines`: per line (column, characters to delete, text to insert).
     "Comment wins" on a mixed selection as in most editors: when every
