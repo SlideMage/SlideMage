@@ -33,6 +33,7 @@ class FakeApp(QWidget):
         self.set_dark_mode = lambda value: self.calls.append(("dark", value))
         self.set_autosave = lambda value: self.calls.append(("autosave", value))
         self.set_tab_width_chars = lambda value: self.calls.append(("tab width", value))
+        self.set_hover_help = lambda value: self.calls.append(("hover help", value))
         self.log = self.logged.append
         self.commands = SimpleNamespace(run=lambda command_id, ctx: self.calls.append((command_id, ctx)))
 
@@ -117,6 +118,14 @@ def test_dark_mode_and_tab_width_reach_the_window_as_they_change(qapp):
     sheet.general.dark_check.setChecked(not app.theme.dark)
     sheet.general.tab_width_spin.setValue(8)
     assert app.calls == [("dark", not app.theme.dark), ("tab width", 8)]
+
+
+def test_the_hover_help_switch_is_on_by_default_and_reaches_the_window(qapp):
+    app = FakeApp()
+    sheet = open_sheet(qapp, app)
+    assert sheet.general.hover_help_check.isChecked()
+    sheet.general.hover_help_check.setChecked(False)
+    assert app.calls == [("hover help", False)]
 
 
 def test_the_render_template_offers_the_project_templates_and_saves_the_choice(tmp_path, monkeypatch, qapp):
