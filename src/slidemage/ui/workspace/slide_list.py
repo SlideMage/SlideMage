@@ -522,6 +522,8 @@ class SlideList(QWidget):
         focus = next((i for i in items if self.tree.data_of(i).key == current_key), None)
         if focus is None and current_key is not None and items:
             focus = items[min(current_index, len(items) - 1)]
+        if focus is None and not same_deck and items:      # a deck just opened: its first slide is the focus
+            focus = items[0]
         if focus is not None:
             self.tree.setCurrentItem(focus, 0, QItemSelectionModel.SelectionFlag.NoUpdate)
         self.tree.blockSignals(False)
