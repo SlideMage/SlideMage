@@ -123,7 +123,18 @@ class _Cell(Surface):
                 self.combo.installEventFilter(self)
         self.update_value()
 
+    def bind_label(self, label: QWidget) -> None:
+        """Hovering the row's label lights up the sample slides just like hovering the cell itself."""
+        if self.usage is not None:
+            label.installEventFilter(self)
+
     def eventFilter(self, watched, event) -> bool:
+        if isinstance(watched, QLabel):
+            if event.type() == QEvent.Type.Enter:
+                self.form.hover_usage(self.usage)
+            elif event.type() == QEvent.Type.Leave:
+                self.form.hover_usage(None)
+            return False
         if event.type() == QEvent.Type.FocusIn:
             self.form.focus_usage(self.usage)
         elif event.type() == QEvent.Type.FocusOut:
@@ -713,7 +724,8 @@ class ThemeForm(QWidget):
                          write=lambda value, n=name, m=self.mode: self.model.set_palette(n, m, value),
                          usage=("palette", name, self.mode), source=("palette", name))
             self._cells.append(cell)
-            grid.addWidget(cell, row, 1)
+            cell.bind_label(label)
+            grid.addWidget(cell, row, 1, Qt.AlignmentFlag.AlignLeft)
         if not shown:
             layout.addWidget(caption("The theme sets no palette color and none differs between its modes: it uses "
                                      "the framework's palette."))
@@ -796,7 +808,8 @@ class ThemeForm(QWidget):
                          enabled=self.model.role_editable(role, self.mode), usage=("role", role, self.mode),
                          source=("role", role))
             self._cells.append(cell)
-            grid.addWidget(cell, row, 1)
+            cell.bind_label(label)
+            grid.addWidget(cell, row, 1, Qt.AlignmentFlag.AlignLeft)
         return box
 
     def _role_read(self, role: str, mode: str) -> tuple[Optional[str], str, Optional[str]]:
@@ -810,7 +823,8 @@ class ThemeForm(QWidget):
         grid = self._row_grid(layout)
         base = self.mode == self.model.base
         for row, (name, role) in enumerate(CODE_COLOURS):
-            grid.addWidget(text_label(_label(name), "body"), row, 0)
+            label = text_label(_label(name), "body")
+            grid.addWidget(label, row, 0)
             if base:
                 cell = _Cell(self, read=lambda n=name, m=self.mode: self._optional_read(n, m),
                              write=lambda value, n=name: self.model.set_value(n, value),
@@ -821,7 +835,8 @@ class ThemeForm(QWidget):
                              choices=self.model.colour_names(), picker=False, usage=("role", role, self.mode),
                              source=("role", role))
             self._cells.append(cell)
-            grid.addWidget(cell, row, 1)
+            cell.bind_label(label)
+            grid.addWidget(cell, row, 1, Qt.AlignmentFlag.AlignLeft)
         return box
 
     def _optional_read(self, name: str, mode: str) -> tuple[Optional[str], str, Optional[str]]:

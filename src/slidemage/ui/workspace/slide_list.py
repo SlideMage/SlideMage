@@ -650,6 +650,17 @@ class SlideList(QWidget):
         return next((i for i in self.tree.slide_items() if self.tree.data_of(i).matches(slide_id)
                      and (self.state.focused_occurrence is None or self.tree.data_of(i).key == self.state.focused_occurrence)), None)
 
+    def focus_first_slide(self) -> None:
+        """A deck the user just opened (the deck menu, the deck the window starts with): its first slide is the
+        focus, unless the deck came back with a focus of its own (a deck returned to). Not part of rebuild(): a
+        rebuild also follows a tab that shows another deck behind the scenes, and focusing a slide there would move
+        the centre off that tab (2026-11-16)."""
+        if self.state.focused_slide is not None:
+            return
+        items = self.tree.slide_items()
+        if items:
+            self.tree.setCurrentItem(items[0], 0, QItemSelectionModel.SelectionFlag.NoUpdate)
+
     def _on_current_changed(self, item: Optional[QTreeWidgetItem], _previous) -> None:
         row = self.tree.data_of(item)
         if isinstance(row, SlideRow):

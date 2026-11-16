@@ -351,5 +351,8 @@ class TopBar(QWidget):
     def _on_deck_picked(self, key: str) -> None:
         for deck in self._decks:
             if deck_key(deck) == key:
-                self._state.set_deck(deck)
+                if self._state.set_deck(deck):
+                    slide_list = getattr(self._window, "slide_list", None)
+                    if slide_list is not None:
+                        slide_list.focus_first_slide()
                 return
