@@ -70,6 +70,6 @@ says it could not notify Claude, the user tells you in chat. Either way, then:
 - New work the user names: add a line to the TASKS block (at the end of the block, **without** a `pin`: the script then places it between the pinned tasks; stable `id`, never reused) and wrap its text in task markers before
   starting it. **Also set the line's `run` recommendation** (mode, model, effort; see the rules at the top of handover.md) so the page
   preselects a sensible choice: the user can change it before clicking Start tasks.
-- Finished sections move to `docs/handover-archive.md`, unedited; ask the user first.
+- Finished tasks and sections move to `docs/handover-archive.md`, unedited, automatically (user, 2026-11-16): `docs/handover_list.py` and /finish run `docs/handover_archive.py`; do not ask first.
 - The page template is `docs/handover_list.template.html`. Its script keeps the `/*S*/ ... /*E*/` markers around the state
   and `__STATE__` is the placeholder the script fills: keep both when changing it.

@@ -64,7 +64,11 @@ Say in one line which case you take.
    with the date, the exact path or branch name, the error, and the single command that finishes it. In the task's own
    section write only "cleanup left: see Cleanup". Never delete the Cleanup section or its `cleanup` line in the TASKS block.
    If a step finishes an item already listed there, remove that item and say so in the line it came from.
-8. Report in a few lines: what was merged, version, what went to Cleanup.
+8. **Archive what is done:** run `python docs/handover_archive.py` from the worktree (it finds the main checkout's
+   `handover.md`; `--dry-run` shows what it would do). It moves every TASKS line with status `done`, and every section
+   whose Status line says done, finished, answered or task deleted, to `handover-archive.md`, unedited. Run it after step 6,
+   so this task's own finished section goes too. Mention a held-back section (Status still open) only if it is yours.
+9. Report in a few lines: what was merged, version, what went to Cleanup, what was archived.
 
 ## Writing the handover
 
