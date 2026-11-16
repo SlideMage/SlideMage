@@ -48,6 +48,13 @@ def on_side(is_local: bool) -> list[AiRoute]:
     return [route for route in all() if route.is_local == is_local]
 
 
+def owner_id(route_id: str) -> str | None:
+    """The id of the plugin that registered `route_id`, or None (no such route, or none registered it)."""
+    owner = _owners.get(route_id)
+    manifest = getattr(owner, "manifest", None)
+    return getattr(manifest, "id", None)
+
+
 def clear() -> None:
     """Remove every registered route (for tests and plugin shutdown)."""
     _routes.clear()

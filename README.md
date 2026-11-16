@@ -369,16 +369,19 @@ first and the plugins below:
   needed. **Add from file…** takes a `.smtheme`. **Add from GitHub…** takes
   `owner/name` and installs the newest release of a (private) theme repository with
   the GitHub token of Settings → General; such a theme's updates are offered at start
-  (*Install now*, *Not now*, *Skip this version*, under the update setting) and its
+  (*Install now*, *Not now*, *Skip this version*, under the update setting), or installed
+  without asking when its row's **Update automatically** is on (asked when you add it); its
   row has **Check for update** and says why the last check failed.
 - **Citation formats**: the citation format packages installed on this computer (the
   way references look, packaged on its own: `SlideMage_citation_<key>.tex` with a
   `citation.toml`, `docs/CITATION_PACKAGE.md`), with the same buttons as the themes:
   **Remove**, **Add from file…** (a `.smcite`), **Add from GitHub…**, update offers at
-  start, **Check for update**. A template or deck chooses one with `\SMCitationFormat`.
+  start, **Update automatically**, **Check for update**. A template or deck chooses one with `\SMCitationFormat`.
 - **Plugins**, installed: each plugin with its version and state (*Loaded*, *Disabled*,
   *Failed to load* with **Details…**, or *Incompatible*). The **Enabled** switch
-  turns it on or off; **Update to …** and **Remove** are on the same row.
+  turns it on or off; **Update automatically**, **Update to …** and **Remove** are on the
+  same row. **Install** (and **Install from file…**) asks whether the plugin should update
+  automatically.
 - **Plugins**, available: the plugins of the list at https://slidemage.org/plugins/, each
   with its summary, what it needs and what it contacts on the network. **Install**
   installs it; **Check for plugins** fetches the list again.
@@ -406,8 +409,13 @@ The start-up update check also looks for newer releases of installed plugins fro
 the list, at most once a day, in the app's update mode (**File → Settings… →
 General → Updates**, see [Releases and updates](#releases-and-updates)): *don't
 check* means no plugin check; *ask* (the default) names the plugins with a newer
-release, and **Update to …** installs one; *install automatically* installs them;
-they take effect after a restart. A plugin run from a checkout is not updated.
+release in a dialog that stays until you answer (*Install now*, *Not now*, *Skip this
+version*; *Not now* asks again the next day, a skipped version is not offered again);
+*install automatically* installs them. A plugin's own **Update automatically** switch
+on its row overrides the mode for that plugin. While the plugin behind the AI
+assistant's route has an update waiting, the assistant says so under its switch, with
+**Update…**. Updates take effect after a restart. A plugin run from a checkout is not
+updated.
 
 ### Where plugins live
 

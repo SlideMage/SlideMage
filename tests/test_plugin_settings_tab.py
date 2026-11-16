@@ -54,6 +54,20 @@ def isolated(tmp_path, monkeypatch):
             del sys.modules[key]
 
 
+@pytest.fixture(autouse=True)
+def auto_answers(monkeypatch):
+    """The "Update automatically?" question after an install: answered No unless a test says otherwise; what it was
+    asked about is recorded."""
+    asked = SimpleNamespace(what=[], yes=False)
+
+    def ask(parent, what):
+        asked.what.append(what)
+        return asked.yes
+
+    monkeypatch.setattr(settings_plugins, "ask_auto_update", ask)
+    return asked
+
+
 class FakeApp(QWidget):
     def __init__(self, root):
         super().__init__()
@@ -629,3 +643,51 @@ def test_help_opens_the_top_and_a_plugin_request_the_plugins():
     WorkspaceWindow.open_extensions(stub)
     WorkspaceWindow.open_plugins(stub)
     assert opened == [(PLUGINS, None), (PLUGINS, PLUGIN_LIST)]
+
+
+# -- updating without asking (2026-11-16) -----------------------------------------------------------------------
+
+def test_a_new_install_asks_whether_to_update_automatically_and_the_row_shows_the_choice(app, tmp_path, monkeypatch,
+                                                                                        auto_answers):
+    from slidemage.plugins import updates
+
+    archive = zip_plugin(tmp_path)
+    write_cache(entry("hello", "Hello", sha256=sha(archive), size=archive.stat().st_size))
+    fake_download(monkeypatch, archive)
+    auto_answers.yes = True
+    tab = PluginsTab(app)
+    tab.available["hello"].install_button.click()
+    idle(tab)
+    assert auto_answers.what == ["the plugin hello fixture"] and updates.auto_choice("hello") is True
+    installer._changed.clear()
+    session.set_loaded(loader.load_all(Registrar, "v8.64.0"))
+    row = PluginsTab(app).rows["hello"]
+    assert row.auto_check is not None and row.auto_check.isChecked()
+    row.auto_check.setChecked(False)
+    assert updates.auto_choice("hello") is False
+
+
+def test_an_update_does_not_ask_again(app, tmp_path, monkeypatch, auto_answers):
+    installer.install(zip_plugin(tmp_path))
+    installer._changed.clear()
+    session.set_loaded(loader.load_all(Registrar, "v8.64.0"))
+    new = zip_plugin(tmp_path, version="0.2.0", out=tmp_path / "new.smplugin")
+    write_cache(entry("hello", version="0.2.0", sha256=sha(new), size=new.stat().st_size))
+    fake_download(monkeypatch, new)
+    tab = PluginsTab(app)
+    tab.rows["hello"].update_button.click()
+    idle(tab)
+    assert auto_answers.what == []
+
+
+def test_removing_a_plugin_forgets_its_choices(app, tmp_path, monkeypatch):
+    from slidemage.plugins import updates
+
+    installer.install(zip_plugin(tmp_path))
+    installer._changed.clear()
+    session.set_loaded(loader.load_all(Registrar, "v8.64.0"))
+    updates.set_auto_update("hello", True)
+    updates.skip_version("hello", "9.9.9")
+    answer(monkeypatch, True)
+    PluginsTab(app).remove_plugin("hello", "hello fixture")
+    assert updates.auto_choice("hello") is None and updates.skipped_version("hello") == ""
