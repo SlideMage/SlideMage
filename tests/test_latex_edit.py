@@ -28,6 +28,91 @@ def test_reindent_respects_environment_depth(text, expected):
     assert le.reindent_latex(text) == expected
 
 
+DECK = """\\documentclass{beamer}
+\\input{SlideMage_template_slidemage}
+\\newcommand{\\FooterText}{Course}
+\\newcommand{\\SMExtra}{%
+\\textbf{x}%
+}
+\\ifdefined\\deckversionoverride
+\\deckversion[\\deckversionoverride]
+\\else
+\\deckversion[instructor]   % options: instructor, during-course
+\\fi
+\\ifstrequal{a}{b}{\\relax}{}
+\\ifSMInstructorVersion\\relax\\else\\relax\\fi
+\\decktags{course}
+\\begin{document}
+\\slide{aaa-EN-Title}
+% ---- Part A ----
+\\section{Intro}
+\\slide{bbb-EN-One}
+\\subsection{Details}
+\\SMReview[check]{\\slide{ccc-EN-Two}}
+\\section{Next}
+\\conditionalslide[instructor]{ddd-EN-Three}
+\\end{document}
+"""
+
+
+def test_a_deck_is_reindented_by_environment_conditional_and_brace():
+    assert le.reindent_deck(DECK) == """\\documentclass{beamer}
+\\input{SlideMage_template_slidemage}
+\\newcommand{\\FooterText}{Course}
+\\newcommand{\\SMExtra}{%
+\t\\textbf{x}%
+}
+\\ifdefined\\deckversionoverride
+\t\\deckversion[\\deckversionoverride]
+\\else
+\t\\deckversion[instructor]   % options: instructor, during-course
+\\fi
+\\ifstrequal{a}{b}{\\relax}{}
+\\ifSMInstructorVersion\\relax\\else\\relax\\fi
+\\decktags{course}
+\\begin{document}
+\t\\slide{aaa-EN-Title}
+\t% ---- Part A ----
+\t\\section{Intro}
+\t\\slide{bbb-EN-One}
+\t\\subsection{Details}
+\t\\SMReview[check]{\\slide{ccc-EN-Two}}
+\t\\section{Next}
+\t\\conditionalslide[instructor]{ddd-EN-Three}
+\\end{document}
+"""
+    done = le.reindent_deck(DECK)
+    assert le.reindent_deck(done) == done
+
+
+def test_a_deck_keeps_its_own_way_of_indenting_under_sections():
+    """FM2-style decks keep a subsection's slides at the subsection's level, Publishing-style ones one tab deeper:
+    Reindent keeps whichever the deck mostly does, per sectioning level."""
+    deeper = ("\\begin{document}\n\t\\section{A}\n\t\\slide{a-1}\n\t\\subsection{B}\n\t\t\\slide{b-1}\n\t\t\\slide{b-2}\n"
+              "\t\\subsection{C}\n\t\t\\slide{c-1}\n\\slide{c-2}\n\t\\section{D}\n\t\\slide{d-1}\n\\end{document}")
+    assert le.section_offsets(deeper) == {"section": 0, "subsection": 1, "subsubsection": 0}
+    assert le.reindent_deck(deeper) == deeper.replace("\n\\slide{c-2}", "\n\t\t\\slide{c-2}")
+    flat = deeper.replace("\t\t", "\t")
+    assert le.section_offsets(flat)["subsection"] == 0
+    assert le.reindent_deck(flat) == flat.replace("\n\\slide{c-2}", "\n\t\\slide{c-2}")
+
+
+def test_a_bib_gets_one_tab_per_field_and_keeps_its_values():
+    text = ("% header\n  % indented note\n\n  @article{a2000,\n"
+            "author    = {A, B},\n      title = {A {Nested}\n                 continued title},\n"
+            "  year  = 2000,\n    }\n"
+            "@book(b2001,\n note = \"quoted\n   on two {lines}\",\n publisher = {P}\n )\n"
+            "@misc{c, note = {x}}\n")
+    assert le.reindent_bib(text) == (
+        "% header\n% indented note\n\n@article{a2000,\n"
+        "\tauthor    = {A, B},\n\ttitle = {A {Nested}\n                 continued title},\n"
+        "\tyear  = 2000,\n}\n"
+        "@book(b2001,\n\tnote = \"quoted\n   on two {lines}\",\n\tpublisher = {P}\n)\n"
+        "@misc{c, note = {x}}\n")
+    done = le.reindent_bib(text)
+    assert le.reindent_bib(done) == done
+
+
 # -- the hyperlink command --------------------------------------------------------
 
 @pytest.mark.parametrize("word,url", [
