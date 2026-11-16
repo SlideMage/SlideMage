@@ -43,8 +43,8 @@ from PySide6.QtWidgets import (
 
 from ... import background_renders, power_status, preview_build, timing
 from ...stall_monitor import StallMonitor
-from ... import (app_settings, bibliography, deck_headers, deck_outline, latex_edit, project, readability_check,
-                 slide_templates, themes, updater)
+from ... import (app_settings, bibliography, deck_headers, deck_outline, latex_edit, latex_help, project,
+                 readability_check, slide_templates, themes, updater)
 from ... import version as version_mod
 from ...ai import ai_profile, resolver, routes
 from ...deck_groups import DEFAULT_GROUPS, DeckGroup, load as load_deck_groups
@@ -786,6 +786,12 @@ class WorkspaceWindow(QMainWindow):
         it up immediately rather than only on next open."""
         app_settings.set(self.project, latex_edit.TAB_WIDTH_SETTING_KEY, chars)
         self.centre.set_tab_width(chars)
+
+    def set_hover_help(self, on: bool) -> None:
+        """Settings -> General's "Show help for LaTeX commands on hover" (latex_help.py): persist it and switch
+        every open source editor at once. Shift+F1 shows the help either way."""
+        app_settings.set(self.project, latex_help.HOVER_HELP_SETTING_KEY, bool(on))
+        self.centre.set_hover_help(bool(on))
 
     def after_deck_edit(
         self, deck_path: Path, summary: str, previous_text: Optional[str] = None

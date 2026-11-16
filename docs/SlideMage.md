@@ -72,7 +72,8 @@ deck switcher offers the rest). From top to bottom and left to right:
   Every edit goes through `deck_editor` and rescans the decks.
 - **Centre** (`centre.py`): **Preview** (`preview_view.py`), **Source** (`source_view.py`
   on a `SourceEditor`, today the `LatexPlainTextEdit` of `source_editor.py`, with the lint
-  line, Insert, Cite, QR (the "Insert QR code" sheet of `ui/dialogs/qr_code.py`, which makes `\SMQRCode` calls; v8.62),
+  line, help tooltips on SlideMage's LaTeX commands and their keys (`latex_help.py`, Shift+F1 at the text cursor,
+  switched off in Settings -> General; v0.16.42), Insert, Cite, QR (the "Insert QR code" sheet of `ui/dialogs/qr_code.py`, which makes `\SMQRCode` calls; v8.62),
   Tools and the conflict bar when a file changes on disk under edits
   that are not yet written; edits are autosaved, 1.5 s after the last keystroke, unless AutoSave is off -- v8.56 (a deck's source and `SlideMage.bib` then have a **Save** button beside the "x", v8.68), `source_file.autosave_on`: the On|Off switch after the menu bar's Help since v8.58 (`autosave_switch.py`), Settings -> General, File; then Ctrl+S saves), **Split**, **Details** (`details_view.py`), and the **Images page**
   (`ui/pages/images.py`) as a sibling that replaces the columns.
@@ -993,7 +994,7 @@ What matters when touching *this code*:
 - Task logic that is not UI stays in its modules: `ai_draft.py` (only
   `mask_protected_regions` now), `syntax_check.py`, `alt_draft.py` (image descriptions and
   translation backends), `image_review.py`, `slide_add.py`, `deck_outline.py`,
-  `latex_edit.py`, `preview_target.py`, `snippets.py`, `compile_status.py`, `housekeeping.py`,
+  `latex_edit.py`, `latex_help.py`, `preview_target.py`, `snippets.py`, `compile_status.py`, `housekeeping.py`,
   `app_info.py` (the admin slides moved into the CampusOnline plugin in v9.0).
 
 ## GUI framework: PySide6 (Qt)

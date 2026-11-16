@@ -518,7 +518,7 @@ def test_the_tab_is_in_the_sheet_before_the_plugins_own(qapp, tmp_path):
     from slidemage.ui.dialogs.settings import SettingsSheet
     app = FakeApp(tmp_path)
     app.project = ProjectContext.at(tmp_path)
-    app.set_dark_mode = app.set_autosave = app.set_tab_width_chars = lambda *args: None
+    app.set_dark_mode = app.set_autosave = app.set_tab_width_chars = app.set_hover_help = lambda *args: None
     sheet = SettingsSheet(app, tab=PLUGINS)
     names = [sheet._tabs.tabText(i) for i in range(sheet._tabs.count())]
     assert names[-1] == "Extensions"
@@ -609,7 +609,7 @@ def test_a_status_scrolls_up_to_where_it_is_shown(app, qapp):
 def test_opening_for_a_plugin_scrolls_to_the_plugins(app, qapp):
     from slidemage.ui.dialogs.settings import PLUGIN_LIST, SettingsSheet
     app.project = ProjectContext.at(app.project.root)
-    app.set_dark_mode = app.set_autosave = app.set_tab_width_chars = lambda *args: None
+    app.set_dark_mode = app.set_autosave = app.set_tab_width_chars = app.set_hover_help = lambda *args: None
     sheet = SettingsSheet(app, tab=PLUGINS, focus=PLUGIN_LIST)
     assert sheet.current_tab() == PLUGINS
     sheet._plugins_area.setFixedHeight(120)
