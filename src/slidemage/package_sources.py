@@ -93,6 +93,7 @@ class Source:
     checked_at: str = ""
     check_error: str = ""   # why the last update check failed ("" = it worked)
     skipped_version: str = ""
+    auto_update: bool = False   # a newer release is installed at the startup check, not offered (2026-11-16)
 
 
 @dataclass
@@ -176,6 +177,15 @@ def skip_version(kind: packages.PackageKind, key: str, version: str) -> None:
     source = read_source(kind, key)
     if source is not None:
         source.skipped_version = version
+        write_source(kind, key, source)
+
+
+def set_auto_update(kind: packages.PackageKind, key: str, value: bool) -> None:
+    """The package's "Update automatically" switch (Settings -> Extensions). Raises OSError when it cannot be saved;
+    a package installed from a file has no source and is left alone (it is never updated)."""
+    source = read_source(kind, key)
+    if source is not None:
+        source.auto_update = bool(value)
         write_source(kind, key, source)
 
 
@@ -321,10 +331,14 @@ def newest_eligible(kind: packages.PackageKind, repo: str, *, key: str | None = 
 def install(kind: packages.PackageKind, fetched: Fetched) -> packages.PackageManifest:
     """Install a fetched release and record where it came from; the download is deleted. Raises the kind's error."""
     try:
+        # Read before the install: it replaces the package's folder, source.json with it. An update keeps the
+        # package's "Update automatically".
+        before = read_source(kind, fetched.manifest.id)
         manifest = packages.install_file(kind, fetched.archive, expected_sha256=fetched.sha256)
         release = fetched.release
         try:
-            write_source(kind, manifest.id, Source(release.repository, manifest.version, release.release_id, _now()))
+            write_source(kind, manifest.id, Source(release.repository, manifest.version, release.release_id, _now(),
+                                                   auto_update=bool(before and before.auto_update)))
         except OSError as e:
             raise kind.error(f"The {kind.name} is installed, but where it came from could not be saved, so it will "
                              f"not be updated: {e}") from None
