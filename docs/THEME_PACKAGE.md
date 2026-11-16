@@ -71,7 +71,7 @@ Rules (the app and the packing tool apply the same ones; a broken rule is refuse
 
 ## help.toml (hover help for the theme's commands)
 
-Since v0.18.11 a theme can describe its own commands, so the Source view's hover help (and Shift+F1) explains them
+Since v0.17.12 a theme can describe its own commands, so the Source view's hover help (and Shift+F1) explains them
 like SlideMage's. The file is data only; SlideMage's own entries win a name clash, so a theme cannot change what
 `\cornerfigure` says.
 
