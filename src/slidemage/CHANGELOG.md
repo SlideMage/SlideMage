@@ -4142,3 +4142,8 @@ v0.16.41 (2026-11-14, tab contexts step 2, docs/plans/tab-contexts.md): A slide 
 
 NEW: A slide that is in none of your decks says so, and offers to open one that uses it.
 - New: a slide opened from Go to slide or a text search that the open deck does not use shows a note in the left column with an "Open in <deck>" button for each deck that uses it.
+
+v0.16.42 (2026-11-16, Compile -> All views asks what to build): "All views of this deck" opens a small dialog (compile_actions.compile_all_views) with a checkbox for each PDF view (Instructor, During course, After course), the Presenter PDF and both student transcripts, all ticked at first; a deck without versions offers PDF and Presenter. Compile is disabled with nothing ticked. The ticks are remembered per deck in the project's app settings (key all_views_selection). The ticked PDFs go to one compile run, the ticked transcripts are written after it (deck_actions.generate_deck_transcript). Tests in tests/test_workspace_window.py.
+
+NEW: Compile > All views now lets you choose which views, the presenter PDF and the transcripts to create.
+- New: "All views of this deck" opens a dialog with everything ticked; untick what you do not need. Your choice is remembered for each deck.
