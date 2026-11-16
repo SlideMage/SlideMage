@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from functools import partial
 from pathlib import Path, PurePosixPath
 
-from . import packages, project
+from . import latex_help, packages, project
 from .packages import os as os, shutil as shutil, uuid as uuid, zipfile as zipfile
 from .plugins import installer
 from .plugins.manifest import REQUIRES_RE, VERSION_RE, ManifestError, _text, matches
@@ -43,7 +43,8 @@ KEY_RE = re.compile(r"^[a-z][a-z0-9-]{1,31}$")
 LAYOUT_RE = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
 # The files a package holds besides its template, scheme folder and layout profile.
 REQUIRED_FILES = ("README.md", "CHANGELOG.md", "LICENSE")
-OPTIONAL_FILES = ("preview.png",)
+HELP_NAME = latex_help.HELP_FILE_NAME      # optional: hover help for the theme's own commands (THEME_PACKAGE.md)
+OPTIONAL_FILES = ("preview.png", HELP_NAME)
 OPTIONAL_DIRS = ("LICENSES",)       # REUSE-style licence texts
 # TeX finds these on TEXINPUTS; only the template and the layout profile may be one.
 TEX_CODE_SUFFIXES = frozenset({".tex", ".sty", ".cls", ".lua", ".def", ".cfg", ".fd", ".clo", ".ltx", ".dtx", ".ins"})
@@ -229,7 +230,44 @@ KIND = packages.PackageKind(
 InstalledTheme = packages.InstalledPackage
 read_manifest = partial(packages.read_manifest, KIND)
 folder_names = partial(packages.folder_names, KIND)
-check_folder = partial(packages.check_folder, KIND)
+_check_package_folder = partial(packages.check_folder, KIND)
+
+
+def check_folder(folder: Path, app_version: str = VERSION_NUMBER, skip_hidden: bool = False):
+    """packages.check_folder, and the theme's help.toml, if it has one, read strictly: the packing tools refuse a
+    help file the editor would only skip entries of."""
+    manifest = _check_package_folder(folder, app_version, skip_hidden)
+    try:
+        latex_help.parse_help((folder / HELP_NAME).read_text(encoding="utf-8"), strict=True)
+    except FileNotFoundError:
+        pass
+    except (OSError, UnicodeDecodeError) as e:
+        raise ThemeError(f"{HELP_NAME} cannot be read: {e}") from None
+    except latex_help.HelpFileError as e:
+        raise ThemeError(str(e)) from None
+    return manifest
+
+
+_help_cache: dict[Path, tuple[int, latex_help.HelpSet]] = {}
+
+
+def help_of(folder: Path) -> latex_help.HelpSet:
+    """The hover help a theme folder's help.toml supplies (nothing without one); entries that do not pass are
+    skipped. Cached by the file's modification time: the editor asks on each tooltip."""
+    path = folder / HELP_NAME
+    try:
+        stamp = path.stat().st_mtime_ns
+    except OSError:
+        return latex_help.NO_EXTRA
+    cached = _help_cache.get(path)
+    if cached is not None and cached[0] == stamp:
+        return cached[1]
+    try:
+        found = latex_help.parse_help(path.read_text(encoding="utf-8"), strict=False)
+    except (OSError, UnicodeDecodeError):
+        found = latex_help.NO_EXTRA
+    _help_cache[path] = (stamp, found)
+    return found
 package_name = partial(packages.package_name, KIND)
 peek = partial(packages.peek, KIND)
 installed = partial(packages.installed, KIND)
