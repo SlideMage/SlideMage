@@ -805,7 +805,7 @@ class CentreColumn(QFrame):
         if not changed:
             QMessageBox.information(self.app, "Update version", f"No slide of {deck.name} has changes since its last version.")
             return
-        self._update_versions(changed, "Update version of all changed slides", f"in {deck.name}")
+        self.update_versions(changed, "Update version of all changed slides", f"in {deck.name}")
 
     def update_selected_versions(self) -> None:
         """Make a version of each selected slide, using one shared bump level."""
@@ -813,17 +813,19 @@ class CentreColumn(QFrame):
         if not slugs:
             return
         self.source.flush_all()
-        self._update_versions(slugs, "Update versions", "selected")
+        self.update_versions(slugs, "Update versions", "selected")
 
-    def _update_versions(self, changed: list[str], title: str, label: str) -> None:
-        """Batch versioning keeps deck calls as they are, including pinned versions."""
+    def update_versions(self, changed: list[str], title: str, label: str) -> bool:
+        """Make a version of each slide of `changed` at one bump level asked here. Batch versioning keeps deck calls
+        as they are, including pinned versions. False when nothing was done: a slide's edits cannot be saved, or
+        the user cancelled."""
         blocked = [slug for slug in changed
                    if self.is_blocked(self.state.project.slides_dir / slide_language.current_name(slug))]
         if blocked:
             QMessageBox.warning(self.app, "Edits not saved",
                                 "These slides have edits that could not be saved (see the notice in the Source view); "
                                 "resolve that first: " + ", ".join(slide_language.bare_id(slug) for slug in blocked))
-            return
+            return False
         shown = ", ".join(slide_language.bare_id(slug) for slug in changed[:12]) + (", …" if len(changed) > 12 else "")
         box = QMessageBox(self.app)
         box.setWindowTitle(title)
@@ -837,7 +839,7 @@ class CentreColumn(QFrame):
         box.exec()
         level = next((name for name, button in levels.items() if box.clickedButton() is button), None)
         if level is None:
-            return
+            return False
         done, failed, updated = 0, [], []
         for slug in changed:
             current = self.state.project.slides_dir / slide_language.current_name(slug)
@@ -856,6 +858,7 @@ class CentreColumn(QFrame):
         if failed:
             QMessageBox.warning(self.app, "Update version",
                                 f"{done} slide(s) updated; not these:\n" + "\n".join(failed))
+        return True
 
     def freeze_version(self, id_slug: str, level: slide_versioning.BumpLevel) -> None:
         """Update Version (also the Versions panel's): the slide's current content becomes a frozen

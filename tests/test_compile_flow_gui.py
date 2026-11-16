@@ -382,3 +382,85 @@ def test_the_current_view_compiles_once_in_another_colour_mode(env, monkeypatch)
     assert [job.mode for job in captured] == ["gray"]
     (window.project.root / "SlideMage_template_acme.tex").write_text("\\input{SlideMage_setup}\n")      # no modes: disabled
     assert not command.enabled(window)
+
+
+# -- slides compiled from their last version (issue #97) -----------------------------------
+
+@pytest.fixture
+def saved(env, monkeypatch):
+    """The course deck typesets two "+" slides from their last version; `saved.choose(text, remember)` answers
+    the notice with that button. Settings stay in memory."""
+    from slidemage import app_settings, slide_versioning
+    settings = {}
+    monkeypatch.setattr(app_settings, "get", lambda _ctx, key, default=None: settings.get(key, default))
+    monkeypatch.setattr(app_settings, "set", lambda _ctx, key, value: settings.__setitem__(key, value))
+    monkeypatch.setattr(slide_versioning, "saved_versions",
+                        lambda _ctx, deck, _language: {"ijp-EN-A": "x", "mgt-EN-B": "y"} if deck is COURSE else {})
+    env.edits, env.asked, env.logged = [], [], []
+    script = env.script
+    env.script = lambda job: env.edits.append(job.current_edits) or script(job)
+    monkeypatch.setattr(env.window, "log", lambda line: env.logged.append(line))
+
+    def choose(text, remember=False):
+        def fake_exec(box):
+            env.asked.append(box.text())
+            box.checkBox().setChecked(remember)
+            chosen = next(b for b in box.buttons() if b.text() == text)
+            monkeypatch.setattr(QMessageBox, "clickedButton", lambda _box: chosen)
+            return 0
+        monkeypatch.setattr(QMessageBox, "exec", fake_exec)
+    env.choose = choose
+    env.setting = lambda key, default: settings.get(getattr(slide_versioning, key), default)
+    return env
+
+
+def test_a_deck_compile_names_the_slides_it_takes_from_their_last_version(saved):
+    saved.choose("Compile last versions")
+    build(saved, "instructor")
+    saved.finished()
+    assert len(saved.asked) == 1 and "2 slide(s) will be compiled from their last version" in saved.asked[0]
+    assert "course: ijp, mgt" in saved.asked[0]
+    assert saved.edits == [False]
+    assert any("course: 2 slide(s) compiled from their last version" in line for line in saved.logged)
+    assert saved.setting("ASK_SAVED_VERSIONS_SETTING_KEY", True)
+
+
+def test_making_last_versions_the_setting_stops_asking_but_still_logs(saved, monkeypatch):
+    saved.choose("Compile last versions", remember=True)
+    build(saved, "instructor")
+    saved.finished()
+    assert not saved.setting("ASK_SAVED_VERSIONS_SETTING_KEY", True)
+    monkeypatch.setattr(QMessageBox, "exec", lambda box: pytest.fail("asked again"))
+    saved.logged.clear()
+    build(saved, "instructor")
+    saved.finished()
+    assert saved.edits == [False, False]
+    assert any("compiled from their last version" in line for line in saved.logged)
+
+
+@pytest.mark.parametrize("remember", [False, True])
+def test_compile_with_edits_skips_the_last_versions_for_this_run_or_as_the_setting(saved, remember):
+    saved.choose("Compile with edits (+)", remember)
+    build(saved, "instructor")
+    saved.finished()
+    assert saved.edits == [True]
+    assert saved.setting("RENDER_CHANGES_SETTING_KEY", False) is remember
+    assert not any("compiled from their last version" in line for line in saved.logged)
+
+
+@pytest.mark.parametrize("updated", [False, True])
+def test_update_versions_first_makes_versions_then_compiles(saved, monkeypatch, updated):
+    calls = []
+    monkeypatch.setattr(saved.window.centre, "update_versions", lambda slugs, *_a: calls.append(slugs) or updated)
+    saved.choose("Update versions first")
+    build(saved, "instructor")
+    if updated:
+        saved.finished()
+    assert calls == [["ijp-EN-A", "mgt-EN-B"]]
+    assert saved.ran == (["course-instructor"] if updated else [])
+
+
+def test_cancel_compiles_nothing(saved):
+    saved.choose("Cancel")
+    assert not compile_actions.compile_jobs(saved.window, compiler.build_jobs(COURSE, "instructor"))
+    assert saved.ran == []

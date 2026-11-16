@@ -57,9 +57,17 @@ def test_a_deck_compile_takes_the_last_version_of_a_changed_slide_unless_the_set
     plan = partial_compile.PartialPlan(ctx, job, [], [], [], tmp_path / "full.pdf", tmp_path / "aux", {})
     for text in (compiler.wrapper_text(ctx, job), partial_compile.wrapper_text(plan)):
         assert substitution in text                                   # the default: the last version
+    assert sv.saved_versions(ctx, deck, "EN") == {"abc-EN-Demo": "abc-EN-Demo-v1-0-0.tex"}
+    assert compiler.uses_saved_versions(ctx, job)
+    job.current_edits = True                                          # this run only (issue #97)
+    assert not compiler.uses_saved_versions(ctx, job)
+    for text in (compiler.wrapper_text(ctx, job), partial_compile.wrapper_text(plan)):
+        assert substitution not in text
+    job.current_edits = False
     app_settings.set(ctx, sv.RENDER_CHANGES_SETTING_KEY, True)
     for text in (compiler.wrapper_text(ctx, job), partial_compile.wrapper_text(plan)):
         assert substitution not in text                               # the slide as it is now
+    assert not compiler.uses_saved_versions(ctx, job)
     app_settings.set(ctx, sv.RENDER_CHANGES_SETTING_KEY, False)
     (tmp_path / "slides" / "abc-EN-Demo-v1-0-0.tex").unlink()
     assert sv.saved_version_lines(ctx, deck, "EN") == []                # no frozen file: the current one
