@@ -6,6 +6,7 @@ setting, offered with the release notes (Install now / Not now / Skip this versi
 and the previews of decks using the key re-rendered after an install. The fake GitHub API is test_theme_sources'."""
 from __future__ import annotations
 
+import threading
 from types import SimpleNamespace
 
 import pytest
@@ -129,7 +130,7 @@ def test_the_offer_shows_the_notes_and_a_new_major_version(qapp, github, tmp_pat
 # -- the start-up check
 
 @pytest.fixture
-def window(tmp_path):
+def window(qapp, tmp_path):
     fake = SimpleNamespace(logged=[], installed=[], toast=SimpleNamespace(shown=[]))
     fake.log = fake.logged.append
     fake.theme_installed = fake.installed.append
@@ -168,7 +169,22 @@ def test_an_update_is_offered_never_installed_silently(window, github, tmp_path,
     assert any("not installed for now" in line for line in window.logged)
     choose(monkeypatch, "install")
     maintenance.on_theme_updates_done(window, theme_sources.check_updates())
+    wait_until(lambda: window.installed)
     assert themes.installed()[0].manifest.version == "1.1.0" and window.installed == ["sample-theme"]
+
+
+def test_an_offered_update_unpacks_on_a_worker(window, github, tmp_path, monkeypatch):
+    github.release("1.0.0", ASSET.read_bytes())
+    theme_sources.install(theme_sources.newest_eligible(GH)[0])
+    github.release("1.1.0", build(tmp_path, "1.1.0"))
+    updater.set_update_mode("ask")
+    threads, real = [], theme_sources.install
+    monkeypatch.setattr(theme_sources, "install",
+                        lambda fetched: threads.append(threading.current_thread()) or real(fetched))
+    choose(monkeypatch, "install")
+    maintenance.on_theme_updates_done(window, theme_sources.check_updates())
+    wait_until(lambda: window.installed)
+    assert threads and threads[0] is not threading.main_thread()
 
 
 def test_off_while_checking_offers_nothing_and_a_failure_is_only_logged(window, github, tmp_path, monkeypatch):
@@ -212,6 +228,7 @@ def test_a_theme_that_updates_automatically_is_installed_at_the_start_without_as
     updater.set_update_mode("ask")
     offered = choose(monkeypatch, "later")
     maintenance.on_theme_updates_done(window, theme_sources.check_updates())
+    wait_until(lambda: window.installed)
     assert offered == [] and themes.installed()[0].manifest.version == "1.1.0" and window.installed == ["sample-theme"]
     assert any("updated to 1.1.0" in text for text in window.toast.shown)
     assert theme_sources.read_source("sample-theme").auto_update                   # the choice survives the update

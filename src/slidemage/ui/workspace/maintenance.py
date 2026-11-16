@@ -33,12 +33,13 @@ from PySide6.QtWidgets import QApplication, QMessageBox, QProgressDialog
 
 from ... import alt_images, app_settings, bundled_copies, compat, housekeeping, open_path, project, project_access
 from ... import slide_preview, slide_rename, updater
-from ... import citation_sources, citations, diagnostics, slide_templates, theme_sources, themes, view_themes
+from ... import citation_sources, diagnostics, slide_templates, theme_sources, view_themes
 from ... import version as version_mod
 from ...plugins import catalogue as plugin_catalogue
 from ...plugins import session as plugin_session
 from ...plugins import updates as plugin_updates
 from ...plugins import upgrade as plugin_upgrade
+from ..background import run_in_background
 from ..dialogs.about import AboutSheet
 from ..dialogs.housekeeping import ARCHIVE_PAGE, LIST_PAGE, HousekeepingJobs, HousekeepingSheet
 from ..dialogs.open_project import NewerProjectSheet
@@ -907,18 +908,28 @@ def _auto(sources, key: str) -> bool:
     return bool(source and source.auto_update)
 
 
-def install_theme_update(window, offer: theme_sources.Offer) -> None:
-    """The theme updates automatically: installed now, and said in a notice."""
-    try:
-        manifest = theme_sources.install(offer.fetched)
-    except themes.ThemeError as exc:
-        window.log(f"Theme update failed: {exc}")
-        window.toast.show_message(f"The theme {offer.name} could not be updated: {exc}", error=True, timeout_ms=10000)
-        return
-    window.log(f"Theme {manifest.name} updated to {manifest.version} automatically (from "
-               f"{offer.fetched.release.repository})")
-    window.toast.show_message(f"The theme {manifest.name} was updated to {manifest.version}.", timeout_ms=8000)
-    window.theme_installed(manifest.id)
+def _install_update(window, install, offer: theme_sources.Offer, noun: str, installed, auto: bool) -> None:
+    """Install the fetched update of a theme or citation format on a worker (it unpacks and checks the package):
+    said in a notice when it was automatic, in the log when the user chose it."""
+    def done(manifest, error: Exception | None) -> None:
+        if error is not None:
+            window.log(f"{noun.capitalize()} update failed: {error}")
+            window.toast.show_message(f"The {noun} {offer.name} could not be updated: {error}", error=True,
+                                      timeout_ms=10000)
+            return
+        by = " automatically" if auto else ""
+        window.log(f"{noun.capitalize()} {manifest.name} updated to {manifest.version}{by} "
+                   f"(from {offer.fetched.release.repository})")
+        if auto:
+            window.toast.show_message(f"The {noun} {manifest.name} was updated to {manifest.version}.", timeout_ms=8000)
+        installed(manifest.id)
+
+    run_in_background(partial(install, offer.fetched), done)
+
+
+def install_theme_update(window, offer: theme_sources.Offer, auto: bool = True) -> None:
+    """The theme updates: automatically (a notice) or because the user chose Install now."""
+    _install_update(window, theme_sources.install, offer, "theme", window.theme_installed, auto)
 
 
 def offer_theme_update(window, offer: theme_sources.Offer) -> None:
@@ -926,16 +937,7 @@ def offer_theme_update(window, offer: theme_sources.Offer) -> None:
     release = offer.fetched.release
     choice = ask_theme_update(window, offer)
     if choice == "install":
-        try:
-            manifest = theme_sources.install(offer.fetched)
-        except themes.ThemeError as exc:
-            window.log(f"Theme update failed: {exc}")
-            window.toast.show_message(f"The theme {offer.name} could not be updated: {exc}", error=True,
-                                      timeout_ms=10000)
-            return
-        window.log(f"Theme {manifest.name} updated to {manifest.version} (from {release.repository})")
-        window.theme_installed(manifest.id)
-        return
+        return install_theme_update(window, offer, auto=False)
     offer.fetched.discard()
     if choice == "skip":
         try:
@@ -989,20 +991,9 @@ def on_citation_updates_done(window, result) -> None:
             offer_citation_update(window, offer)
 
 
-def install_citation_update(window, offer: theme_sources.Offer) -> None:
-    """The citation format updates automatically: installed now, and said in a notice."""
-    try:
-        manifest = citation_sources.install(offer.fetched)
-    except citations.CitationError as exc:
-        window.log(f"Citation format update failed: {exc}")
-        window.toast.show_message(f"The citation format {offer.name} could not be updated: {exc}", error=True,
-                                  timeout_ms=10000)
-        return
-    window.log(f"Citation format {manifest.name} updated to {manifest.version} automatically (from "
-               f"{offer.fetched.release.repository})")
-    window.toast.show_message(f"The citation format {manifest.name} was updated to {manifest.version}.",
-                              timeout_ms=8000)
-    window.citation_installed(manifest.id)
+def install_citation_update(window, offer: theme_sources.Offer, auto: bool = True) -> None:
+    """The citation format updates: automatically (a notice) or because the user chose Install now."""
+    _install_update(window, citation_sources.install, offer, "citation format", window.citation_installed, auto)
 
 
 def offer_citation_update(window, offer: theme_sources.Offer) -> None:
@@ -1010,16 +1001,7 @@ def offer_citation_update(window, offer: theme_sources.Offer) -> None:
     release = offer.fetched.release
     choice = ask_citation_update(window, offer)
     if choice == "install":
-        try:
-            manifest = citation_sources.install(offer.fetched)
-        except citations.CitationError as exc:
-            window.log(f"Citation format update failed: {exc}")
-            window.toast.show_message(f"The citation format {offer.name} could not be updated: {exc}", error=True,
-                                      timeout_ms=10000)
-            return
-        window.log(f"Citation format {manifest.name} updated to {manifest.version} (from {release.repository})")
-        window.citation_installed(manifest.id)
-        return
+        return install_citation_update(window, offer, auto=False)
     offer.fetched.discard()
     if choice == "skip":
         try:

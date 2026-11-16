@@ -154,7 +154,7 @@ plain tests for `on_progress` callbacks). "Today" below is develop @ 539df49d.
    deletes them with no lock held, `rescan()` first. `progress.Progress`, the `busy_reason` keyword (2.2), the kit
    `BusyIndicator` (in the gallery). Settings: button disabled, "Clearing background previews…" under it, the
    caption shows the emptied store at once.
-2. **Extensions page on the shared runner.** Today: `settings_plugins.Job` (a QThread, `settings_plugins.py:75`)
+2. **Extensions page on the shared runner.** Done (v0.16.55). Today: `settings_plugins.Job` (a QThread, `settings_plugins.py:75`)
    is still used by the Extensions page's `_start`; the theme / citation installs from a file (`install_file`,
    `install_theme_file`) and from an offer (`_install_fetched`, `maintenance.offer_theme_update`,
    `offer_citation_update`) unpack on the GUI thread. Change: `Job` goes, `_start` uses `run_in_background` and
