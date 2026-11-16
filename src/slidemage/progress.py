@@ -10,3 +10,7 @@ from dataclasses import dataclass
 class Progress:
     text: str
     fraction: float | None = None          # 0..1; None while the number of steps is not known
+
+    @staticmethod
+    def step(n: int, total: int, text: str) -> "Progress":
+        return Progress(f"{text} ({n} of {total})", n / total)

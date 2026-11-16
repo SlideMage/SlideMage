@@ -9,7 +9,8 @@ thread has ended, and the application waits for it at quit; the sheet just drops
 
 Rules for a caller of `run_in_background*` with work that can take more than about half a second:
 1. Disable the control that started the work while it runs (one run at a time); never `processEvents()`.
-2. Show a kit `BusyIndicator` (start, show_progress, finish in `done`) when the user can carry on elsewhere.
+2. Show a kit `BusyIndicator` (start, show_progress, finish in `done`) when the user can carry on elsewhere;
+   use `BusySheet.run` (it runs the work itself) when the project's files are being rewritten.
 3. Make the work determinate when its steps are counted before it starts: the back-end function takes an
    `on_progress` callback and the work passes `report` on.
 4. Give `busy_reason` for work that competes with background rendering for the disk (deletes, copies, imports).

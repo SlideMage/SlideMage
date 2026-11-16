@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import re
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,8 @@ from PySide6.QtGui import QFont, QFontDatabase, QFontMetrics
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QFrame, QLabel, QPushButton, QWidget
 
+from conftest import wait_until
+from slidemage.progress import Progress
 from slidemage.ui.kit import kit_qss
 from slidemage.ui.kit import fonts as fonts_module
 from slidemage.ui.kit.fonts import FONT_DIR, load_fonts
@@ -23,6 +26,7 @@ from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.kit.tokens import FONT_ICONS, FONT_MONO, FONT_SANS
 from slidemage.ui.kit.widgets import (
     BusyIndicator,
+    BusySheet,
     Chip,
     Field,
     IconLabel,
@@ -339,6 +343,25 @@ def test_busy_indicator_hides_a_quick_run_and_shows_a_long_one(theme):
     assert not busy.isHidden()                                               # stays a little once shown
     QTest.qWait(BusyIndicator.SHOW_AT_LEAST_MS + 100)
     assert busy.isHidden()
+
+
+def test_busy_sheet_works_off_the_gui_thread_then_closes_and_calls_done(theme):
+    threads, seen = [], []
+    gate = threading.Event()
+
+    def work(report):
+        threads.append(threading.current_thread())
+        report(Progress.step(1, 2, "Copying"))
+        gate.wait(5)
+        return "ok"
+
+    sheet = BusySheet.run(None, "Updating…", work, lambda result, error: seen.append((result, error, sheet.isVisible())))
+    sheet.reject()                                                           # Escape: the sheet stays
+    wait_until(lambda: sheet.busy._label.text() == "Copying (1 of 2)")
+    assert sheet.isVisible() and sheet.isModal() and seen == []
+    gate.set()
+    wait_until(lambda: seen)
+    assert seen == [("ok", None, False)] and threads[0] is not threading.main_thread()
 
 
 def test_modal_sheet_tabs_and_buttons(theme):

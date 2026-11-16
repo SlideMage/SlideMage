@@ -47,6 +47,7 @@ from ..dialogs.plugin_offer import PluginOfferSheet
 from ..dialogs.project_compat import DONT_ASK, MARK_READ, UPDATE, CompatSheet, ProjectUpdatedSheet
 from ..dialogs.settings_plugins import (ask_citation_update, ask_plugin_update, ask_theme_update, download_release,
                                         install_downloaded)
+from ..kit.widgets import BusySheet
 from . import compile_actions
 
 STARTUP_UPDATE_CHECK_DELAY_MS = 3000
@@ -200,26 +201,37 @@ def compat_update(window, evaluation) -> None:
             "Some edits in the Source view could not be saved. Resolve that first, so the update and "
             "an editor can't overwrite each other.")
         return
-    result = compat.run_update(window.project.root, evaluation.loud)
-    for rel in result.changed:
-        window.log(f"Updated {rel}")
-    if result.backup:
-        window.log(f"  backup: {result.backup}")
-    for error in result.errors:
-        window.log(f"*** update failed: {error} ***")
-    window.refresh_open_deck_editors()
-    remaining = compat.evaluate(window.project.root, app_version)
-    if remaining.loud or result.errors:
-        compat_report(window, remaining)
-        QMessageBox.warning(
-            window, "Update project",
-            f"{len(result.changed)} file(s) updated. Some changes need work by hand; the "
-            "report lists where, and has a prompt for an AI tool.")
-    else:
-        compat.acknowledge(window.project.root, app_version)
-        QMessageBox.information(window, "Update project",
-                                f"{len(result.changed)} file(s) updated. Backups are in "
-                                ".slidemage/backups/.")
+    root = window.project.root
+
+    def work(report):
+        return compat.run_update(root, evaluation.loud, on_progress=report), compat.evaluate(root, app_version)
+
+    def done(outcome, error) -> None:
+        if error is not None:
+            window.log(f"*** update failed: {error} ***")
+            QMessageBox.warning(window, "Update project", f"The update failed: {error}")
+            return
+        result, remaining = outcome
+        for rel in result.changed:
+            window.log(f"Updated {rel}")
+        if result.backup:
+            window.log(f"  backup: {result.backup}")
+        for problem in result.errors:
+            window.log(f"*** update failed: {problem} ***")
+        window.refresh_open_deck_editors()
+        if remaining.loud or result.errors:
+            compat_report(window, remaining)
+            QMessageBox.warning(
+                window, "Update project",
+                f"{len(result.changed)} file(s) updated. Some changes need work by hand; the "
+                "report lists where, and has a prompt for an AI tool.")
+        else:
+            compat.acknowledge(root, app_version)
+            QMessageBox.information(window, "Update project",
+                                    f"{len(result.changed)} file(s) updated. Backups are in "
+                                    ".slidemage/backups/.")
+
+    BusySheet.run(window, "Updating the project…", work, done, busy_reason="updating the project")
 
 
 def on_project_compat(window) -> None:

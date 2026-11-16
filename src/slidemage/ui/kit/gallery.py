@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import threading
 
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (
@@ -36,6 +37,7 @@ from .theme import ThemeManager
 from .tokens import SPACE, RADIUS_SM, VIEWS
 from .widgets import (
     BusyIndicator,
+    BusySheet,
     Button,
     Card,
     Chip,
@@ -205,7 +207,20 @@ class KitGallery(QWidget):
             QTimer.singleShot(1500, lambda: busy.show_progress(Progress("Copying (1 of 2)", 0.5)))
             QTimer.singleShot(3000, finish)
         run.clicked.connect(start)
-        return self._rows(self._row(run), busy)
+        sheet = Button("Busy sheet (Cancel works)", "secondary")
+        sheet.clicked.connect(self._busy_sheet)
+        return self._rows(self._row(run, sheet), busy)
+
+    def _busy_sheet(self) -> None:
+        cancel = threading.Event()
+
+        def work(report) -> None:
+            for n in range(1, 7):
+                if cancel.wait(0.5):
+                    return
+                report(Progress.step(n, 6, "Copying"))
+
+        BusySheet.run(self, "Copying files…", work, lambda _result, _error: None, cancel=cancel)
 
     def _thumbnails(self) -> QWidget:
         pictures = sorted((FONT_DIR.parent / "frames").glob("*.png"))   # the frame gallery of Add slide

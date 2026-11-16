@@ -6,8 +6,9 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-from PySide6.QtWidgets import QLabel, QMessageBox, QPushButton
+from PySide6.QtWidgets import QLabel, QMessageBox, QPushButton, QWidget
 
+from conftest import wait_until
 from slidemage import compat
 from slidemage.project import ProjectContext
 from slidemage import version as version_mod
@@ -66,11 +67,14 @@ def window(root, monkeypatch, changes, choice, logged):
 
     monkeypatch.setattr(maintenance, "CompatSheet", FakeDialog)
     monkeypatch.setattr(maintenance, "ProjectUpdatedSheet", FakeDialog)
-    monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: None)
-    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: None)
-    return SimpleNamespace(
-        project=ProjectContext.at(root), log=logged.append, centre=SimpleNamespace(source=SimpleNamespace(dirty_files=lambda: [], flush_all=lambda: None)),
-        refresh_open_deck_editors=lambda: None)
+    boxes = []                                   # the message boxes the update ends with
+    monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: boxes.append(a))
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: boxes.append(a))
+    win = QWidget()                              # the update's BusySheet needs a real parent
+    win.boxes = boxes
+    win.project, win.log, win.refresh_open_deck_editors = ProjectContext.at(root), logged.append, lambda: None
+    win.centre = SimpleNamespace(source=SimpleNamespace(dirty_files=lambda: [], flush_all=lambda: None))
+    return win
 
 
 def test_not_now_keeps_the_warning_dont_ask_again_ends_it(tmp_path, monkeypatch, qapp):
@@ -93,6 +97,7 @@ def test_update_project_only_acknowledges_when_all_is_fixed(tmp_path, monkeypatc
     monkeypatch.setattr(maintenance.open_path, "open_in_default_app", opened.append)
     win = window(root, monkeypatch, changes, project_compat.UPDATE, [])
     maintenance.check_project_compat(win)
+    wait_until(lambda: win.boxes)
     assert b"\\new" in (root / "decks" / "course.tex").read_bytes()
     if manual_work:
         assert compat.checked_version(root) == "v5.28.1"
