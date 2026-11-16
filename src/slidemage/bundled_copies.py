@@ -56,9 +56,10 @@ import shutil
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from .fileio import read_json, sha256_file, write_json
+from .progress import Progress
 from .project import ProjectContext
 
 MANIFEST_PATH = Path(".slidemage") / "bundled_copies.json"
@@ -294,20 +295,30 @@ def dismiss(project_root: Path, app_version: str) -> None:
 # -- applying ----------------------------------------------------------------
 
 def apply_update(ctx: ProjectContext, part: Part, app_version: str,
-                 now: Optional[datetime] = None) -> Path:
+                 now: Optional[datetime] = None, on_progress: Optional[Callable[[Progress], None]] = None) -> Path:
     """Carry out `part`; returns the backup folder (created only if anything
-    was replaced or removed). Raises alt_images.NewerStoreError, before anything is changed, if the manual's
+    was replaced or removed). `on_progress` gets one step per file backed up, copied and removed. Raises alt_images.NewerStoreError, before anything is changed, if the manual's
     image descriptions cannot be merged into the project's store."""
     if part.name == MANUAL:
         from . import alt_images
         alt_images.check_writable(ctx)
     stamp = (now or datetime.now()).strftime("%Y-%m-%d_%H%M%S")
     backup = ctx.root / BACKUP_DIR / stamp / part.name
+    total, done = 2 * (len(part.update) + len(part.remove)) + len(part.add), 0
+
+    def step(text: str) -> None:
+        nonlocal done
+        done += 1
+        if on_progress:
+            on_progress(Progress.step(done, total, text))
+
     for rel in part.update + part.remove:
+        step("Backing up")
         dest = backup / rel
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(part.target / rel, dest)
     for rel in part.add + part.update:
+        step("Copying")
         dest = part.target / rel
         dest.parent.mkdir(parents=True, exist_ok=True)
         own_header = None
@@ -319,6 +330,7 @@ def apply_update(ctx: ProjectContext, part: Part, app_version: str,
             dest.write_bytes(_HEADER_RE.sub(
                 lambda _m: own_header.group(0), dest.read_bytes(), count=1))
     for rel in part.remove:
+        step("Removing")
         (part.target / rel).unlink()
 
     data = read_manifest(ctx.root)

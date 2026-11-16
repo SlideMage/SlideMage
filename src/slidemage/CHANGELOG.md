@@ -4232,3 +4232,9 @@ v0.16.56 (2026-11-16, direct request: docs/plans/busy-indicators.md, step 3): (1
 
 NEW: Update project no longer freezes SlideMage.
 - It shows a sheet with a progress bar ("Updating (3 of 12)") while it backs up and rewrites the project's files.
+
+v0.16.57 (2026-11-16, direct request: docs/plans/busy-indicators.md, step 4): (1) The start-up check of the project's framework and manual copies (maintenance.check_bundled_copies) compares them on a worker, off the GUI thread (it hashes every file), with no indicator; the question box opens afterwards, only if the window still exists. (2) bundled_copies.apply_update(..., on_progress=None) reports one step per file backed up, copied and removed, Qt-free. (3) Updating the framework and manual and Add the manual (maintenance.apply_bundled_parts) run every part in one worker inside a BusySheet ("Updating the framework and manual…", "Adding the manual…"), holding busy.working("copying the framework"); the error boxes, the log lines and the reload of the decks stay, in done. There is no Cancel. The empty-project page still looks up can_add_manual on the GUI thread each time it is shown, and Add the manual still plans on it before the sheet opens.
+
+NEW: Updating the framework and the manual no longer freezes SlideMage.
+- It shows a sheet with a progress bar ("Copying (3 of 12)") while the files are backed up and copied.
+- The start-up comparison of the project's copies with the bundled ones runs in the background.

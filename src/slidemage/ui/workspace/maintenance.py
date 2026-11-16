@@ -294,16 +294,22 @@ def bundled_parts(window) -> list:
 
 @_logged
 def check_bundled_copies(window) -> None:
+    """Compares the copies on a worker (it hashes every file; nobody waits, so no indicator), then asks."""
     app_version = version_mod.VERSION_NUMBER
-    if bundled_copies.is_dismissed(window.project.root, app_version):
-        return
-    try:
-        parts = bundled_parts(window)
-    except OSError as exc:
-        window.log(f"Couldn't compare the project's framework/manual copies: {exc}")
-        return
-    if not parts:
-        return
+
+    def work() -> list:
+        return [] if bundled_copies.is_dismissed(window.project.root, app_version) else bundled_parts(window)
+
+    def done(parts, error) -> None:
+        if error is not None:
+            window.log(f"Couldn't compare the project's framework/manual copies: {error}")
+        elif parts:
+            offer_bundled_parts(window, parts, app_version)
+
+    run_in_background(work, done, parent=window)
+
+
+def offer_bundled_parts(window, parts: list, app_version: str) -> None:
     lines = [line for part in parts for line in bundled_copies.summary_lines(part)]
     box = QMessageBox(window)
     box.setIcon(QMessageBox.Icon.Information)
@@ -336,20 +342,35 @@ def check_bundled_copies(window) -> None:
 
 
 def apply_bundled_parts(window, parts: list) -> None:
-    for part in parts:
-        try:
-            backup = bundled_copies.apply_update(window.project, part, version_mod.VERSION_NUMBER)
-        except OSError as exc:
-            QMessageBox.critical(window, "Update failed", f"{part.label}: {exc}")
-            continue
-        except alt_images.NewerStoreError as exc:
-            QMessageBox.warning(window, "Update not applied", f"{part.label}: {exc}")
-            continue
-        for line in bundled_copies.summary_lines(part):
-            window.log(f"Updated -- {line}")
-        if part.update or part.remove:
-            window.log(f"  backup: {backup}")
-    window.reload_decks()
+    """Copies every part in one worker, behind a BusySheet; the boxes, log lines and the reload are in `done`."""
+    def work(report) -> list:
+        outcomes = []
+        for part in parts:
+            try:
+                outcomes.append((part, bundled_copies.apply_update(
+                    window.project, part, version_mod.VERSION_NUMBER, on_progress=report), None))
+            except (OSError, alt_images.NewerStoreError) as exc:
+                outcomes.append((part, None, exc))
+        return outcomes
+
+    def done(outcomes, error) -> None:
+        if error is not None:
+            window.log(f"*** framework/manual update failed: {error} ***")
+            QMessageBox.critical(window, "Update failed", str(error))
+        for part, backup, exc in outcomes or []:
+            if isinstance(exc, alt_images.NewerStoreError):
+                QMessageBox.warning(window, "Update not applied", f"{part.label}: {exc}")
+            elif exc is not None:
+                QMessageBox.critical(window, "Update failed", f"{part.label}: {exc}")
+            else:
+                for line in bundled_copies.summary_lines(part):
+                    window.log(f"Updated -- {line}")
+                if part.update or part.remove:
+                    window.log(f"  backup: {backup}")
+        window.reload_decks()
+
+    title = "Adding the manual…" if all(part.new_install for part in parts) else "Updating the framework and manual…"
+    BusySheet.run(window, title, work, done, busy_reason="copying the framework")
 
 
 def can_add_manual(window) -> bool:

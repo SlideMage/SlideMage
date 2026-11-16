@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from conftest import wait_until
 from conftest import write_test_file as write
 
 from slidemage import alt_images, bundled_copies, project
@@ -260,6 +261,7 @@ def _run_dialog(monkeypatch, root, bundle, choose: str):
 
     window = Window()
     maintenance.check_bundled_copies(window)
+    wait_until(lambda: "chosen" in seen)
     return seen, window
 
 
@@ -268,8 +270,25 @@ def test_dialog_adds_the_manual(tmp_path, bundle, monkeypatch, qapp):
     write(root / "slide_ids.csv", '"id"\r\n')
     seen, window = _run_dialog(monkeypatch, root, bundle, "Add the manual")
     assert "Add it to this project?" in seen["text"]
+    wait_until(lambda: window.reloaded)
     assert (root / "decks" / "slidemage-manual.tex").is_file()
     assert window.reloaded == 1
+
+
+def test_the_check_compares_the_copies_off_the_gui_thread(tmp_path, bundle, monkeypatch, qapp):
+    import threading
+
+    from PySide6.QtWidgets import QWidget
+
+    from slidemage.ui.workspace import maintenance
+
+    threads = []
+    monkeypatch.setattr(maintenance, "bundled_parts", lambda _window: threads.append(threading.current_thread()) or [])
+    window = QWidget()
+    window.project = ProjectContext.at(make_project(tmp_path, bundle))
+    maintenance.check_bundled_copies(window)
+    wait_until(lambda: threads)
+    assert threads[0] is not threading.main_thread()
 
 
 def test_dialog_dont_ask_again(tmp_path, bundle, monkeypatch, qapp):
@@ -283,6 +302,16 @@ def test_dialog_dont_ask_again(tmp_path, bundle, monkeypatch, qapp):
     assert (root / "slides" / "1aa-EN-One-current.tex").read_text() == "slide one v1\n"
     assert bundled_copies.is_dismissed(root, "v5.20.0")
     assert not bundled_copies.is_dismissed(root, "v5.21.0")
+
+
+def test_apply_update_reports_a_step_per_file(tmp_path, bundle):
+    root = make_project(tmp_path, bundle)
+    write(bundle[1] / "slides" / "1aa-EN-One-current.tex", "slide one v2\n")
+    write(bundle[1] / "slides" / "1cc-EN-New-current.tex", "new\n")
+    manual = plan(root, bundle)[MANUAL]
+    seen = []
+    bundled_copies.apply_update(ProjectContext.at(root), manual, "v5.20.0", now=NOW, on_progress=seen.append)
+    assert [p.text for p in seen] == ["Backing up (1 of 3)", "Copying (2 of 3)", "Copying (3 of 3)"]
 
 
 def test_hidden_folders_are_never_part_of_a_copy(tmp_path, bundle):
