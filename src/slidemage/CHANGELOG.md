@@ -4163,3 +4163,8 @@ v0.16.45 (2026-11-13, direct request: a title bar set in the theme form stayed d
 
 NEW: A title bar color set in the theme form takes effect.
 - Fixed: a title bar, title text or bullet color set in the theme form of a theme that did not set it before had no effect on the slides. Open the theme form and set the color again, or follow the new warning of the syntax check.
+
+v0.16.46 (2026-11-16, Compile -> All views asks what to build): "All views of this deck" opens a small dialog (compile_actions.compile_all_views) with a checkbox for each PDF view (Instructor, During course, After course), the Presenter PDF and both student transcripts, all ticked at first; a deck without versions offers PDF and Presenter. Compile is disabled with nothing ticked. The ticks are remembered per deck in the project's app settings (key all_views_selection). The ticked PDFs go to one compile run, the ticked transcripts are written after it (deck_actions.generate_deck_transcript). Tests in tests/test_workspace_window.py.
+
+NEW: Compile > All views now lets you choose which views, the presenter PDF and the transcripts to create.
+- New: "All views of this deck" opens a dialog with everything ticked; untick what you do not need. Your choice is remembered for each deck.
