@@ -45,9 +45,9 @@ from ...ai import ai_profile, routes
 from ...plugins import session
 from ...latex_edit import DEFAULT_TAB_WIDTH_CHARS, TAB_WIDTH_SETTING_KEY
 from ...latex_help import HOVER_HELP_SETTING_KEY
-from .. import layout_settings
+from .. import background, layout_settings
 from ..ai_models import add_route_badge
-from ..kit.widgets import Button, Field, ModalSheet, Page, SegmentedControl, action_row, caption, columns, row
+from ..kit.widgets import BusyIndicator, Button, Field, ModalSheet, Page, SegmentedControl, action_row, caption, columns, row
 from ..workspace import debug_log_ui
 from ..workspace.centre import RESUME_TABS_SETTING
 from ..workspace.source_file import autosave_on
@@ -248,6 +248,8 @@ class GeneralTab(Page):
         layout.addWidget(Field("Background previews", row(self.bg_check, self.bg_mains_check)))
         layout.addWidget(columns(Field("Speed", self.bg_profile), Field("Disk limit", self.bg_limit)))
         layout.addWidget(row(self.bg_clear))
+        self.bg_busy = BusyIndicator()
+        layout.addWidget(self.bg_busy)
         self.bg_caption = caption("")
         layout.addWidget(self.bg_caption)
         layout.addWidget(caption(
@@ -280,11 +282,23 @@ class GeneralTab(Page):
         if QMessageBox.question(self, "Clear background previews", "Delete all prepared previews? They are rendered again "
                                 "when SlideMage is idle.") != QMessageBox.StandardButton.Yes:
             return
-        controller.store.clear()
-        workspace = controller.store.work_dir
-        preview_build.prune_unused(workspace, workspace / "build", 0)
-        controller.renderer.replan()
+        store, renderer = controller.store, controller.renderer
+        store.clear()
         self._background_size()
+        self.bg_clear.setEnabled(False)
+        self.bg_busy.start("Clearing background previews…")
+        workspace = store.work_dir
+
+        def purge() -> None:
+            store.purge_trash()
+            preview_build.prune_unused(workspace, workspace / "build", 0)
+
+        def done(_result, _error) -> None:
+            renderer.replan()                       # also when the sheet has closed meanwhile
+            if shiboken6.isValid(self):
+                self.bg_busy.finish()
+                self.bg_clear.setEnabled(True)
+        background.run_in_background(purge, done, busy_reason="clearing previews")
 
     def _on_cleanup(self, index: int) -> None:
         hours = self.cleanup_combo.itemData(index)

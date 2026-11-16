@@ -382,6 +382,43 @@ def test_archiving_a_deck_deletes_only_what_no_other_deck_uses(ctx, resolver, st
     assert resolver.lookup(solo).state is not Freshness.FRESH and resolver.lookup(shared).state is Freshness.FRESH
 
 
+def _put(store, key):
+    return store_render(store, key, dict(unit=f"unit-{key}", rendered_at=time.time()))
+
+
+def test_clear_moves_the_files_to_the_trash_and_purge_deletes_them(store):
+    key = _put(store, "ab" + "0" * 62)
+    store.clear()
+    assert store.count() == 0 and not store.find(key)
+    trash = list(store.root.glob("trash-*"))
+    assert len(trash) == 1 and (trash[0] / "objects").is_dir()              # clear() itself deleted nothing
+    store.purge_trash()
+    assert not list(store.root.glob("trash-*"))
+
+
+def test_a_render_stored_after_clear_survives_the_purge(store):
+    _put(store, "ab" + "0" * 62)
+    store.clear()
+    key = _put(store, "cd" + "1" * 62)                                       # before the purge: objects/ and tmp/ are new
+    store.purge_trash()
+    assert store.find(key) and store.count() == 1
+
+
+def test_rescan_purges_a_trash_folder_a_crash_left(store):
+    leftover = store.root / "trash-deadbeef"
+    (leftover / "objects").mkdir(parents=True)
+    store.rescan()
+    assert not leftover.exists()
+
+
+def test_archiving_a_deck_trashes_the_renders_only_it_used(store):
+    solo, shared = _put(store, "ab" + "0" * 62), "cd" + "1" * 62
+    store_render(store, shared, dict(unit="shared", rendered_at=time.time()), decks=("old", "live"))
+    store.db.execute("UPDATE renders SET decks=? WHERE key=?", ('["old"]', solo))
+    assert store.drop_deck("old") == 1 and store.find(shared) and not store.find(solo)
+    assert len(list(store.root.glob("trash-*"))) == 1
+
+
 def test_failures_are_remembered_for_the_input_state_and_backed_off(ctx, resolver, store):
     clock = [5000.0]
     store._clock = lambda: clock[0]

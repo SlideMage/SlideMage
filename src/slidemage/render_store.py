@@ -13,12 +13,14 @@ under the store lock. An object without a complete `meta.json` is ignored.
 
 The **index** is a SQLite file beside them: the records of published objects, the file hashes
 (dep_hash), the failures the sweep remembers and the decks' usage. `work/` holds what the renders' LaTeX runs
-need outside the project: their wrapper files, build caches and precompiled preamble formats.
+need outside the project: their wrapper files, build caches and precompiled preamble formats. What is deleted in
+bulk (`clear`, `drop_deck`) is first moved into a `trash-*` folder under the lock, one rename each, and deleted by
+`purge_trash` with no lock held: a store of thousands of folders takes seconds to delete.
 Free of Qt.
 """
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 import json
 import os
 import shutil
@@ -282,8 +284,9 @@ class RenderStore:
             self.db.commit()
 
     def drop_deck(self, deck: str) -> int:
-        """A deck was archived: forget it in every render, deleting the renders only it used."""
-        removed = 0
+        """A deck was archived: forget it in every render, moving the renders only it used to the trash (the
+        caller runs purge_trash off the GUI thread)."""
+        unused = []
         with self.lock:
             rows = self.db.execute("SELECT key, decks FROM renders").fetchall()
             for key, decks in rows:
@@ -294,11 +297,12 @@ class RenderStore:
                 if names:
                     self.db.execute("UPDATE renders SET decks=? WHERE key=?", (json.dumps(names), key))
                 else:
-                    self._remove(key)
-                    removed += 1
+                    unused.append(key)
+            self.db.executemany("DELETE FROM renders WHERE key=?", [(key,) for key in unused])
+            self._trash(*(object_dir(self.root, key) for key in unused))
             self.db.execute("DELETE FROM deck_usage WHERE deck=?", (deck,))
             self.db.commit()
-        return removed
+        return len(unused)
 
     def drop_stale(self, in_scope: Callable[[str], bool], keep_keys: set, clean_decks: set, before: float) -> int:
         """Delete the renders whose key no deck uses any more (docs/plans/render-store-cleanup.md, step 2), of the units
@@ -349,11 +353,27 @@ class RenderStore:
             self.db.commit()
 
     def clear(self) -> None:
+        """Forget every render at once; the files go to the trash (purge_trash). put() recreates the folders."""
         with self.lock:
-            shutil.rmtree(self.root / "objects", ignore_errors=True)
-            shutil.rmtree(self.root / "tmp", ignore_errors=True)
+            self._trash(self.root / "objects", self.root / "tmp")
             self.db.execute("DELETE FROM renders")
             self.db.commit()
+
+    def _trash(self, *folders: Path) -> None:
+        """Move `folders` into a new `trash-*` folder, one rename each. A folder that cannot move (open on Windows)
+        stays; rescan() removes the objects no row knows."""
+        if not folders:
+            return
+        trash = self.root / f"trash-{uuid.uuid4().hex}"
+        trash.mkdir()
+        for folder in folders:
+            with suppress(OSError):
+                os.replace(folder, trash / folder.name)
+
+    def purge_trash(self) -> None:
+        """Delete what clear() and drop_deck() moved away. Without the lock: nothing refers to it any more."""
+        for trash in self.root.glob("trash-*"):
+            shutil.rmtree(trash, ignore_errors=True)
 
     def total_bytes(self) -> int:
         with self.lock:
@@ -370,6 +390,7 @@ class RenderStore:
         before removing an object, so a render stored during the walk is kept. A stopped walk leaves rows of unseen
         objects alone. Indexed meta supplies the expected file sizes without reading meta.json again.
         """
+        self.purge_trash()                                              # what a crash left of clear()
         with self.lock:
             shutil.rmtree(self.root / "tmp", ignore_errors=True)       # under the lock: put() writes there
             indexed = {row[0] for row in self.db.execute("SELECT key FROM renders")}

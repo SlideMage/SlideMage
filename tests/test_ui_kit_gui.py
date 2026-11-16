@@ -22,6 +22,7 @@ from slidemage.ui.kit.gallery import KitGallery
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.kit.tokens import FONT_ICONS, FONT_MONO, FONT_SANS
 from slidemage.ui.kit.widgets import (
+    BusyIndicator,
     Chip,
     Field,
     IconLabel,
@@ -322,6 +323,22 @@ def test_toast_actions_and_auto_hide(theme):
     toast.show_message("Saved", timeout_ms=20)
     QTest.qWait(120)
     assert not toast.isVisible()
+
+
+def test_busy_indicator_hides_a_quick_run_and_shows_a_long_one(theme):
+    busy = BusyIndicator()
+    busy.start("Working…")
+    QTest.qWait(100)
+    busy.finish()
+    QTest.qWait(BusyIndicator.SHOW_AFTER_MS + 100)
+    assert busy.isHidden()                                                   # finished before it showed: never appears
+    busy.start("Working…")
+    QTest.qWait(BusyIndicator.SHOW_AFTER_MS + 100)
+    assert not busy.isHidden() and busy._label.text() == "Working…"
+    busy.finish()
+    assert not busy.isHidden()                                               # stays a little once shown
+    QTest.qWait(BusyIndicator.SHOW_AT_LEAST_MS + 100)
+    assert busy.isHidden()
 
 
 def test_modal_sheet_tabs_and_buttons(theme):

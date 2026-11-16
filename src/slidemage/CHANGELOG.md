@@ -4216,3 +4216,9 @@ v0.16.53 (2026-11-16, direct request: commit the fixes left uncommitted in the m
 NEW: Small fixes in the slide list and the theme form.
 - A deck you pick in the deck menu now starts with its first slide selected.
 - In the theme form, hovering a color's name highlights where it is used in the sample slides, as hovering its field does.
+
+v0.16.54 (2026-11-16, direct request: docs/plans/busy-indicators.md, step 1): (1) Settings -> Background previews -> Clear background previews no longer freezes the window. RenderStore.clear() moves objects/ and tmp/ into a trash-<uuid>/ folder under the lock (one rename each) and deletes the rows; RenderStore.purge_trash() deletes the trash folders with no lock held, on a worker started through background.run_in_background(..., busy_reason="clearing previews"), and rescan() purges what a crash left. The caption shows the emptied store at once, the button is disabled and a BusyIndicator under it says "Clearing background previews…". The prune of the preview build caches moved to the worker and the replan to its done. (2) RenderStore.drop_deck() (archive a deck) moves the renders only that deck used into the trash in the same way; renderer.deck_archived purges it on a daemon thread. (3) New: kit BusyIndicator (ui/kit/widgets.py, in the kit gallery; a thin bar and a caption, shown after 400 ms, kept at least 300 ms, announced to screen readers), slidemage/progress.py (Progress(text, fraction)), and a busy_reason keyword on background.run_in_background and run_in_background_with_progress that holds busy.working(reason) until done has run; the rules for a caller are in the ui/background.py docstring.
+
+NEW: Clearing the background previews no longer freezes SlideMage.
+- Settings -> Background previews -> Clear background previews empties the store at once and deletes the files in the background, with a progress bar under the button.
+- Archiving a deck no longer waits for its previews to be deleted.

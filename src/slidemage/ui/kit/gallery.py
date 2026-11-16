@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 import sys
 
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -28,11 +29,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ...progress import Progress
 from .fonts import FONT_DIR, load_fonts
 from .kit_qss import FIELD_LABEL
 from .theme import ThemeManager
 from .tokens import SPACE, RADIUS_SM, VIEWS
 from .widgets import (
+    BusyIndicator,
     Button,
     Card,
     Chip,
@@ -75,6 +78,7 @@ class KitGallery(QWidget):
         self._section("Chips", self._chips())
         self._section("Buttons, split button, icon buttons", self._buttons())
         self._section("Form controls", self._controls())
+        self._section("Busy indicator", self._busy())
         self._section("Field, thumbnail grid", self._thumbnails())
         self._section("Card", self._card())
         self._section("Palette", self._swatches())
@@ -187,6 +191,21 @@ class KitGallery(QWidget):
         sheet_button.clicked.connect(self._open_sheet)
         return self._row(split, more, IconLabel("lock"), Button("Primary", "primary"),
                          Button("Secondary", "secondary"), toast_error, sheet_button)
+
+    def _busy(self) -> QWidget:
+        busy = BusyIndicator()
+        run = Button("Run for 3 s", "secondary")
+
+        def finish() -> None:
+            busy.finish()
+            run.setEnabled(True)
+        def start() -> None:
+            run.setEnabled(False)
+            busy.start("Working…")
+            QTimer.singleShot(1500, lambda: busy.show_progress(Progress("Copying (1 of 2)", 0.5)))
+            QTimer.singleShot(3000, finish)
+        run.clicked.connect(start)
+        return self._rows(self._row(run), busy)
 
     def _thumbnails(self) -> QWidget:
         pictures = sorted((FONT_DIR.parent / "frames").glob("*.png"))   # the frame gallery of Add slide

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
+import time
 
 import shiboken6
 from PySide6.QtCore import QEvent, QObject, QPoint, QRect, QSize, Qt, QTimer, Signal
@@ -35,6 +36,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLayout,
     QListWidget,
+    QProgressBar,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -48,6 +50,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ...progress import Progress
 from . import kit_qss as q
 from .fonts import load_fonts
 from .tokens import SPACE, FONT_ICONS, FONT_SANS, SHADOWS
@@ -1354,6 +1357,61 @@ class SplitButton(QFrame):
         if self._menu is not None:
             self._caret.setText("expand_less")
             self._menu.popup_below(self, align_right=True)
+
+
+class BusyIndicator(QWidget):
+    """A thin bar and a caption, to sit under the button that started a long operation. start(text) is
+    indeterminate, show_progress(Progress) determinate when it has a fraction, finish() ends it. It appears only
+    after SHOW_AFTER_MS, so quick runs never flash, and once shown stays at least SHOW_AT_LEAST_MS."""
+
+    SHOW_AFTER_MS = 400
+    SHOW_AT_LEAST_MS = 300
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(SPACE.sm)
+        self._bar = QProgressBar()
+        self._bar.setObjectName(q.JOB_BAR)
+        self._bar.setTextVisible(False)
+        self._label = caption()
+        layout.addWidget(self._bar)
+        layout.addWidget(self._label)
+        self._running = False
+        self._shown_at = 0.0
+        self._show_timer = QTimer(self, singleShot=True, interval=self.SHOW_AFTER_MS)
+        self._show_timer.timeout.connect(self._show)
+        self._hide_timer = QTimer(self, singleShot=True)
+        self._hide_timer.timeout.connect(self.hide)
+        self.hide()
+
+    def start(self, text: str) -> None:
+        self.show_progress(Progress(text))
+
+    def show_progress(self, progress: Progress) -> None:
+        self._label.setText(progress.text)
+        if progress.fraction is None:
+            self._bar.setRange(0, 0)
+        else:
+            self._bar.setRange(0, 100)
+            self._bar.setValue(round(progress.fraction * 100))
+        if not self._running:
+            self._running = True
+            self._hide_timer.stop()
+            if self.isHidden():
+                self._show_timer.start()
+
+    def finish(self) -> None:
+        self._running = False
+        self._show_timer.stop()
+        if not self.isHidden():
+            self._hide_timer.start(max(0, round(self.SHOW_AT_LEAST_MS - (time.monotonic() - self._shown_at) * 1000)))
+
+    def _show(self) -> None:
+        self._shown_at = time.monotonic()
+        self.show()
+        announce(self, self._label.text())
 
 
 class Toast(QFrame):
