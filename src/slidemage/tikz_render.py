@@ -23,6 +23,7 @@ rather than something to separately check for.
 """
 from __future__ import annotations
 
+import re
 import shutil
 from pathlib import Path
 from typing import Callable, Optional
@@ -31,6 +32,7 @@ import pymupdf as fitz
 from PIL import Image, ImageChops
 
 from . import alt_blocks, alt_images, compile_log, project
+from .fileio import text_sha256
 from .slide_preview import compile_and_extract, default_preamble
 
 # In the user's cache folder (ctx.tikz_previews_dir), same regeneratable-cache reasoning as
@@ -200,6 +202,52 @@ def _wrapper_text(ctx: project.ProjectContext, illustration_id: str, options: st
     )
 
 
+# Definitions a slide may make inside its frame, just above an illustration that uses them (2026-11-16: the
+# manual's 1ym-EN-Framework-Project-App sizes its boxes with \pgfmathsetmacro{\ymbox}{...} there). A statement
+# that starts a line with one of these is copied into the render, through the line where its braces close; the
+# frame's text, lists and the like are not, so they cannot end up in the cropped picture.
+_DEFINITION_RE = re.compile(
+    r"^[ \t]*\\(?:pgfmathsetmacro|pgfmathtruncatemacro|pgfmathsetlengthmacro|pgfmathsetlength|pgfmathsetcount"
+    r"|newcommand|renewcommand|providecommand|def|edef|gdef|xdef|let|newlength|setlength|addtolength|settowidth"
+    r"|settoheight|settodepth|newcount|newdimen|setcounter|definecolor|colorlet|tikzset|pgfkeys|pgfplotsset)"
+    r"(?![a-zA-Z@])", re.MULTILINE)
+_ID_RE = re.compile(r"([^{}]*)\}")
+
+
+def frame_definitions(slide_text: str, illustration_id: str) -> str:
+    """The definition statements (_DEFINITION_RE) between the opening of the frame that holds `illustration_id`
+    and the illustration itself, in order, comments removed; "" when there are none."""
+    stripped = alt_blocks.COMMENT_RE.sub("", slide_text)
+    begin = None
+    for match in alt_blocks.TIKZILLUSTRATION_RE.finditer(stripped):
+        found = _ID_RE.match(stripped, match.end())
+        if found is not None and found.group(1).strip() == illustration_id:
+            begin = match.start()
+            break
+    if begin is None:
+        return ""
+    frames = [m for m in alt_blocks.FRAME_OPEN_RE.finditer(stripped, 0, begin)]
+    region = stripped[frames[-1].end() if frames else 0:begin]
+    statements = []
+    for match in _DEFINITION_RE.finditer(region):
+        end, depth = match.start(), 0
+        while True:
+            line_end = region.find("\n", end)
+            line_end = len(region) if line_end == -1 else line_end
+            depth += region.count("{", end, line_end) - region.count("}", end, line_end)
+            end = line_end + 1
+            if depth <= 0 or end > len(region):
+                break
+        statements.append(region[match.start():min(end, len(region))].strip())
+    return "".join(f"{statement}\n" for statement in statements)
+
+
+def _failure_path(png_path: Path) -> Path:
+    """Where a failed render of `png_path`'s source is remembered: the source cannot render, so asking again before
+    it changes would only compile and fail again (each time 20 s and more)."""
+    return png_path.with_suffix(".failed")
+
+
 def ensure_rendered(ctx: project.ProjectContext, reference: str, log: Optional[LogCallback] = None) -> Path:
     """The cached PNG of `reference`'s (a "tikz:ID" key, alt_blocks.TIKZ_PREFIX)
     current tikz body, rendering and cropping it fresh first if not already
@@ -208,6 +256,10 @@ def ensure_rendered(ctx: project.ProjectContext, reference: str, log: Optional[L
     compile failure -- the same contract media_render.ensure_rendered()
     already has, so callers already written for that (alt_draft.py's
     _resolve_describable and friends) can treat both the same way.
+
+    A compile failure is remembered next to the PNG it would have made (_failure_path), with a hash of the whole
+    wrapper: the same source asked again raises the same error at once, without compiling. Editing the slide (or
+    anything else that goes into the wrapper) gives a new hash, and the next ask compiles again.
     """
     log = log or (lambda line: None)
     if not reference.startswith(alt_blocks.TIKZ_PREFIX):
@@ -222,6 +274,7 @@ def ensure_rendered(ctx: project.ProjectContext, reference: str, log: Optional[L
         )
     slide_path, options, body = found
     slide_preamble = _slide_preamble_text(slide_path)
+    definitions = frame_definitions(slide_path.read_text(encoding="utf-8"), illustration_id)
 
     # options and slide_preamble are both part of the hash too, not just
     # body -- editing only a style definition (box/.style={fill=red} ->
@@ -230,15 +283,33 @@ def ensure_rendered(ctx: project.ProjectContext, reference: str, log: Optional[L
     # an unrelated edit elsewhere in the slide's own pre-frame text (a
     # version-note comment, say) also invalidates it -- an unnecessary
     # re-render, never a wrong cached result, so left as-is rather than
-    # trying to hash only the "relevant" lines.
-    source_hash = alt_images.tikz_source_hash(options + slide_preamble + body)
+    # trying to hash only the "relevant" lines. The frame's own definitions
+    # count the same way; an illustration without any keeps its old key.
+    source_hash = alt_images.tikz_source_hash(options + slide_preamble + definitions + body)
     png_path = _cache_path(ctx, illustration_id, source_hash)
     if png_path.is_file():
         return png_path
 
+    wrapper_text = _wrapper_text(ctx, illustration_id, options, body, slide_preamble + definitions)
+    failure_key = text_sha256(wrapper_text)
+    failure = _failure_path(png_path)
+    try:
+        key, _, message = failure.read_text(encoding="utf-8").partition("\n")
+    except OSError:
+        key, message = "", ""
+    if key == failure_key:
+        raise RuntimeError(message or f"tikz illustration '{illustration_id}' did not render")
+
     log(compile_log.tikz_rendering(illustration_id, slide_path.name))
-    wrapper_text = _wrapper_text(ctx, illustration_id, options, body, slide_preamble)
-    pdf_path = compile_and_extract(ctx, wrapper_text, f"tikz-{illustration_id}", log)
+    try:
+        pdf_path = compile_and_extract(ctx, wrapper_text, f"tikz-{illustration_id}", log)
+    except RuntimeError as exc:
+        try:
+            failure.parent.mkdir(parents=True, exist_ok=True)
+            failure.write_text(f"{failure_key}\n{exc}", encoding="utf-8")
+        except OSError:
+            pass                        # not remembered: the next ask compiles again
+        raise
     try:
         _render_and_crop(ctx, pdf_path, png_path)
     finally:
@@ -248,6 +319,7 @@ def ensure_rendered(ctx: project.ProjectContext, reference: str, log: Optional[L
         # the PNG derived from it, so the temp directory is cleaned up
         # immediately rather than accumulating one per illustration drafted.
         shutil.rmtree(pdf_path.parent, ignore_errors=True)
+    failure.unlink(missing_ok=True)
 
     log(compile_log.tikz_passed(illustration_id, png_path))
     return png_path
