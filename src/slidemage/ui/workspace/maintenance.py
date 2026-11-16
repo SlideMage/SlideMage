@@ -618,7 +618,13 @@ def on_housekeeping(window) -> None:
         compile_actions.update_previews(window)
 
 
-def empty_pdf_folder(window) -> None:
+def _failed(window, what: str, error) -> None:
+    window.log(f"*** {what} failed: {error} ***")
+    QMessageBox.warning(window, "Housekeeping", f"{what} failed: {error}")
+
+
+def empty_pdf_folder(window, then=None) -> None:
+    """Asks, then deletes on a worker behind a BusySheet; `then()` runs afterwards (the Housekeeping sheet's refresh)."""
     files = housekeeping.pdf_files(window.project)
     if not files:
         QMessageBox.information(window, "Nothing to do", "pdf/ is already empty (or doesn't exist yet).")
@@ -626,11 +632,20 @@ def empty_pdf_folder(window) -> None:
     reply = QMessageBox.question(window, "Empty folder", f"Delete all {len(files)} file(s) in pdf/?")
     if reply != QMessageBox.StandardButton.Yes:
         return
-    housekeeping.delete_files(files)
-    window.log(f"Emptied pdf/ ({len(files)} file(s) deleted)")
+
+    def done(_result, error) -> None:
+        if error is not None:
+            return _failed(window, "Emptying pdf/", error)
+        window.log(f"Emptied pdf/ ({len(files)} file(s) deleted)")
+        if then:
+            then()
+
+    BusySheet.run(window, "Emptying pdf/…", lambda report: housekeeping.delete_files(files, report), done,
+                  busy_reason="housekeeping")
 
 
-def remove_temp_files(window) -> None:
+def remove_temp_files(window, then=None) -> None:
+    """As empty_pdf_folder: the confirm question here, the removal on a worker."""
     if window.compiling:
         QMessageBox.information(
             window, "Busy", "Can't remove temp files while a compile run is in progress."
@@ -651,13 +666,22 @@ def remove_temp_files(window) -> None:
     )
     if reply != QMessageBox.StandardButton.Yes:
         return
-    housekeeping.remove_temp_files(window.project, found)
-    window.log(
-        f"Removed {found.count - len(found.scratch)} temp item(s) "
-        f"({len(found.build)} build item(s) in .build/, "
-        f"{len(found.wrappers)} wrapper file(s) in decks/) "
-        f"and {len(found.scratch)} item(s) in .temp/"
-    )
+
+    def done(_result, error) -> None:
+        if error is not None:
+            return _failed(window, "Removing temp files", error)
+        window.log(
+            f"Removed {found.count - len(found.scratch)} temp item(s) "
+            f"({len(found.build)} build item(s) in .build/, "
+            f"{len(found.wrappers)} wrapper file(s) in decks/) "
+            f"and {len(found.scratch)} item(s) in .temp/"
+        )
+        if then:
+            then()
+
+    BusySheet.run(window, "Removing temp files…",
+                  lambda report: housekeeping.remove_temp_files(window.project, found, report), done,
+                  busy_reason="housekeeping")
 
 
 def on_archive_unused_content(window) -> None:
@@ -668,22 +692,27 @@ def on_archive_unused_content(window) -> None:
     sheet.exec()
 
 
-def on_sync_translation_links(window) -> int:
-    """Refreshes translation cross-reference comments from current
-    disk state -- pure text scanning over slides/, no compile
-    involved, so (unlike Update previews) this runs synchronously rather
-    than on a background thread. Returns the number of files updated."""
-    changed, missing = slide_rename.regenerate_translation_links(window.project)
-    window.log(f"Sync translation links: {changed} file(s) updated")
-    for line in missing:
-        window.log(f"    (unresolved: {line})")
-    if missing:
-        QMessageBox.warning(
-            window, "Sync translation links",
-            f"{changed} file(s) updated. {len(missing)} link(s) could "
-            "not be resolved -- see the log pane for details.",
-        )
-    return changed
+def on_sync_translation_links(window, then=None) -> None:
+    """Refreshes translation cross-reference comments from current disk state (it reads every slide, so on a
+    worker behind a BusySheet); `then(files updated)` runs afterwards."""
+    def done(result, error) -> None:
+        if error is not None:
+            return _failed(window, "Sync translation links", error)
+        changed, missing = result
+        window.log(f"Sync translation links: {changed} file(s) updated")
+        for line in missing:
+            window.log(f"    (unresolved: {line})")
+        if missing:
+            QMessageBox.warning(
+                window, "Sync translation links",
+                f"{changed} file(s) updated. {len(missing)} link(s) could "
+                "not be resolved -- see the log pane for details.",
+            )
+        if then:
+            then(changed)
+
+    BusySheet.run(window, "Syncing translation links…",
+                  lambda _report: slide_rename.regenerate_translation_links(window.project), done)
 
 
 # -- plugins: the first-start sheet and the plugin updates ------------------------------------------

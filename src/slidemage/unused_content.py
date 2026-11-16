@@ -63,6 +63,7 @@ from pathlib import Path
 from typing import Callable, Iterable
 
 from . import ai_review, languages
+from .progress import Progress
 from .project import ProjectContext
 from .slide_language import current_name
 from .tex_source import COMMENT_RE
@@ -205,9 +206,9 @@ def find_unused_media(ctx: ProjectContext) -> list[Path]:
 
 
 def _archive_files(
-    files: list[Path], archive_dir: Path, kind: str, log: LogCallback
+    files: list[Path], archive_dir: Path, kind: str, log: LogCallback, step: Callable[[], None]
 ) -> int:
-    """kind: singular noun for one file, e.g. "media file" or "slide"."""
+    """kind: singular noun for one file, e.g. "media file" or "slide". `step()` follows each file."""
     if not files:
         log(f"No unused {kind}s found.")
         return 0
@@ -217,18 +218,28 @@ def _archive_files(
         dest = archive_dir / path.name
         if dest.exists():
             log(f"Skipped {path.name} -- already exists in {archive_dir.name}/")
-            continue
-        shutil.move(str(path), str(dest))
-        log(f"Archived {kind}: {path.name}")
-        moved += 1
+        else:
+            shutil.move(str(path), str(dest))
+            log(f"Archived {kind}: {path.name}")
+            moved += 1
+        step()
     return moved
 
 
-def archive_files(ctx: ProjectContext, media: list[Path], slides: list[Path], log: LogCallback) -> tuple[int, int]:
+def archive_files(ctx: ProjectContext, media: list[Path], slides: list[Path], log: LogCallback,
+                  on_progress: Callable[[Progress], None] | None = None) -> tuple[int, int]:
     """Move these media/ files into media/archive/ and these slides/ files into slides/archive/.
-    Returns (media moved, slides moved)."""
-    media_moved = _archive_files(media, ctx.media_dir / "archive", "media file", log)
-    slides_moved = _archive_files(slides, ctx.slides_dir / "archive", "slide", log)
+    Returns (media moved, slides moved). `on_progress` gets one step per file."""
+    total, seen = len(media) + len(slides), 0
+
+    def step() -> None:
+        nonlocal seen
+        seen += 1
+        if on_progress:
+            on_progress(Progress.step(seen, total, "Moving"))
+
+    media_moved = _archive_files(media, ctx.media_dir / "archive", "media file", log, step)
+    slides_moved = _archive_files(slides, ctx.slides_dir / "archive", "slide", log, step)
     ai_review.mark_reviewed(ctx, [p for p in slides if not p.exists()])
     log(
         f"==== Archive unused content done: {media_moved} media file(s), "

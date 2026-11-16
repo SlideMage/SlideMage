@@ -4238,3 +4238,9 @@ v0.16.57 (2026-11-16, direct request: docs/plans/busy-indicators.md, step 4): (1
 NEW: Updating the framework and the manual no longer freezes SlideMage.
 - It shows a sheet with a progress bar ("Copying (3 of 12)") while the files are backed up and copied.
 - The start-up comparison of the project's copies with the bundled ones runs in the background.
+
+v0.16.58 (2026-11-16, direct request: docs/plans/busy-indicators.md, step 5): (1) The Housekeeping sheet opens at once: HousekeepingSheet.refresh puts "Counting…" in the rows and runs the scans (pdf/ files and sizes, find_temp_files, find_unused_media, find_unused_slides) in one worker; the rows are filled in done, and the archive page fills when the scan ends. (2) Remove temp files and Empty the pdf folder (menu and sheet) ask on the GUI thread, then run in one worker inside a BusySheet holding busy.working("housekeeping"); housekeeping.remove_temp_files and delete_files take on_progress and report one step per item, Qt-free (the wrappers are now removed in the same loop as the other items). (3) Reestablish translation links runs slide_rename.regenerate_translation_links in a worker inside an indeterminate BusySheet; on_sync_translation_links returns nothing now and takes `then(files updated)` for the sheet's row. The jobs of HousekeepingJobs take a `then` callback for the same reason (the sheet's refresh). (4) unused_content.archive_files takes on_progress (one step per file); the archive page shows a BusyIndicator bar next to the log lines, which replaces its "Moving…" label; an archive that failed no longer leaves the page stuck.
+
+NEW: The Housekeeping sheet no longer freezes SlideMage.
+- It opens at once and counts what there is to clean up in the background.
+- Emptying pdf/, removing temp files and reestablishing translation links show a sheet with a progress bar while they run, and archiving unused content shows a bar too.
