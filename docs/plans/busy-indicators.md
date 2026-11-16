@@ -1,6 +1,7 @@
 # Busy and progress indicators: findings and plan
 
-Status: plan only (no code). Base: develop @ 20d1375 (v0.14.0).
+Status: steps checked against develop @ 539df49d (2026-11-16) and rewritten in section 3; step 1 done (v0.16.54).
+Written at develop @ 20d1375 (v0.14.0); section 1 keeps the original findings, line numbers there are stale.
 
 Goal from the owner: an operation that makes SlideMage look frozen gets at least a busy animation, and a
 determinate progress bar where the number of steps is known. The trigger case is **Settings → Background previews →
@@ -111,17 +112,12 @@ of slides, a synced folder, Windows). Step 0 of every row is to confirm them wit
 `Progress.step(n, total, text)` that makes "text (n of total)" and the fraction. The same shape as the Ollama
 plugin's own `Progress`, so the plugin can switch to it later without changing what it shows.
 
-**`ui/background.py`** gains the two runners, moved from the plugin host:
-
-```python
-def run(work, done, *, busy_reason: str | None = None) -> None
-def run_with_progress(work, progress, done, *, busy_reason: str | None = None) -> None
-```
-
-Same contract as the host's (worker must not touch widgets; `report` is worker-safe; `progress` and `done` on the
-GUI thread; callbacks may outlive the widget). `busy_reason` holds `busy.working(reason)` for the work's duration.
-`PluginHost.run_in_background*` become one-line calls of these (the plugin API does not change).
-`settings_plugins.Job` and `_ArchiveWorker` go; the other workers can follow when their files are touched anyway.
+**`ui/background.py`** already has the runners (since "One background-work helper for the UI"):
+`run_in_background(work, done, *, parent, cancel, logger) -> Handle` and `run_in_background_with_progress(work,
+progress, done, ...)`, with cooperative cancel (`Handle.cancel()`, a `threading.Event` a one-argument `work`
+receives) and `stop()` for a closing sheet. `PluginHost.run_in_background*` already call them. Step 1 adds one
+keyword, `busy_reason: str | None = None`, to both: it holds `busy.working(reason)` until `done` has run. No new
+runner. The caller rules below are in the module docstring.
 
 **Kit `BusyIndicator`** (`ui/kit/widgets.py`): a small inline widget, a thin kit-styled bar plus a caption, made to
 sit under the button that started the work.
@@ -149,41 +145,52 @@ the result is told in a toast or the existing message box. It replaces the updat
 
 ## 3. Steps
 
-Each step is its own PR, with a patch version bump and CHANGELOG entry (app code), and tests (pytest-qt for the
-widgets; plain tests for the back-end `on_progress` callbacks and for `RenderStore.clear()`).
+Each step is its own PR (stacked on the previous step's branch), with a patch version bump and CHANGELOG entry, and
+tests: at most three new ones per step, for the rule the step exists for (plain `QTest`, the repo has no qtbot;
+plain tests for `on_progress` callbacks). "Today" below is develop @ 539df49d.
 
-1. **Clear background previews without freezing** (the trigger case). `RenderStore.clear()`: rename `objects/` and
-   `tmp/` to `trash-<uuid>/` under the lock, delete the rows, return the trash folders; `RenderStore.purge_trash()`
-   deletes them with no lock held, and `rescan()` calls it for leftovers. Add `progress.py`,
-   `background.run(...)` / `run_with_progress(...)` and the kit `BusyIndicator` (the minimum of section 2.2 this
-   step needs). Settings: the button is disabled, the indicator says "Clearing background previews…" under it, the
-   caption shows the emptied store at once, and the purge runs with `busy_reason="clearing previews"`. Same change
-   for `drop_deck()` (archive a deck). Tests: `clear()` returns quickly with a store of many objects and leaves
-   `count() == 0`; a store with a leftover trash folder is cleaned by `rescan()`; a `put()` during the purge
-   survives.
-2. **Plugin host on the shared runners.** `PluginHost.run_in_background*` call `background.run*`;
-   `settings_plugins.Job` goes, the Extensions page shows a `BusyIndicator` for its jobs, and theme / citation
-   installs (from GitHub and from a file) run their unpack on the worker too. No change to the plugin API.
-3. **Update project with progress.** `compat.run_update(..., on_progress=None)` reports one step per file it backs
-   up and writes; `maintenance.compat_update` runs it in a `BusySheet` (introduced here). The evaluation after it
-   runs in the same worker.
-4. **Framework and manual copies.** `check_bundled_copies` computes `plan_updates` on a worker (no indicator);
-   `apply_update(..., on_progress=None)` reports files copied; `apply_bundled_parts` runs in a `BusySheet`.
-5. **Housekeeping.** The sheet opens at once and scans on a worker ("Counting…" in the rows); Remove temp files,
-   Empty pdf/ and Sync translation links run on workers with a `BusyIndicator` (determinate for the first two);
-   `unused_content.archive_files(..., on_progress=None)` gives the archive its bar, and `_ArchiveWorker` goes.
-6. **Import PPTX/ODP.** `slide_import.import_presentation(..., on_progress=None)`: busy while extracting, then
-   "slide n of m"; the sheet becomes a `BusySheet` while it runs. The deck edit (`after_deck_edit`) stays on the GUI
-   thread in `done`.
-7. **Updates of SlideMage itself.** "Check for updates" fetches on a worker with a `BusyIndicator` in a small sheet
-   (no wait cursor); the download runs in a `BusySheet` with a determinate bar and Cancel, without
-   `processEvents()`. The install step after the download stays as it is.
-8. **Export LaTeX** on a worker with a determinate `BusyIndicator` in the toast area (`latex_export.export_deck`
-   gets `on_progress`). Lowest priority; can be dropped if step 9 measures it under 0.5 s on a large deck.
-9. **Measure the rest, fix what is slow.** Add `timing.event` calls (`SLIDEMAGE_TIMING=1`) around `scan_decks`,
-   `compat.evaluate`, `needed_slides_by_template` and the Images page reload; run them on the owner's project; any
-   that is over 0.5 s moves to a worker with a `BusyIndicator`, in a follow-up PR per operation. The rest are noted
-   here as measured and left alone.
+1. **Clear background previews without freezing** (the trigger case, issue #83). Done (v0.16.54):
+   `RenderStore.clear()` and `drop_deck()` move folders into `trash-<uuid>/` under the lock; `purge_trash()`
+   deletes them with no lock held, `rescan()` first. `progress.Progress`, the `busy_reason` keyword (2.2), the kit
+   `BusyIndicator` (in the gallery). Settings: button disabled, "Clearing background previews…" under it, the
+   caption shows the emptied store at once.
+2. **Extensions page on the shared runner.** Today: `settings_plugins.Job` (a QThread, `settings_plugins.py:75`)
+   is still used by the Extensions page's `_start`; the theme / citation installs from a file (`install_file`,
+   `install_theme_file`) and from an offer (`_install_fetched`, `maintenance.offer_theme_update`,
+   `offer_citation_update`) unpack on the GUI thread. Change: `Job` goes, `_start` uses `run_in_background` and
+   shows a `BusyIndicator`; the unpack of every install runs in the work function. (The plugin host part of the old
+   step 2 is done.)
+3. **Update project with progress.** Today: `maintenance.compat_update` calls `compat.run_update` and then
+   `compat.evaluate` on the GUI thread; `run_update` has no progress callback. Change: introduce the kit `BusySheet`
+   (2.2) and `Progress.step(n, total, text)`; `run_update(..., on_progress=None)` reports one step per file; both
+   calls run in one worker inside a `BusySheet`; the result message boxes stay, in `done`.
+4. **Framework and manual copies.** Today: `check_bundled_copies` runs from a `QTimer` on the GUI thread (hashes
+   every framework and manual file); `apply_bundled_parts` copies on the GUI thread. Change: `bundled_parts` runs in
+   `run_in_background` (no indicator) and the question box opens in `done`; `apply_update(..., on_progress=None)`
+   reports files; `apply_bundled_parts` runs in a `BusySheet`, `reload_decks` in `done`.
+5. **Housekeeping.** Today: Archive unused content already runs through `run_in_background_with_progress` (its
+   progress is only the log callback); `HousekeepingSheet.refresh` scans synchronously (pdf/ sizes,
+   `find_temp_files`, both unused scans) before the sheet shows; Remove temp files, Empty pdf/ and Sync translation
+   links run on the GUI thread. Change: `refresh` runs the scans in one worker, the rows say "Counting…" meanwhile;
+   the three actions run in workers with a `BusyIndicator` (determinate for the two deletes, through
+   `on_progress` on `housekeeping.remove_temp_files` / `delete_files`); the archive shows a bar too.
+6. **Import PPTX/ODP.** Today: `ImportPresentationSheet._on_import` calls `slide_import.import_presentation`
+   synchronously; it has a per-slide `log` callback but no total. Change: `on_progress=None` gives "slide n of m"
+   (busy while extracting); the work runs in a worker while the sheet shows the indicator and its buttons are
+   disabled (the sheet itself is the modal); `after_deck_edit` stays in `done`.
+7. **Updates of SlideMage itself.** Today: `on_check_for_updates` fetches under a wait cursor;
+   `download_and_install_update` uses a `QProgressDialog` with `processEvents()` (a click elsewhere can start
+   anything meanwhile). Change: the fetch runs in `run_in_background` with a small `BusySheet`; the download runs in
+   a `BusySheet` with a determinate bar and Cancel (the handle's cancel event), no `processEvents()`; the install and
+   the restart question stay as they are, in `done`.
+8. **Export LaTeX.** Today: `compile_actions.export_latex` calls `latex_export.export_deck` synchronously. Change:
+   worker + determinate `BusyIndicator` via `on_progress`; the toast stays in `done`. Lowest priority: dropped if
+   step 9 measures it under 0.5 s on the manual deck.
+9. **Measure the rest.** Today: `timing.span` exists, `reload_decks` already has `reload_decks.scan`. Change: add
+   `timing.span` around `compat.evaluate` (start-up check and ⋮ Project compatibility), `needed_slides_by_template`,
+   the Images page `reload`, `compiler.unchanged_jobs` (under a wait cursor in `_confirm_unchanged_jobs`) and the
+   transcript preview (wait cursor, `transcript_preview.py:35`). The owner measures on their project; anything over
+   0.5 s gets a follow-up PR.
 
 Out of scope: the compile progress card, the AI status displays, and the plugin's own `Progress` (the Ollama plugin
 can switch to `slidemage.progress.Progress` in a later release of its own; nothing forces it).
