@@ -815,6 +815,7 @@ class SlideList(QWidget):
                               enabled=editable, icon="check" if (call.macro, call.version) == (macro, version) else "")
         menu.add_separator()
         add_commands(menu, self.app, [f"slide:visible:{view}" for view in VIEWS])
+        self._add_review_items(menu, [row])
         menu.add_separator()
         add_commands(menu, self.app, ["slide:before", "slide:after", "slide:duplicate", "slide:translate",
                                   "slide:section_before"])
@@ -828,10 +829,20 @@ class SlideList(QWidget):
         menu = self._new_menu(260)
         menu.add_header(f"{len(rows)} slides selected")
         add_commands(menu, self.app, [f"slide:visible:{view}" for view in VIEWS])
+        self._add_review_items(menu, rows)
         self._add_move_items(menu, all(r.call.editable for r in rows))
         menu.add_separator()
         add_commands(menu, self.app, ["slide:update_versions", "slide:reviewed", "compile:slides", "slide:clear", "slide:remove"])
         return menu
+
+    def _add_review_items(self, menu: PopoverMenu, rows: list[SlideRow]) -> None:
+        """The deck's own "under review" mark (\\SMReview{...}): a watermark on the previews, not in the PDF."""
+        editable = all(r.deck_call.editable for r in rows)
+        marked = all(r.review for r in rows)
+        menu.add_separator()
+        menu.add_item("review:toggle", "Clear review mark" if marked else "Mark for review in this deck",
+                      meta="\\SMReview", enabled=editable, icon="check" if marked else "")
+        menu.add_item("review:note", "Review note…", enabled=editable)
 
     def _add_move_items(self, menu: PopoverMenu, enabled: bool) -> None:
         menu.add_separator()
@@ -904,6 +915,10 @@ class SlideList(QWidget):
             self._change_variant(target, macro, version or None)
         elif name == "visible":
             self._set_visibility(targets, arg, not all(r.call.included_in(arg) for r in targets))
+        elif name == "review" and arg == "note":
+            self._ask_review_note(targets)
+        elif name == "review":
+            self._set_review(targets, not all(r.review for r in targets))
         elif name == "before":
             self._open_add(target.call.line_start, target.call.indent, f"before {target.call.id_slug}",
                            target.call.id_slug)
@@ -1062,6 +1077,24 @@ class SlideList(QWidget):
             f"{'Showed' if visible else 'Hid'} {what} in {VIEW_LABELS[view]} of {self.deck.name}",
             lambda path, text: deck_editor.set_calls_visibility(path, text, calls, view, visible),
             cleanup=self._flag_cleanup([c.id_slug for c in calls]))
+
+    def _set_review(self, rows: list[SlideRow], review: bool, note: Optional[str] = None) -> None:
+        """Mark the slides of `rows` as under review in this deck, or clear the mark. Only the deck file changes."""
+        calls = list({c.call_start: c for r in rows for c in (r.deck_call, *r.folded_calls)}.values())
+        what = ", ".join(dict.fromkeys(c.id_slug for c in calls))
+        self.edit(
+            "Change failed",
+            f"{'Marked' if review else 'Cleared the review mark of'} {what}{' for review' if review else ''} "
+            f"in {self.deck.name}",
+            lambda path, text: deck_editor.set_calls_review(path, text, calls, review, note))
+
+    def _ask_review_note(self, rows: list[SlideRow]) -> None:
+        note, accepted = QInputDialog.getText(
+            self, "Review note",
+            "Note shown under the watermark on the preview (empty for none):",
+            text=rows[0].review_note)
+        if accepted:
+            self._set_review(rows, True, note)
 
     def _bulk_toggle_visibility(self) -> None:
         rows = self.tree.selected_rows()

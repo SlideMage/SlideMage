@@ -638,6 +638,7 @@ def test_the_slide_menu_offers_every_way_to_call_a_slide(make_list, monkeypatch,
         "variant:slide", "variant:slidefinal", "variant:omitslide", "variant:conditionalslide",
         "variant:slidestep", "variant:slideversion:1-0-0", "variant:omitslideversion:1-0-0",
         "slide:visible:instructor", "slide:visible:during-course", "slide:visible:after-course",
+        "review:toggle", "review:note",
         "slide:before", "slide:after", "slide:duplicate", "slide:section_before", "move:0",
             "slide:remove"]
     if with_route:
@@ -698,6 +699,7 @@ def test_the_bulk_menu_moves_slides_into_a_section(make_list):
     menu = slide_list._bulk_menu()
     assert keys_of(menu) == [
         "slide:visible:instructor", "slide:visible:during-course", "slide:visible:after-course",
+        "review:toggle", "review:note",
         "move:0", "move:1", "move:2", "move:3", "slide:update_versions", "slide:reviewed", "compile:slides", "slide:clear", "slide:remove"]
     assert _entry(menu, "slide:remove")[2] == "Remove 2 from the deck"
     slide_list._on_menu_chosen("move:2")               # into the empty section
@@ -1220,3 +1222,32 @@ def test_the_placeholder_offers_open_in_each_deck_that_uses_the_slide(make_list)
     assert asked == [second]
     slide_list.show_placeholder("abx is not in an open deck.", "", (), "No deck uses this slide yet.")
     assert slide_list.placeholder_deck_buttons == [] and slide_list.placeholder_note.text() == "No deck uses this slide yet."
+
+
+def test_a_slide_is_marked_for_review_in_its_deck_from_the_menu(make_list, monkeypatch):
+    slide_list, window, path = make_list("\\slide{aaa-EN-One}\n\\omitslide{bbb-EN-Two}\n\\slide{ccc-EN-Three}\n")
+    focus(slide_list, "aaa")
+    assert _entry(slide_list._slide_menu(), "review:toggle")[2] == "Mark for review in this deck"
+    slide_list._on_menu_chosen("review:toggle")
+    assert read(path).splitlines()[2] == "\\SMReview{\\slide{aaa-EN-One}}"
+    row = slide_list.tree.data_of(item_of(slide_list, "aaa"))
+    assert row.review and "review" in meta_text(row, "EN") and window.edits[-1].startswith("Marked aaa-EN-One for review")
+    slide_list.tree.grab()                              # the thumbnail's watermark paints
+    focus(slide_list, "aaa")
+    assert _entry(slide_list._slide_menu(), "review:toggle")[2] == "Clear review mark"
+
+    monkeypatch.setattr(slide_list_module.QInputDialog, "getText", lambda *a, **k: ("ask Anna", True))
+    select(slide_list, "aaa", "bbb")
+    assert _entry(slide_list._bulk_menu(), "review:toggle")[2] == "Mark for review in this deck"   # not all are marked
+    slide_list._on_menu_chosen("review:note")
+    assert read(path).splitlines()[2:4] == ["\\SMReview[ask Anna]{\\slide{aaa-EN-One}}",
+                                            "\\SMReview[ask Anna]{\\omitslide{bbb-EN-Two}}"]
+    assert slide_list.tree.data_of(item_of(slide_list, "bbb")).review_note == "ask Anna"
+
+    select(slide_list, "aaa", "bbb")
+    slide_list._on_menu_chosen("review:toggle")
+    assert "SMReview" not in read(path)
+    monkeypatch.setattr(slide_list_module.QInputDialog, "getText", lambda *a, **k: ("50% sure", True))
+    focus(slide_list, "ccc")
+    slide_list._on_menu_chosen("review:note")
+    assert "plain text" in make_list.errors[-1] and "SMReview" not in read(path)
