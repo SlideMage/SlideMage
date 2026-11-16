@@ -44,6 +44,7 @@ from ... import app_settings, diagnostics, preview_build, slide_preview, slide_t
 from ...ai import ai_profile, routes
 from ...plugins import session
 from ...latex_edit import DEFAULT_TAB_WIDTH_CHARS, TAB_WIDTH_SETTING_KEY
+from ...latex_help import HOVER_HELP_SETTING_KEY
 from .. import layout_settings
 from ..ai_models import add_route_badge
 from ..kit.widgets import Button, Field, ModalSheet, Page, SegmentedControl, action_row, caption, columns, row
@@ -90,6 +91,14 @@ class GeneralTab(Page):
         self.tab_width_spin.setValue(app_settings.get(app.project, TAB_WIDTH_SETTING_KEY, DEFAULT_TAB_WIDTH_CHARS))
         self.tab_width_spin.valueChanged.connect(app.set_tab_width_chars)
         layout.addWidget(columns(Field("Appearance", self.dark_check), Field("Source editor tab width (characters)", self.tab_width_spin)))
+
+        self.hover_help_check = QCheckBox("Show help for LaTeX commands on hover")
+        self.hover_help_check.setChecked(bool(app_settings.get(app.project, HOVER_HELP_SETTING_KEY, True)))
+        self.hover_help_check.toggled.connect(app.set_hover_help)
+        layout.addWidget(Field("Source editor help", self.hover_help_check))
+        layout.addWidget(caption("Pointing at a SlideMage command such as \\cornerfigure, or at one of its keys, shows "
+                                 "how to use it. Shift+F1 shows the same for the command at the text cursor, also "
+                                 "when this is off."))
 
         self.autosave_check = QCheckBox("Save edits as you type (AutoSave)")
         self.autosave_check.setChecked(autosave_on())
