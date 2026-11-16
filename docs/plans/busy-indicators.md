@@ -1,6 +1,6 @@
 # Busy and progress indicators: findings and plan
 
-Status: steps checked against develop @ 539df49d (2026-11-16) and rewritten in section 3; step 1 done (v0.16.54).
+Status: steps checked against develop @ 539df49d (2026-11-16) and rewritten in section 3; steps 1–9 done (v0.16.54–v0.16.62, one branch each, stacked).
 Written at develop @ 20d1375 (v0.14.0); section 1 keeps the original findings, line numbers there are stale.
 
 Goal from the owner: an operation that makes SlideMage look frozen gets at least a busy animation, and a
@@ -160,30 +160,30 @@ plain tests for `on_progress` callbacks). "Today" below is develop @ 539df49d.
    `offer_citation_update`) unpack on the GUI thread. Change: `Job` goes, `_start` uses `run_in_background` and
    shows a `BusyIndicator`; the unpack of every install runs in the work function. (The plugin host part of the old
    step 2 is done.)
-3. **Update project with progress.** Today: `maintenance.compat_update` calls `compat.run_update` and then
+3. **Update project with progress.** Done (v0.16.56). Today: `maintenance.compat_update` calls `compat.run_update` and then
    `compat.evaluate` on the GUI thread; `run_update` has no progress callback. Change: introduce the kit `BusySheet`
    (2.2) and `Progress.step(n, total, text)`; `run_update(..., on_progress=None)` reports one step per file; both
    calls run in one worker inside a `BusySheet`; the result message boxes stay, in `done`.
-4. **Framework and manual copies.** Today: `check_bundled_copies` runs from a `QTimer` on the GUI thread (hashes
+4. **Framework and manual copies.** Done (v0.16.57). Today: `check_bundled_copies` runs from a `QTimer` on the GUI thread (hashes
    every framework and manual file); `apply_bundled_parts` copies on the GUI thread. Change: `bundled_parts` runs in
    `run_in_background` (no indicator) and the question box opens in `done`; `apply_update(..., on_progress=None)`
    reports files; `apply_bundled_parts` runs in a `BusySheet`, `reload_decks` in `done`.
-5. **Housekeeping.** Today: Archive unused content already runs through `run_in_background_with_progress` (its
+5. **Housekeeping.** Done (v0.16.58). Today: Archive unused content already runs through `run_in_background_with_progress` (its
    progress is only the log callback); `HousekeepingSheet.refresh` scans synchronously (pdf/ sizes,
    `find_temp_files`, both unused scans) before the sheet shows; Remove temp files, Empty pdf/ and Sync translation
    links run on the GUI thread. Change: `refresh` runs the scans in one worker, the rows say "Counting…" meanwhile;
    the three actions run in workers with a `BusyIndicator` (determinate for the two deletes, through
    `on_progress` on `housekeeping.remove_temp_files` / `delete_files`); the archive shows a bar too.
-6. **Import PPTX/ODP.** Today: `ImportPresentationSheet._on_import` calls `slide_import.import_presentation`
+6. **Import PPTX/ODP.** Done (v0.16.59). Today: `ImportPresentationSheet._on_import` calls `slide_import.import_presentation`
    synchronously; it has a per-slide `log` callback but no total. Change: `on_progress=None` gives "slide n of m"
    (busy while extracting); the work runs in a worker while the sheet shows the indicator and its buttons are
    disabled (the sheet itself is the modal); `after_deck_edit` stays in `done`.
-7. **Updates of SlideMage itself.** Today: `on_check_for_updates` fetches under a wait cursor;
+7. **Updates of SlideMage itself.** Done (v0.16.60). Today: `on_check_for_updates` fetches under a wait cursor;
    `download_and_install_update` uses a `QProgressDialog` with `processEvents()` (a click elsewhere can start
    anything meanwhile). Change: the fetch runs in `run_in_background` with a small `BusySheet`; the download runs in
    a `BusySheet` with a determinate bar and Cancel (the handle's cancel event), no `processEvents()`; the install and
    the restart question stay as they are, in `done`.
-8. **Export LaTeX.** Today: `compile_actions.export_latex` calls `latex_export.export_deck` synchronously. Change:
+8. **Export LaTeX.** Done (v0.16.61). Today: `compile_actions.export_latex` calls `latex_export.export_deck` synchronously. Change:
    worker + determinate `BusyIndicator` via `on_progress`; the toast stays in `done`. Lowest priority: dropped if
    step 9 measures it under 0.5 s on the manual deck.
 9. **Measure the rest.** Done (v0.16.62). Today: `timing.span` exists, `reload_decks` already has `reload_decks.scan`. Change: add
