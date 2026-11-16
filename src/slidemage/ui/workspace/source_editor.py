@@ -92,8 +92,8 @@ class SourceEditor(Protocol):
     def apply_insert(self, insert: Insert) -> bool:
         """False if `insert` needs the user's input first (a hyperlink)."""
     def toggle_comment(self) -> None: ...
-    def reindent(self) -> bool:
-        """False if the indentation was already right."""
+    def reindent(self, kind: str = "slide") -> bool:
+        """False if the indentation was already right. `kind`: "slide", "deck" or "bib"."""
     # header comment
     def header_line_count(self) -> int: ...
     def is_header_folded(self) -> bool: ...
@@ -420,9 +420,10 @@ class LatexPlainTextEdit(QPlainTextEdit):
                 return True
         return super().event(event)
 
-    def reindent(self) -> bool:
+    def reindent(self, kind: str = "slide") -> bool:
+        """`kind` picks the rules (latex_edit.REINDENTERS): "slide", "deck" or "bib"."""
         old = self.toPlainText()
-        new = latex_edit.reindent_latex(old)
+        new = latex_edit.REINDENTERS[kind](old)
         if new == old:
             return False
         self.replace_all_text(new)

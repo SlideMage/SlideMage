@@ -96,3 +96,10 @@ def test_defaults_and_help_come_from_the_setup_file():
 def test_the_order_puts_a_themes_own_colours_after_the_palette():
     assert theme_fields.order("c_primary_dark") < theme_fields.order("c_my_own") < theme_fields.order("SMLogoHeight")
     assert theme_fields.order("SMTitleBoxColor") == theme_fields.order("role:title_fill")
+
+
+def test_colour_name_macros_are_known_to_the_writer():
+    """A macro of the catalog that holds a colour's name must be written with \\renewcommand, not \\colorlet."""
+    macros = {name for name, entry in CATALOG.items() if entry.kind == "macro" and "Color" in name}
+    assert macros == set(theme_fields.MACRO_COLOURS)
+    assert set(theme_fields.ROLE_OF_HOOK) <= set(theme_fields.MACRO_COLOURS)

@@ -28,7 +28,9 @@ from PySide6.QtWidgets import (
 
 from ...deck_editor import SlideCall
 from ...deck_outline import SectionRow, SlideRow
+from ...deck_scan import REVIEW_TEXT_DEFAULT
 from ..kit import kit_qss as q
+from ..kit.review_mark import paint_review_mark
 from ..kit.theme import ThemeManager
 from ..kit.tokens import TYPE, RADIUS_SM, pill, FONT_ICONS, FONT_MONO, FONT_SANS
 from .state import WorkspaceState
@@ -60,6 +62,8 @@ def meta_text(row: SlideRow, language: str) -> str:
     parts = [f"{row.position} · {row.call.id}" + (f" {row.badge}" if row.badge else "")]
     if row.hidden:
         parts.append("hidden")
+    if row.review:
+        parts.append("review")
     if row.missing_translation:
         parts.append(f"no {language}")
     if row.lint_error:
@@ -76,6 +80,9 @@ def tooltip_text(row: SlideRow, view_label: str, language: str) -> str:
     lines = [call.id_slug]
     if row.unreviewed:
         lines.append("Not reviewed: changed by Claude. Click the check button to mark reviewed after checking it.")
+    if row.review:
+        lines.append("Under review in this deck" + (f": {row.review_note}" if row.review_note else ".")
+                     + " The mark shows on previews only, not in the compiled PDF.")
     if row.hidden:
         lines.append(f"Not typeset in {view_label}.")
     if row.missing_translation:
@@ -103,6 +110,11 @@ class SlideDelegate(QStyledItemDelegate):
         self._theme = theme
         self._state = state
         self._pixmaps: dict[tuple[Path, float], Optional[QPixmap]] = {}    # by file and device pixel ratio
+
+    def _review_text(self) -> str:
+        """The open deck's watermark text for its slides under review (\\SMReviewText, default REVIEW)."""
+        deck = self._state.deck
+        return deck.review_text if deck is not None else REVIEW_TEXT_DEFAULT
 
     def forget_pixmaps(self, paths=None) -> None:
         if paths is None:
@@ -248,6 +260,8 @@ class SlideDelegate(QStyledItemDelegate):
         if pixmap is not None:
             painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
             painter.drawPixmap(thumb, pixmap, QRectF(pixmap.rect()))
+        if row.review:
+            paint_review_mark(painter, thumb, self._review_text())
         if row.lint_error:
             dot = QRectF(thumb.right() - 6, thumb.top() - 3, 9, 9)
             painter.setPen(QPen(QColor(t.bg), 2))

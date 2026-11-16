@@ -3417,6 +3417,7 @@ on everything that compiles.
 | `image` | error | `\includegraphics`, `\chapterlogo`, `\fullbleedframe`, `sideimageframe`, `\cornerfigure`, `besidefigure`, `\fitfigure`, `\sectionfigure` pointing at a file that does not exist (extension optional) |
 | `code-file` | error | `\SMCodeFile{path}` pointing at a file that does not exist (path relative to the project root) |
 | `slide-file` | error | a deck call whose `slides/<id>-current.tex` / `-vX-Y-Z.tex` does not exist |
+| `macro-color` | warning | `\colorlet` or `\definecolor` of a name that is a macro holding a color's name (`\SMTitleBoxColor`, `\SMBulletColor` ...): the macro keeps its value; use `\renewcommand` |
 | `underscore` | warning | `_` in running text outside math, tikz and name/path arguments ("Missing $ inserted") |
 | `caret` | warning | `^` in running text outside math (`10^6` typed without `$...$`) |
 | `percent` | warning | `5% growth`: a `%` right after a digit followed by more text -- the rest of the line becomes a comment |

@@ -17,17 +17,17 @@ from typing import Optional
 
 from . import deck_context, project, slide_language, slide_preview, slide_templates, view_themes
 from .deck_editor import VIEW_INSTRUCTOR, VIEWS, SlideCall
-from .deck_scan import DECKTAGS_RE, OPEN_PDF_RE, OUTPUT_FOLDER_RE, Deck
+from .deck_scan import DECKTAGS_RE, OPEN_PDF_RE, OUTPUT_FOLDER_RE, REVIEW_TEXT_RE, Deck
 from .fileio import text_sha256
 
 
 def preamble_sha(text: Optional[str]) -> str:
     """The hash of a deck's preamble as TeX typesets it: without the lines only SlideMage reads (the inert
-    \\deckoutputfolder and \\decktags, the "%% SlideMage open PDF:" comment), so a deck's PDF output or tags
-    settings leave its slides' renders current."""
+    \\deckoutputfolder, \\decktags and \\SMReviewText, the "%% SlideMage open PDF:" comment), so a deck's PDF
+    output, tags or review settings leave its slides' renders current."""
     kept = []
     for line in (text or '').splitlines(keepends=True):
-        bare = OPEN_PDF_RE.sub('', DECKTAGS_RE.sub('', OUTPUT_FOLDER_RE.sub('', line)))
+        bare = REVIEW_TEXT_RE.sub('', OPEN_PDF_RE.sub('', DECKTAGS_RE.sub('', OUTPUT_FOLDER_RE.sub('', line))))
         if bare == line or bare.strip():
             kept.append(line)
     return text_sha256(''.join(kept))

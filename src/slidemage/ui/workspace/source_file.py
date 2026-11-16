@@ -34,6 +34,7 @@ from ... import (
     slide_source,
     slide_versioning,
 )
+from ...deck_scan import is_generated_wrapper
 from ...slide_language import bare_id
 from .. import layout_settings
 from ..kit.tokens import SPACE
@@ -119,6 +120,8 @@ class SourceFile(Surface):
             self.id_slug = ""
         self.bare_id = bare_id(self.id_slug)
         self.is_bib = path == self.app.project.bibliography_path
+        self.is_deck = (not self.is_slide and path.suffix.lower() == ".tex"
+                        and path.parent in self.app.project.deck_folders and not is_generated_wrapper(path.name))
         self.lint: Optional[latex_lint.CheckResult] = None     # of the buffer; None for a .bib
 
         self.text, self.eol = slide_source.read_slide_source(path)
@@ -185,6 +188,11 @@ class SourceFile(Surface):
             shortcut = QShortcut(sequence, self)
             shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
             shortcut.activated.connect(action)
+
+    @property
+    def reindent_kind(self) -> Optional[str]:
+        """Which reindent rules fit this file (latex_edit.REINDENTERS), None for a file Reindent does not offer."""
+        return "slide" if self.is_slide else "deck" if self.is_deck else "bib" if self.is_bib else None
 
     @property
     def dirty(self) -> bool:

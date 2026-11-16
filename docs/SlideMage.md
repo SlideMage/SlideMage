@@ -73,7 +73,7 @@ deck switcher offers the rest). From top to bottom and left to right:
 - **Centre** (`centre.py`): **Preview** (`preview_view.py`), **Source** (`source_view.py`
   on a `SourceEditor`, today the `LatexPlainTextEdit` of `source_editor.py`, with the lint
   line, help tooltips on SlideMage's LaTeX commands and their keys (`latex_help.py`, Shift+F1 at the text cursor,
-  switched off in Settings -> General; v0.16.42), Insert, Cite, QR (the "Insert QR code" sheet of `ui/dialogs/qr_code.py`, which makes `\SMQRCode` calls; v8.62),
+  switched off in Settings -> General; v0.16.51), Insert, Cite, QR (the "Insert QR code" sheet of `ui/dialogs/qr_code.py`, which makes `\SMQRCode` calls; v8.62),
   Tools and the conflict bar when a file changes on disk under edits
   that are not yet written; edits are autosaved, 1.5 s after the last keystroke, unless AutoSave is off -- v8.56 (a deck's source and `SlideMage.bib` then have a **Save** button beside the "x", v8.68), `source_file.autosave_on`: the On|Off switch after the menu bar's Help since v8.58 (`autosave_switch.py`), Settings -> General, File; then Ctrl+S saves), **Split**, **Details** (`details_view.py`), and the **Images page**
   (`ui/pages/images.py`) as a sibling that replaces the columns.

@@ -49,6 +49,9 @@ from .selection_tasks import PROOFREAD, REWRITE, add_menu_items
 from .source_file import REPLACE_KEY, SourceFile, autosave_on
 
 LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+# The Tools menu's note on what Reindent does, per SourceFile.reindent_kind.
+REINDENT_META = {"slide": "one tab per \\begin level", "deck": "per \\begin, \\if and { level",
+                 "bib": "one tab per field"}
 
 
 VERSION_TIP = ("Make the slide as it is now a version: it is frozen, and decks can keep using it. "
@@ -665,8 +668,8 @@ class SourcePane(Surface):
     def _open_tools_menu(self) -> None:
         file = self._current
         menu = PopoverMenu(self, min_width=240)
-        menu.add_item("reindent", "Reindent", meta="one tab per \\begin level",
-                      enabled=file.is_slide and not file.editor.is_read_only())
+        menu.add_item("reindent", "Reindent", meta=REINDENT_META.get(file.reindent_kind, ""),
+                      enabled=file.reindent_kind is not None and not file.editor.is_read_only())
         if routes.all():
             menu.add_item("chat", "Ask the chat…", meta="about this slide", enabled=file.is_slide)
         menu.triggered.connect(self._on_tool_chosen)
@@ -680,7 +683,9 @@ class SourcePane(Surface):
 
     def reindent(self) -> None:
         file = self._current
-        self.app.log(f"Reindented {file.path.name}" if file.editor.reindent()
+        if file.reindent_kind is None or file.editor.is_read_only():
+            return
+        self.app.log(f"Reindented {file.path.name}" if file.editor.reindent(file.reindent_kind)
                      else f"{file.path.name}: indentation already correct")
 
     def _on_context_menu(self, pos: QPoint) -> None:
