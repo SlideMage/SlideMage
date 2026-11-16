@@ -118,8 +118,7 @@ def test_the_help_provider_adds_a_themes_commands_and_the_standard_ones_show():
     from slidemage.latex_help import parse_help
 
     extra = parse_help('[[command]]\nname = "mytitle"\nsignature = "\\\\mytitle{text}"\nsummary = "The theme title."\n')
-    text = r"\mytitle{A}" + "
-" + r"\includegraphics[width=3cm]{x}"
+    text = r"\mytitle{A}" + chr(10) + r"\includegraphics[width=3cm]{x}"
     editor = make_editor(text)
     point = point_at(editor, 3)
     assert tooltip(editor, point) is None or "theme title" not in QToolTip.text()    # no provider yet
