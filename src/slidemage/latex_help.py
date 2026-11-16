@@ -336,9 +336,11 @@ _COMMANDS = [
        *_versions(KeyHelp("presenter", "", "the presenter PDF (the instructor version with notes)"),
                   KeyHelp("transcript", "", "the deck's transcript")),
        example=r"\deckoutputfolder[after-course]{C:/Courses/Finance/PDF}"),
-    _c("deckappendixtoc", r"\deckappendixtoc",
+    _c("deckappendixtoc", r"\deckappendixtoc[views]",
        "In the deck preamble: SlideMage generates the appendix with the slide previews on every whole-deck "
-       "compile, whatever the toolbar checkbox says."),
+       "compile, whatever the toolbar checkbox says. Without views, in every view; with views (instructor, "
+       "during-course, after-course, comma separated), only in those.",
+       example=r"\deckappendixtoc[instructor]"),
     _c("decktags", r"\decktags{tag,tag}",
        "The deck's tags (work, course, research, test), by which SlideMage groups its decks. Written by "
        "SlideMage's Tags button; read by SlideMage, not by LaTeX.",

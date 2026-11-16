@@ -20,7 +20,7 @@ from ... import app_settings, compile_log, compile_progress, compiler, deck_snap
 from ... import background_renders, batch_render, slide_language, slide_versioning, timing
 from ...compile_status import job_title
 from ...compiler import PDF_MOVE_RETRY_TOTAL_SECONDS, CompileJob, order_jobs, resolve_output_location, run_job, run_jobs
-from ...deck_scan import Deck
+from ...deck_scan import Deck, appendix_toc_for
 from ...partial_compile import PartialError, parse_page_spec
 from ...project import ProjectContext
 from ..dialogs import saved_versions as saved_versions_sheet
@@ -252,7 +252,7 @@ def compile_jobs(window, jobs: list[CompileJob]) -> bool:
     outputs: dict[str, Path] = {}   # jobname -> where its PDF lands (the deck's own \deckoutputfolder, or pdf/)
     for job in jobs:
         # \deckappendixtoc in the deck: always, checkbox or not
-        job.appendix_toc = options.appendix_toc_checkbox.isChecked() or job.deck.appendix_toc
+        job.appendix_toc = options.appendix_toc_checkbox.isChecked() or appendix_toc_for(job.deck, job.version)
         job.replace_pages = options.replace_pages_checkbox.isChecked()
         job.run_id = run_id
         output_dir, output_stem = resolve_output_location(window.project, job)
