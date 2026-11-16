@@ -40,8 +40,9 @@ Say in one line which case you take.
    commits bump the version and append the CHANGELOG entry, as "How to work" in the handover says. End commit messages with
    the attribution line the system gives.
 2. **Sync and push.** `git fetch origin`; if `origin/develop` moved, merge it in, renumber the version if it was taken, and
-   rerun the tests that matter (`tests/test_preview_equivalence.py` after any renumbering). A failing test stops here: switch
-   to case A.
+   rerun the tests that matter: the task's own tests and those of every file the merge touched, and after any renumbering
+   `tests/test_version.py`, `tests/test_release_notes.py` and `tests/test_compat.py` (the version, its CHANGELOG entry
+   and its NEW: paragraph). A failing test stops here: switch to case A.
 3. **PR.** Open one against `develop` (the repo's default branch for other repositories) if none exists, with the attribution
    line the system gives. Bind it with the ccd_pr tools.
 4. **Merge.** `/finish` is the user's go to merge. Run, as a bare command, `gh pr merge <n> --admin --merge` (plain
