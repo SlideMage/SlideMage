@@ -410,6 +410,10 @@ class SourcePane(Surface):
         for file in self._files.values():
             file.editor.set_tab_width(chars)
 
+    def set_hover_help(self, on: bool) -> None:
+        for file in self._files.values():
+            file.editor.set_hover_help(on)
+
     def refresh_model_preferences(self, models: list[str]) -> None:
         for file in self._files.values():
             file.refresh_model_preference(models)

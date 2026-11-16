@@ -26,7 +26,7 @@ from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout
 
 from ...ai import routes
-from ... import app_settings, timing
+from ... import app_settings, latex_help, timing
 from ... import (
     latex_edit,
     latex_lint,
@@ -126,7 +126,8 @@ class SourceFile(Surface):
 
         self.text, self.eol = slide_source.read_slide_source(path)
         tab_width = app_settings.get(app.project, latex_edit.TAB_WIDTH_SETTING_KEY, latex_edit.DEFAULT_TAB_WIDTH_CHARS)
-        self.editor = LatexPlainTextEdit(app.theme, tab_width)
+        hover_help = bool(app_settings.get(app.project, latex_help.HOVER_HELP_SETTING_KEY, True))
+        self.editor = LatexPlainTextEdit(app.theme, tab_width, hover_help)
         self.editor.set_text(self.text)
         self.editor.modified_changed.connect(self.modified_changed)
         self.editor.escape_pressed.connect(self._abort_ai_fix)
