@@ -121,6 +121,14 @@ def test_update_backs_up_writes_atomically_and_includes_the_workdeck(tmp_path):
     assert not compat.evaluate(root, "v5.30.0", [BREAKING]).everything
 
 
+def test_update_reports_a_step_per_file_backed_up_and_written(tmp_path):
+    root = make_project(tmp_path)
+    seen = []
+    compat.run_update(root, compat.evaluate(root, "v5.30.0", [BREAKING]).loud, now=NOW, on_progress=seen.append)
+    assert [p.text for p in seen] == [f"{what} ({n} of 2)" for what in ("Backing up", "Updating") for n in (1, 2)]
+    assert [p.fraction for p in seen] == [0.5, 1.0, 0.5, 1.0]
+
+
 def test_a_failing_migration_is_reported_and_does_not_stop_the_rest(tmp_path):
     root = make_project(tmp_path)
 

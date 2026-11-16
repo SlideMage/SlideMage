@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import re
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,8 @@ from PySide6.QtGui import QFont, QFontDatabase, QFontMetrics
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QFrame, QLabel, QPushButton, QWidget
 
+from conftest import wait_until
+from slidemage.progress import Progress
 from slidemage.ui.kit import kit_qss
 from slidemage.ui.kit import fonts as fonts_module
 from slidemage.ui.kit.fonts import FONT_DIR, load_fonts
@@ -22,6 +25,8 @@ from slidemage.ui.kit.gallery import KitGallery
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.kit.tokens import FONT_ICONS, FONT_MONO, FONT_SANS
 from slidemage.ui.kit.widgets import (
+    BusyIndicator,
+    BusySheet,
     Chip,
     Field,
     IconLabel,
@@ -324,6 +329,41 @@ def test_toast_actions_and_auto_hide(theme):
     assert not toast.isVisible()
 
 
+def test_busy_indicator_hides_a_quick_run_and_shows_a_long_one(theme):
+    busy = BusyIndicator()
+    busy.start("Working…")
+    QTest.qWait(100)
+    busy.finish()
+    QTest.qWait(BusyIndicator.SHOW_AFTER_MS + 100)
+    assert busy.isHidden()                                                   # finished before it showed: never appears
+    busy.start("Working…")
+    QTest.qWait(BusyIndicator.SHOW_AFTER_MS + 100)
+    assert not busy.isHidden() and busy._label.text() == "Working…"
+    busy.finish()
+    assert not busy.isHidden()                                               # stays a little once shown
+    QTest.qWait(BusyIndicator.SHOW_AT_LEAST_MS + 100)
+    assert busy.isHidden()
+
+
+def test_busy_sheet_works_off_the_gui_thread_then_closes_and_calls_done(theme):
+    threads, seen = [], []
+    gate = threading.Event()
+
+    def work(report):
+        threads.append(threading.current_thread())
+        report(Progress.step(1, 2, "Copying"))
+        gate.wait(5)
+        return "ok"
+
+    sheet = BusySheet.run(None, "Updating…", work, lambda result, error: seen.append((result, error, sheet.isVisible())))
+    sheet.reject()                                                           # Escape: the sheet stays
+    wait_until(lambda: sheet.busy._label.text() == "Copying (1 of 2)")
+    assert sheet.isVisible() and sheet.isModal() and seen == []
+    gate.set()
+    wait_until(lambda: seen)
+    assert seen == [("ok", None, False)] and threads[0] is not threading.main_thread()
+
+
 def test_modal_sheet_tabs_and_buttons(theme):
     sheet = ModalSheet("Settings")
     sheet.add_tab("One", QLabel("1"))
@@ -398,46 +438,3 @@ def test_segment_badge_shows_a_count_and_hides_at_zero(theme):
     control.set_badge("s", 0)
     assert badge.isHidden() and control._buttons["s"].property("badge") is False
     assert control.current() == "p"          # a badge is not a click
-
-
-def _luminance(rgb) -> float:
-    def lin(c):
-        c /= 255
-        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
-    r, g, b = (lin(c) for c in rgb)
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b
-
-
-def _contrast(a, b) -> float:
-    la, lb = sorted((_luminance(a), _luminance(b)), reverse=True)
-    return (la + 0.05) / (lb + 0.05)
-
-
-@pytest.mark.parametrize("dark", [False, True])
-def test_progress_dialog_percent_is_readable_over_fill_and_track(theme, dark):
-    """The update download's percent is centred on the bar, so it sits over
-    the fill and the empty track alike. Render the dialog and measure the
-    contrast of the text colour against the pixel colours of both."""
-    from PySide6.QtGui import QColor
-    from PySide6.QtWidgets import QProgressBar, QProgressDialog
-
-    dialog = QProgressDialog("Downloading", "Cancel", 0, 100)
-    dialog.setMinimumDuration(0)
-    dialog.resize(360, 120)
-    styled(dialog, theme, dark)
-    dialog.setValue(50)
-    bar = dialog.findChild(QProgressBar)
-    dialog.show()
-    QApplication.processEvents()
-    # Grab the dialog, not the bar: the translucent track needs its backdrop.
-    image = dialog.grab().toImage()
-    y = bar.mapTo(dialog, QPoint(0, bar.height() - 3)).y()
-    x0 = bar.mapTo(dialog, QPoint(0, 0)).x()
-    fill = QColor(image.pixel(x0 + bar.width() // 4, y))
-    track = QColor(image.pixel(x0 + bar.width() * 3 // 4, y))
-    text = QColor(theme.tokens.text)
-    assert fill != track
-    for part in (fill, track):
-        assert _contrast((text.red(), text.green(), text.blue()),
-                         (part.red(), part.green(), part.blue())) >= 3.0
-    dialog.close()

@@ -8,7 +8,7 @@ says what there is to do and has one button; the buttons run the window's own ac
 (ui/workspace/maintenance.py), which ask before they delete. "Archive unused content" has a page
 of its own, where the files the scan found can be ticked before anything moves; the move runs on a
 thread that the sheet waits for when it closes. Update previews is a long compile: the sheet closes
-and the caller starts it (`update_previews`).
+and the caller starts it (`update_previews`). The sheet opens at once: its rows say "Counting…" while one worker scans.
 """
 from __future__ import annotations
 
@@ -27,10 +27,11 @@ from PySide6.QtWidgets import (
 )
 
 from ... import deck_snapshot, housekeeping, unused_content
+from ...progress import Progress
 from .. import background
 from ..kit import kit_qss as q
 from ..kit.tokens import SPACE
-from ..kit.widgets import Button, ModalSheet, Surface, caption
+from ..kit.widgets import BusyIndicator, Button, ModalSheet, Surface, caption
 from ..text import plural
 
 LIST_PAGE, ARCHIVE_PAGE = 0, 1
@@ -63,10 +64,11 @@ class _Row(QFrame):
 
 
 class HousekeepingJobs(NamedTuple):
-    """What the list page runs: the window's own housekeeping actions (workspace/maintenance.py)."""
-    empty_pdf: Callable[[], None]
-    remove_temp: Callable[[], None]
-    sync_links: Callable[[], int]
+    """What the list page runs: the window's own housekeeping actions (workspace/maintenance.py). They run on a
+    worker, so each takes what to do afterwards: `then()`, or `then(files updated)` for the links."""
+    empty_pdf: Callable[[Callable[[], None]], None]
+    remove_temp: Callable[[Callable[[], None]], None]
+    sync_links: Callable[[Callable[[int], None]], None]
 
 
 class HousekeepingSheet(ModalSheet):
@@ -78,6 +80,7 @@ class HousekeepingSheet(ModalSheet):
         self.jobs = jobs
         self.update_previews = False
         self._worker: background.Handle | None = None
+        self._scan: background.Handle | None = None
         self._unused: tuple[list, list] = ([], [])
         self.pages = QStackedWidget()
         self.pages.addWidget(self._build_list())
@@ -140,34 +143,53 @@ class HousekeepingSheet(ModalSheet):
         self.files.setFixedHeight(220)
         self.files.itemChanged.connect(lambda _item: self._update_archive_button())
         layout.addWidget(self.files)
-        self.archive_status = QLabel()
-        self.archive_status.setObjectName(q.PANEL_CAPTION)
-        layout.addWidget(self.archive_status)
+        self.busy = BusyIndicator()
+        layout.addWidget(self.busy)
         return page
 
     # -- what there is to do ----------------------------------------------------------------
 
-    def refresh(self) -> None:
+    def refresh(self, archive_note: str = "") -> None:
+        """The rows say "Counting…" until one worker has scanned pdf/, the temp folders and the unused content;
+        `archive_note` then replaces the archive row's count."""
+        for row in (self.pdf, self.temp, self.archive):
+            row.show_state("Counting…", enabled=False)
+        ctx = self.app.project
+
+        def scan() -> tuple:
+            pdfs = housekeeping.pdf_files(ctx)
+            return (pdfs, sum(p.stat().st_size for p in pdfs), housekeeping.find_temp_files(ctx),
+                    unused_content.find_unused_media(ctx), unused_content.find_unused_slides(ctx))
+
+        self._scan = background.run_in_background(
+            scan, lambda found, error: self._show_counts(found, error, archive_note), parent=self)
+
+    def _show_counts(self, found, error, archive_note: str) -> None:
+        self._scan = None
+        if error is not None:
+            for row in (self.pdf, self.temp, self.archive):
+                row.show_state(f"Couldn't count: {error}", enabled=False)
+            return
         compiling = self.app.compiling
-        pdfs = housekeeping.pdf_files(self.app.project)
+        pdfs, size, temp, media, slides = found
+        self._unused = (media, slides)
         self.pdf.show_state(
-            f"{plural(len(pdfs), 'file')} in pdf/ · {deck_snapshot.format_size(sum(p.stat().st_size for p in pdfs))}"
+            f"{plural(len(pdfs), 'file')} in pdf/ · {deck_snapshot.format_size(size)}"
             " · they come back with the next build" if pdfs else "pdf/ is empty", enabled=bool(pdfs))
-        temp = housekeeping.find_temp_files(self.app.project)
         self.temp.show_state(
             f"{plural(len(temp.build), 'item')} in .build/, {plural(len(temp.wrappers), 'leftover wrapper file')} "
             f"in decks/, {plural(len(temp.scratch), 'item')} in .temp/ (the workflow scratch folder)"
             if temp else "Nothing to remove", enabled=bool(temp) and not compiling)
-        self._unused = (unused_content.find_unused_media(self.app.project), unused_content.find_unused_slides(self.app.project))
-        media, slides = self._unused
         self.archive.show_state(
-            f"{plural(len(slides), 'slide')} and {plural(len(media), 'media file')} nothing uses"
-            if media or slides else "No unused slides or media files",
+            archive_note or (f"{plural(len(slides), 'slide')} and {plural(len(media), 'media file')} nothing uses"
+                             if media or slides else "No unused slides or media files"),
             enabled=bool(media or slides) and not compiling and self._worker is None)
         self.previews.show_state(
             "Renders every deck and view prepared by the background sweep; "
             "occupies the compile slot" if not compiling else BUSY_NOTE, enabled=not compiling)
         self.links.show_state("Re-pairs EN and DE files after renames", enabled=True)
+        if self.pages.currentIndex() == ARCHIVE_PAGE:
+            self._fill_archive()
 
     def _show_page(self, page: int) -> None:
         self.pages.setCurrentIndex(page)
@@ -182,20 +204,17 @@ class HousekeepingSheet(ModalSheet):
     # -- the jobs --------------------------------------------------------------------------
 
     def _on_empty_pdf(self) -> None:
-        self.jobs.empty_pdf()
-        self.refresh()
+        self.jobs.empty_pdf(self.refresh)
 
     def _on_remove_temp(self) -> None:
-        self.jobs.remove_temp()
-        self.refresh()
+        self.jobs.remove_temp(self.refresh)
 
     def _on_previews(self) -> None:
         self.update_previews = True
         self.accept()
 
     def _on_links(self) -> None:
-        changed = self.jobs.sync_links()
-        self.links.show_state(f"{plural(changed, 'file')} updated", enabled=True)
+        self.jobs.sync_links(lambda changed: self.links.show_state(f"{plural(changed, 'file')} updated", enabled=True))
 
     # -- archive unused content --------------------------------------------------------------
 
@@ -211,7 +230,6 @@ class HousekeepingSheet(ModalSheet):
                 item.setData(Qt.ItemDataRole.UserRole, (kind, path))
                 self.files.addItem(item)
         self.files.blockSignals(False)
-        self.archive_status.setText("")
         self._update_archive_button()
 
     def _checked(self) -> list[tuple[str, object]]:
@@ -228,7 +246,7 @@ class HousekeepingSheet(ModalSheet):
         self.archive_intro.setText(
             f"<b>{plural(self.files.count(), 'file')}</b> would be moved into media/archive/ or "
             "slides/archive/. Untick what should stay." if self.files.count()
-            else "No unused slides or media files.")
+            else "Counting…" if self._scan is not None else "No unused slides or media files.")
         self.archive_button.setText(f"Archive {plural(count, 'file')}")
         self.archive_button.setEnabled(count > 0 and self._worker is None and not self.app.compiling)
 
@@ -240,23 +258,37 @@ class HousekeepingSheet(ModalSheet):
         ctx = self.app.project
         media, slides = [p for kind, p in chosen if kind == "media"], [p for kind, p in chosen if kind == "slide"]
         self._worker = background.run_in_background_with_progress(
-            lambda log: unused_content.archive_files(ctx, media, slides, log), self.app.log,
-            lambda moved, error: self._on_archived(*moved) if error is None else None, parent=self)
+            lambda report: unused_content.archive_files(ctx, media, slides, report, on_progress=report),
+            self._on_archive_progress, self._on_archived, parent=self)
         self.archive_button.setEnabled(False)
         self.back_button.setEnabled(False)
-        self.archive_status.setText("Moving…")
+        self.busy.start("Moving…")
 
-    def _on_archived(self, media: int, slides: int) -> None:
+    def _on_archive_progress(self, value: str | Progress) -> None:
+        """The worker reports log lines (str) and the bar (Progress) on one channel."""
+        if isinstance(value, Progress):
+            self.busy.show_progress(value)
+        else:
+            self.app.log(value)
+
+    def _on_archived(self, moved: tuple[int, int] | None, error) -> None:
         self._worker = None
+        self.busy.finish()
         self.back_button.setEnabled(True)
+        if error is not None:
+            self.app.log(f"*** archiving failed: {error} ***")
+            self._update_archive_button()
+            return
+        media, slides = moved
         self._show_page(LIST_PAGE)
-        self.refresh()
-        self.archive.sub.setText(f"Moved {plural(media, 'media file')} to media/archive/ and "
-                                 f"{plural(slides, 'slide')} to slides/archive/")
+        self.refresh(f"Moved {plural(media, 'media file')} to media/archive/ and "
+                     f"{plural(slides, 'slide')} to slides/archive/")
 
     def done(self, result: int) -> None:
         """Closing the sheet gives a running move a moment; its thread is kept until it has ended."""
         worker, self._worker = self._worker, None
         if worker is not None:
             worker.stop(wait_ms=WORKER_WAIT_MS)
+        if self._scan is not None:
+            self._scan.stop()
         super().done(result)

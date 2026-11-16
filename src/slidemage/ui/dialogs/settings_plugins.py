@@ -23,8 +23,8 @@ close together; each section's actions sit on its heading line.
   takes a .smcite; citation_sources.py). Also at once, no restart.
 * Install from file…: a .smplugin that is not from the catalogue. It is read first (installer.peek) and the user is
   asked, with the plugin's name, version and network lines, because the plugin runs with their rights. Themes' and
-  citation formats' "Add from file…" take a .smtheme (install_theme_file: its theme.toml is shown first, then
-  themes.install_file checks it) and a .smcite.
+  citation formats' "Add from file…" take a .smtheme (prepare_theme_file: its theme.toml is shown first, then
+  themes.install_file checks it) and a .smcite. Every install unpacks on a worker (_start), after the questions.
 
 Every change takes effect after a restart (the plugins load once, before the window exists), so the tab says so and
 offers "Restart now". Failures are captions, never exceptions: InstallError and CatalogueError have sentences meant
@@ -39,9 +39,9 @@ import tempfile
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
-from typing import Optional
+from typing import NamedTuple, Optional
 
-from PySide6.QtCore import QThread, QUrl, Signal
+from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QHBoxLayout,
                                QInputDialog, QLabel, QLineEdit, QMessageBox, QPlainTextEdit,
@@ -57,7 +57,7 @@ from ...plugins.manifest import Manifest, parse_version
 from .. import background
 from ..kit import kit_qss as q
 from ..kit.tokens import SPACE
-from ..kit.widgets import Button, Card, Chip, ModalSheet, Page, Surface, caption, clear_layout, row
+from ..kit.widgets import BusyIndicator, Button, Card, Chip, ModalSheet, Page, Surface, caption, clear_layout, row
 
 log = logging.getLogger(__name__)
 
@@ -70,24 +70,6 @@ CITATION_FILES = "SlideMage citation formats (*.smcite)"
 SECTION_GAP = SPACE.lg    # px above a section's heading, on top of the page's own spacing
 LIST_GAP = SPACE.xs        # px between the rows of a list
 LONG_STATE = 28     # characters: a longer state chip gets a line of its own, so the title line keeps its buttons
-
-
-class Job(QThread):
-    """`work()` on a thread; `done(result, error)` arrives on the GUI thread."""
-
-    done = Signal(object, object)
-
-    def __init__(self, work: Callable[[], object]) -> None:
-        super().__init__()
-        self._work = work
-
-    def run(self) -> None:
-        try:
-            result = self._work()
-        except Exception as exc:        # shown as a caption; a worker must not end the thread with a traceback
-            self.done.emit(None, exc)
-        else:
-            self.done.emit(result, None)
 
 
 class TextSheet(ModalSheet):
@@ -129,6 +111,11 @@ def download_citation(release: CitationRelease) -> Path:
     return folder
 
 
+def download_and_install(release: Release) -> Manifest:
+    """download_release, then install_downloaded: a worker thread's job. Raises InstallError."""
+    return install_downloaded(download_release(release), release)
+
+
 def install_downloaded(folder: Path, release: Release) -> Manifest:
     """Install what download_release fetched when its SHA-256 is the one the catalogue promised, then delete the
     folder. Raises InstallError."""
@@ -138,30 +125,41 @@ def install_downloaded(folder: Path, release: Release) -> Manifest:
         shutil.rmtree(folder, ignore_errors=True)
 
 
-def install_file(parent: QWidget, path: Path, say: Callable[[str, bool], None]) -> bool:
-    """Install the .smplugin `path` after the user has seen what it is (the plugin is not from the catalogue and
-    runs with their rights), or the .smtheme `path` (install_theme_file). `say(text, error)` receives what to tell
-    the user. Whether it was installed."""
+class FileInstall(NamedTuple):
+    """A package file the user has seen and accepted: `work()` unpacks and installs it (a worker's job), `text`
+    says it is done."""
+    manifest: object
+    work: Callable[[], object]
+    text: str
+
+    def end(self, error: Exception | None, say: Callable[[str, bool], None]) -> bool:
+        """Say how `work` ended, in the caller's `say(text, error)`. Whether it installed."""
+        if error is not None and not isinstance(error, (installer.InstallError, themes.ThemeError,
+                                                        citations.CitationError)):
+            log.error("install failed", exc_info=error)
+        say(str(error) if error is not None else self.text, error is not None)
+        return error is None
+
+
+def prepare_file(parent: QWidget, path: Path, say: Callable[[str, bool], None]) -> FileInstall | None:
+    """What installing the .smplugin, .smtheme or .smcite `path` would do, after the user has seen what it is (a
+    plugin from a file is not from the catalogue and runs with their rights). `say(text, error)` receives what to tell
+    the user when there is nothing to install (a refusal or a "no")."""
     if path.suffix.lower() == themes.PACKAGE_SUFFIX:
-        return install_theme_file(parent, path, say)
+        return prepare_theme_file(parent, path, say)
     if path.suffix.lower() == citations.PACKAGE_SUFFIX:
-        return install_citation_file(parent, path, say)
+        return prepare_citation_file(parent, path, say)
     try:
         manifest = installer.peek(path)
         expected = _sidecar_sha256(path)
     except (installer.InstallError, OSError) as exc:
         say(str(exc), True)
-        return False
+        return None
     if not _confirm_file(parent, manifest):
         say("", False)
-        return False
-    try:
-        installer.install(path, expected_sha256=expected)
-    except installer.InstallError as exc:
-        say(str(exc), True)
-        return False
-    say(f"{manifest.name} {manifest.version} is installed. It starts after a restart.", False)
-    return True
+        return None
+    return FileInstall(manifest, partial(installer.install, path, expected_sha256=expected),
+                       f"{manifest.name} {manifest.version} is installed. It starts after a restart.")
 
 
 def _confirm_file(parent: QWidget, manifest: Manifest) -> bool:
@@ -186,26 +184,20 @@ def _sidecar_sha256(path: Path) -> str | None:
     return expected
 
 
-def install_theme_file(parent: QWidget, path: Path, say: Callable[[str, bool], None]) -> bool:
-    """Install the theme package `path` (a .smtheme) after the user has seen its theme.toml. Whether it was
-    installed."""
+def prepare_theme_file(parent: QWidget, path: Path, say: Callable[[str, bool], None]) -> FileInstall | None:
+    """The install of the theme package `path` (a .smtheme) after the user has seen its theme.toml."""
     try:
         manifest = themes.peek(path)
         expected = _sidecar_sha256(path)
     except (themes.ThemeError, installer.InstallError, OSError) as exc:
         say(str(exc), True)
-        return False
+        return None
     if not _confirm_theme(parent, manifest):
         say("", False)
-        return False
-    try:
-        themes.install_file(path, expected_sha256=expected)
-    except themes.ThemeError as exc:
-        say(str(exc), True)
-        return False
-    say(f"The theme {manifest.name} {manifest.version} is installed. Choose the template {manifest.id!r} in a "
-        "deck's settings to use it.", False)
-    return True
+        return None
+    return FileInstall(manifest, partial(themes.install_file, path, expected_sha256=expected),
+                       f"The theme {manifest.name} {manifest.version} is installed. Choose the template "
+                       f"{manifest.id!r} in a deck's settings to use it.")
 
 
 def _confirm_package(parent: QWidget, manifest: packages.PackageManifest, kind: packages.PackageKind,
@@ -227,25 +219,19 @@ def _confirm_theme(parent: QWidget, manifest: themes.ThemeManifest) -> bool:
                             "template still wins.")
 
 
-def install_citation_file(parent: QWidget, path: Path, say: Callable[[str, bool], None]) -> bool:
-    """Install the citation package `path` (a .smcite) after the user has seen its citation.toml. Whether it was
-    installed."""
+def prepare_citation_file(parent: QWidget, path: Path, say: Callable[[str, bool], None]) -> FileInstall | None:
+    """The install of the citation package `path` (a .smcite) after the user has seen its citation.toml."""
     try:
         manifest = citations.peek(path)
         expected = _sidecar_sha256(path)
     except (citations.CitationError, installer.InstallError, OSError) as exc:
         say(str(exc), True)
-        return False
+        return None
     if not _confirm_citation(parent, manifest):
         say("", False)
-        return False
-    try:
-        citations.install_file(path, expected_sha256=expected)
-    except citations.CitationError as exc:
-        say(str(exc), True)
-        return False
-    say(_citation_installed(manifest), False)
-    return True
+        return None
+    return FileInstall(manifest, partial(citations.install_file, path, expected_sha256=expected),
+                       _citation_installed(manifest))
 
 
 def _citation_installed(manifest: citations.CitationManifest, repository: str = "") -> str:
@@ -697,7 +683,7 @@ class PluginsTab(Page):
         self.app = app
         self._leave = leave
         self.catalogue: Catalogue | None = catalogue.cached()      # never fetched while the tab is built
-        self._job: QThread | None = None
+        self._job: background.Handle | None = None
         self.rows: dict[str, InstalledRow] = {}
         self.available: dict[str, AvailableRow] = {}
         self.theme_rows: dict[str, ThemeRow] = {}
@@ -716,6 +702,8 @@ class PluginsTab(Page):
         self.status = caption("")
         self.status.hide()
         layout.addWidget(self.status)
+        self.busy = BusyIndicator()
+        layout.addWidget(self.busy)
 
         self.theme_file_button = Button("Add from file…", compact=True)
         self.theme_file_button.clicked.connect(self.add_theme_file_from_dialog)
@@ -1095,9 +1083,7 @@ class PluginsTab(Page):
             if not _confirm_github_theme(self, fetched):
                 fetched.discard()
                 return self._say("")
-            if self._install_fetched(fetched):
-                self.set_theme_auto_update(fetched.manifest.id, ask_auto_update(self, f"the theme {fetched.manifest.name}"))
-                self.refresh_themes()
+            self._install_fetched(fetched, ask_auto=True)
 
         self._start(partial(theme_sources.newest_eligible, repo), done, f"Reading the releases of {repo}…")
 
@@ -1127,19 +1113,22 @@ class PluginsTab(Page):
         self._start(partial(_check_package_update, theme_sources, key, source.repository, theme.manifest.version),
                     done, f"Checking {source.repository} for a newer release…")
 
-    def _install_fetched(self, fetched: theme_sources.Fetched) -> bool:
-        try:
-            manifest = theme_sources.install(fetched)
-        except themes.ThemeError as exc:
-            self._say(str(exc), error=True)
-            return False
-        self._say(f"The theme {manifest.name} {manifest.version} is installed from {fetched.release.repository}. "
-                  f"Choose the template {manifest.id!r} in a deck's settings to use it.")
-        self.refresh_themes()
-        installed = getattr(self.app, "theme_installed", None)
-        if installed is not None:
-            installed(manifest.id)
-        return True
+    def _install_fetched(self, fetched: theme_sources.Fetched, *, ask_auto: bool = False) -> None:
+        """Install the fetched theme on a worker. A new one (`ask_auto`) asks whether later releases install by
+        themselves."""
+        def done(manifest: themes.ThemeManifest | None, error: Exception | None) -> None:
+            if error is not None:
+                return self._theme_failed(error)
+            self._say(f"The theme {manifest.name} {manifest.version} is installed from {fetched.release.repository}. "
+                      f"Choose the template {manifest.id!r} in a deck's settings to use it.")
+            if ask_auto:
+                self.set_theme_auto_update(manifest.id, ask_auto_update(self, f"the theme {manifest.name}"))
+            self.refresh_themes()
+            installed = getattr(self.app, "theme_installed", None)
+            if installed is not None:
+                installed(manifest.id)
+
+        self._start(partial(theme_sources.install, fetched), done, f"Installing {fetched.manifest.name}…")
 
     def _theme_failed(self, error: Exception) -> None:
         if not isinstance(error, (theme_sources.SourceError, themes.ThemeError)):
@@ -1179,24 +1168,24 @@ class PluginsTab(Page):
     def install_citation_release(self, entry: CatalogueCitation, release: CitationRelease) -> None:
         """Download the catalogue's `release` of a citation format and install it when its SHA-256 is the one the
         catalogue promised (the catalogue vouches for it, as for plugins, so there is no question first)."""
-        def done(archive: Path | None, error: Exception | None) -> None:
+        def work() -> citations.CitationManifest:
+            folder = download_citation(release)
+            try:
+                return citations.install_file(folder / CATALOGUE_ARCHIVE, expected_sha256=release.sha256)
+            finally:
+                shutil.rmtree(folder, ignore_errors=True)
+
+        def done(manifest: citations.CitationManifest | None, error: Exception | None) -> None:
             if error is not None:
                 self._citation_failed(error)
-                return self.refresh_citations()
-            try:
-                manifest = citations.install_file(archive / CATALOGUE_ARCHIVE, expected_sha256=release.sha256)
-            except citations.CitationError as exc:
-                self._say(str(exc), error=True)
             else:
                 self._say(_citation_installed(manifest))
                 installed = getattr(self.app, "citation_installed", None)
                 if installed is not None:
                     installed(manifest.id)
-            finally:
-                shutil.rmtree(archive, ignore_errors=True)
             self.refresh_citations()
 
-        self._start(partial(download_citation, release), done, f"Downloading {entry.name}…")
+        self._start(work, done, f"Downloading {entry.name}…")
 
     def remove_citation(self, key: str, name: str) -> None:
         if QMessageBox.question(self, "Remove citation format", f"Remove the citation format {name}? Decks that "
@@ -1242,10 +1231,7 @@ class PluginsTab(Page):
             if not _confirm_citation(self, fetched.manifest, fetched.release.repository):
                 fetched.discard()
                 return self._say("")
-            if self._install_citation_fetched(fetched):
-                self.set_citation_auto_update(fetched.manifest.id,
-                                              ask_auto_update(self, f"the citation format {fetched.manifest.name}"))
-                self.refresh_citations()
+            self._install_citation_fetched(fetched, ask_auto=True)
 
         self._start(partial(citation_sources.newest_eligible, repo), done, f"Reading the releases of {repo}…")
 
@@ -1275,18 +1261,21 @@ class PluginsTab(Page):
         self._start(partial(_check_package_update, citation_sources, key, source.repository, item.manifest.version),
                     done, f"Checking {source.repository} for a newer release…")
 
-    def _install_citation_fetched(self, fetched: theme_sources.Fetched) -> bool:
-        try:
-            manifest = citation_sources.install(fetched)
-        except citations.CitationError as exc:
-            self._say(str(exc), error=True)
-            return False
-        self._say(_citation_installed(manifest, fetched.release.repository))
-        self.refresh_citations()
-        installed = getattr(self.app, "citation_installed", None)
-        if installed is not None:
-            installed(manifest.id)
-        return True
+    def _install_citation_fetched(self, fetched: theme_sources.Fetched, *, ask_auto: bool = False) -> None:
+        """Install the fetched citation format on a worker; `ask_auto` as for _install_fetched."""
+        def done(manifest: citations.CitationManifest | None, error: Exception | None) -> None:
+            if error is not None:
+                return self._citation_failed(error)
+            self._say(_citation_installed(manifest, fetched.release.repository))
+            if ask_auto:
+                self.set_citation_auto_update(
+                    manifest.id, ask_auto_update(self, f"the citation format {manifest.name}"))
+            self.refresh_citations()
+            installed = getattr(self.app, "citation_installed", None)
+            if installed is not None:
+                installed(manifest.id)
+
+        self._start(partial(citation_sources.install, fetched), done, f"Installing {fetched.manifest.name}…")
 
     def _citation_failed(self, error: Exception) -> None:
         if not isinstance(error, (citation_sources.SourceError, citations.CitationError)):
@@ -1395,14 +1384,9 @@ class PluginsTab(Page):
     def install_release(self, plugin: CataloguePlugin, release: Release, *, ask_auto: bool = False) -> None:
         """Download `release`, then install it when its SHA-256 is the one the catalogue promised. A new install
         (`ask_auto`, the Install button; not an update) asks whether later releases install automatically."""
-        def done(folder: Path | None, error: Exception | None) -> None:
+        def done(manifest: Manifest | None, error: Exception | None) -> None:
             if error is not None:
                 self._fail(error)
-                return self.refresh()
-            try:
-                manifest = install_downloaded(folder, release)
-            except installer.InstallError as exc:
-                self._say(str(exc), error=True)
             else:
                 self._say(f"{manifest.name} {manifest.version} is installed. It starts after a restart.")
                 if ask_auto:
@@ -1413,7 +1397,7 @@ class PluginsTab(Page):
                     plugin_updates_changed(self.app)
             self.refresh()
 
-        self._start(partial(download_release, release), done, f"Downloading {plugin.name}…")
+        self._start(partial(download_and_install, release), done, f"Downloading {plugin.name}…")
 
     # -- a file
 
@@ -1422,22 +1406,22 @@ class PluginsTab(Page):
         if path is not None:
             self.install_from_file(path)
 
-    def install_from_file(self, path: Path) -> bool:
-        """Install `path` after the user has seen what it is. Whether it was installed. A plugin installed from a file
-        is updated from the plugin list like any other, so it is asked about automatic updates too; a theme or
-        citation format from a file is never updated, so nothing is asked."""
-        manifest: Manifest | None = None
-        if path.suffix.lower() not in (themes.PACKAGE_SUFFIX, citations.PACKAGE_SUFFIX):
-            try:
-                manifest = installer.peek(path)
-            except (installer.InstallError, OSError):
-                manifest = None         # install_file says why
-        installed = install_file(self, path, lambda text, error: self._say(text, error))
-        if installed and manifest is not None:
-            self.set_plugin_auto_update(manifest.id, ask_auto_update(self, f"the plugin {manifest.name}"))
-        if installed:
-            self.refresh()
-        return installed
+    def install_from_file(self, path: Path) -> None:
+        """Install `path` after the user has seen what it is. A plugin installed from a file is updated from the
+        plugin list like any other, so it is asked about automatic updates too; a theme or citation format from a
+        file is never updated, so nothing is asked."""
+        plan = prepare_file(self, path, self._say)
+        if plan is None:
+            return
+
+        def done(_result, error: Exception | None) -> None:
+            if plan.end(error, self._say):
+                if isinstance(plan.manifest, Manifest):
+                    self.set_plugin_auto_update(plan.manifest.id,
+                                                ask_auto_update(self, f"the plugin {plan.manifest.name}"))
+                self.refresh()
+
+        self._start(plan.work, done, f"Installing {plan.manifest.name}…")
 
     # -- updates without asking
 
@@ -1473,14 +1457,17 @@ class PluginsTab(Page):
 
     def _start(self, work: Callable[[], object], on_done: Callable[[object, Exception | None], None],
                message: str) -> None:
+        """Run `work()` on a worker, one at a time: the BusyIndicator says `message` and the buttons that start
+        another job wait. `on_done(result, error)` runs on the GUI thread."""
         if self._job is not None:
             return
-        self._say(message)
-        job = Job(work)
-        self._job = job
+        self._say("")
+        self._show_top()
+        self.busy.start(message)
 
         def finished(result: object, error: Exception | None) -> None:
             self._job = None
+            self.busy.finish()
             try:
                 on_done(result, error)
             finally:
@@ -1488,9 +1475,8 @@ class PluginsTab(Page):
                 # started the next job: the buttons wait only while one runs.
                 self._set_busy(self._job is not None)
 
-        job.done.connect(finished)
         self._set_busy(True)
-        background.start_detached(job)
+        self._job = background.run_in_background(work, finished, parent=self)
 
     def _fail(self, error: Exception) -> None:
         if not isinstance(error, installer.InstallError):

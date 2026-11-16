@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import pytest
 from PySide6.QtWidgets import QMessageBox, QWidget
 
-from conftest import qapp as qapp
+from conftest import qapp as qapp, wait_until
 from slidemage import citations
 from slidemage.plugins import installer, session
 from slidemage.ui.dialogs.settings_plugins import PluginsTab
@@ -65,32 +65,39 @@ def answer(monkeypatch, yes):
     return asked
 
 
+def idle(tab):
+    wait_until(lambda: tab._job is None)
+
+
 def test_no_format_is_a_caption_and_the_github_button_is_there(tab):
     assert tab.citation_rows == {} and tab.citation_github_button.text() == "Add from GitHub…"
 
 
 def test_install_from_file_takes_a_package_after_showing_its_manifest(tab, package, monkeypatch):
     asked = answer(monkeypatch, False)
-    assert tab.install_from_file(package) is False
+    tab.install_from_file(package)
     assert citations.installed() == [] and "Sample Format 1.0.0" in asked[0] and "Key: sample" in asked[0]
     asked = answer(monkeypatch, True)
-    assert tab.install_from_file(package) is True
+    tab.install_from_file(package)
+    idle(tab)
     assert list(tab.citation_rows) == ["sample"] and "is installed" in tab.status.text()
     assert "SMCitationFormat" in tab.status.text() and not installer.pending_restart()
     tab.install_from_file(package)
+    idle(tab)
     assert "replaces the installed version 1.0.0" in asked[-1]
 
 
 def test_a_failing_checksum_installs_nothing(tab, package, monkeypatch):
     Path(str(package) + ".sha256").write_text("0" * 64 + f"  {package.name}\n", encoding="utf-8")
     answer(monkeypatch, True)
-    assert tab.install_from_file(package) is False
+    tab.install_from_file(package)
     assert citations.installed() == [] and "does not match" in tab.status.text()
 
 
 def test_the_row_says_where_it_came_from_and_remove_deletes_it(tab, package, monkeypatch):
     answer(monkeypatch, True)
     tab.install_from_file(package)
+    idle(tab)
     row = tab.citation_rows["sample"]
     assert row.update_button is None and row.source_label is None       # from a file: never updated
     tab.remove_citation("sample", "Sample Format")

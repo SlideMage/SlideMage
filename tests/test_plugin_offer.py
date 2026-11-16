@@ -341,6 +341,7 @@ def test_offline_says_so_and_offers_a_file(qapp, monkeypatch, tmp_path):
     monkeypatch.setattr(plugin_offer, "pick_plugin_file", lambda parent: archive)
     answer(monkeypatch, True)
     sheet.file_button.click()
+    wait_until(lambda: sheet._job is None)
     assert (loader.plugins_dir() / "hello" / "plugin.toml").is_file()
     assert sheet.restart_button.isVisibleTo(sheet) and "starts after a restart" in sheet.status.text()
 

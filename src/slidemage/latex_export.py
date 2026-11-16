@@ -32,6 +32,7 @@ from typing import Callable, Optional
 
 from . import citations, themes, unused_content
 from .deck_scan import Deck
+from .progress import Progress
 from .project import ProjectContext, is_snapshot
 from .slide_templates import framework_dirs
 from .tex_source import COMMENT_RE
@@ -242,7 +243,8 @@ def _rename(source: Path, target: Path, tries: int = 50) -> None:
 
 
 def export_deck(ctx: ProjectContext, deck: Deck, dest_dir: Path,
-                log: Optional[Callable[[str], None]] = None) -> ExportResult:
+                log: Optional[Callable[[str], None]] = None,
+                on_progress: Optional[Callable[[Progress], None]] = None) -> ExportResult:
     """Write ``<dest_dir>/<deck.name>-latex/``, replacing a folder of that name. The files are written into a
     scratch folder next to it first and renamed at the end, so a failure leaves the old folder (if any) and no
     half-written one."""
@@ -255,7 +257,9 @@ def export_deck(ctx: ProjectContext, deck: Deck, dest_dir: Path,
     scratch = Path(tempfile.mkdtemp(prefix=f".{target.name}-", dir=dest_dir))
     old = None
     try:
-        for dest, source in sorted(files.items()):
+        for n, (dest, source) in enumerate(sorted(files.items()), 1):
+            if on_progress:
+                on_progress(Progress.step(n, len(files), "Copying"))
             _copy(source, scratch / dest, source.parent == ctx.decks_dir or source == deck.path)
         (scratch / ".latexmkrc").write_text(LATEXMKRC, encoding="utf-8", newline="\n")
         # The old folder goes aside and is deleted only once the new one is in place, so a failure keeps it.

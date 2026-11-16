@@ -790,6 +790,7 @@ class BackgroundRenderer:
     def deck_archived(self, deck: Deck) -> None:
         self.scheduler.cancel_group(deck.name)
         self.store.drop_deck(deck.name)
+        threading.Thread(target=self.store.purge_trash, daemon=True, name="store-trash").start()   # the deletes: off the GUI thread
         self.replan()
 
     # -- the work ----------------------------------------------------------------------------

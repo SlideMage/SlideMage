@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
+import threading
+import time
 
 import shiboken6
 from PySide6.QtCore import QEvent, QObject, QPoint, QRect, QSize, Qt, QTimer, Signal
@@ -35,6 +37,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLayout,
     QListWidget,
+    QProgressBar,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -48,6 +51,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ...progress import Progress
+from ..background import run_in_background_with_progress
 from . import kit_qss as q
 from .fonts import load_fonts
 from .tokens import SPACE, FONT_ICONS, FONT_SANS, SHADOWS
@@ -1356,6 +1361,61 @@ class SplitButton(QFrame):
             self._menu.popup_below(self, align_right=True)
 
 
+class BusyIndicator(QWidget):
+    """A thin bar and a caption, to sit under the button that started a long operation. start(text) is
+    indeterminate, show_progress(Progress) determinate when it has a fraction, finish() ends it. It appears only
+    after SHOW_AFTER_MS, so quick runs never flash, and once shown stays at least SHOW_AT_LEAST_MS."""
+
+    SHOW_AFTER_MS = 400
+    SHOW_AT_LEAST_MS = 300
+
+    def __init__(self, parent: QWidget | None = None, *, show_after_ms: int = SHOW_AFTER_MS) -> None:
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(SPACE.sm)
+        self._bar = QProgressBar()
+        self._bar.setObjectName(q.JOB_BAR)
+        self._bar.setTextVisible(False)
+        self._label = caption()
+        layout.addWidget(self._bar)
+        layout.addWidget(self._label)
+        self._running = False
+        self._shown_at = 0.0
+        self._show_timer = QTimer(self, singleShot=True, interval=show_after_ms)
+        self._show_timer.timeout.connect(self._show)
+        self._hide_timer = QTimer(self, singleShot=True)
+        self._hide_timer.timeout.connect(self.hide)
+        self.hide()
+
+    def start(self, text: str) -> None:
+        self.show_progress(Progress(text))
+
+    def show_progress(self, progress: Progress) -> None:
+        self._label.setText(progress.text)
+        if progress.fraction is None:
+            self._bar.setRange(0, 0)
+        else:
+            self._bar.setRange(0, 100)
+            self._bar.setValue(round(progress.fraction * 100))
+        if not self._running:
+            self._running = True
+            self._hide_timer.stop()
+            if self.isHidden():
+                self._show_timer.start()
+
+    def finish(self) -> None:
+        self._running = False
+        self._show_timer.stop()
+        if not self.isHidden():
+            self._hide_timer.start(max(0, round(self.SHOW_AT_LEAST_MS - (time.monotonic() - self._shown_at) * 1000)))
+
+    def _show(self) -> None:
+        self._shown_at = time.monotonic()
+        self.show()
+        announce(self, self._label.text())
+
+
 class Toast(QFrame):
     """Transient message pinned to the bottom centre of its parent, with
     optional action buttons ("Undo", "Open in Source"). Messages with actions
@@ -1559,3 +1619,40 @@ class ModalSheet(QDialog):
             button.clicked.connect(self.reject)
         self._footer.addWidget(button)
         return button
+
+
+class BusySheet(ModalSheet):
+    """For work during which the project must not change: a title, one BusyIndicator and, when the work can
+    stop between steps, a Cancel that sets `cancel`. Window-modal; no close button and Escape does nothing
+    while it works. Start it with BusySheet.run, which closes it when the work is done."""
+
+    def __init__(self, parent: QWidget | None, title: str, cancel: threading.Event | None = None) -> None:
+        super().__init__(title, parent, width=420)
+        self.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.busy = BusyIndicator(show_after_ms=0)
+        self.add_tab("", self.busy)
+        if cancel is not None:
+            button = self.add_button("Cancel")
+            button.clicked.connect(lambda: (cancel.set(), button.setEnabled(False)))
+
+    def reject(self) -> None:
+        """Escape and the window manager's close do nothing; run() ends the sheet with accept()."""
+
+    @classmethod
+    def run(cls, parent: QWidget | None, title: str, work, done, *, cancel: threading.Event | None = None,
+            busy_reason: str | None = None) -> "BusySheet":
+        """Open the sheet and run `work(report)` on a worker (background.run_in_background_with_progress);
+        `report(Progress)` moves the bar. The sheet closes, then `done(result, error)` runs on the GUI thread.
+        With `cancel` the sheet has a Cancel button that sets it; the work polls it."""
+        sheet = cls(parent, title, cancel)
+
+        def finish(result, error) -> None:
+            sheet.accept()
+            done(result, error)
+
+        sheet.open()
+        sheet.busy.start("")
+        run_in_background_with_progress(work, sheet.busy.show_progress, finish, cancel=cancel,
+                                        busy_reason=busy_reason)
+        return sheet

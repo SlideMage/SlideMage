@@ -7,7 +7,7 @@ from __future__ import annotations
 import pytest
 from PySide6.QtWidgets import QFileDialog, QLabel, QMessageBox, QPushButton
 
-from conftest import build_window
+from conftest import build_window, wait_until
 from slidemage.ui.workspace import compile_actions
 
 
@@ -31,6 +31,7 @@ def dialogs(monkeypatch, tmp_path):
 
 def test_the_command_exports_the_deck_into_the_picked_folder_and_the_toast_offers_to_open_it(window, dialogs, tmp_path):
     assert window.commands.run("export_latex", window)
+    wait_until(window.toast.isVisible)
     folder = tmp_path / "slidemage-manual-copy-latex"
     assert (folder / "slidemage-manual-copy.tex").is_file() and (folder / "slides").is_dir()
     assert dialogs.asked == []
@@ -49,6 +50,7 @@ def test_an_existing_export_is_replaced_only_when_the_user_says_yes(window, dial
     assert not (folder / "slidemage-manual-copy.tex").exists()
     dialogs.answer = QMessageBox.StandardButton.Yes
     compile_actions.export_latex(window, window.state.deck)
+    wait_until(window.toast.isVisible)
     assert len(dialogs.asked) == 2 and not (folder / "old.txt").exists() and (folder / "slidemage-manual-copy.tex").is_file()
 
 

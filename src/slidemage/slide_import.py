@@ -25,6 +25,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .progress import Progress
 from .project import ProjectContext
 
 
@@ -457,7 +458,8 @@ def media_filename(id_slug: str, index: int, ext: str) -> str:
     return f"imported-{id_slug}{suffix}{ext}"
 
 
-def import_presentation(ctx: ProjectContext, source_path: Path, deck, language: str, log=None) -> ImportSummary:
+def import_presentation(ctx: ProjectContext, source_path: Path, deck, language: str, log=None,
+                        on_progress=None) -> ImportSummary:
     """Extracts every slide from `source_path` (.pptx or .odp) and appends
     one new SlideMage slide per non-blank source slide to the end of
     `deck` -- new slide files under slides/, their images (if any) under
@@ -469,6 +471,9 @@ def import_presentation(ctx: ProjectContext, source_path: Path, deck, language: 
     `log`, if given, is called once per slide actually imported (not for
     a skipped blank one) -- this can create many files in one call, and a
     caller driving a GUI wants to show progress, not just a final count.
+
+    `on_progress`, if given, gets an indeterminate Progress while the file is read, then a
+    Progress.step for each source slide (blank ones included).
 
     Raises ValueError for an unrecognized file extension, and whatever
     the underlying extractor itself raises for a corrupt/unreadable file
@@ -482,6 +487,8 @@ def import_presentation(ctx: ProjectContext, source_path: Path, deck, language: 
         raise ValueError(
             f"Unsupported file type: {source_path.suffix!r} (only .pptx and .odp are supported)"
         )
+    if on_progress is not None:
+        on_progress(Progress(f"Reading {source_path.name}…"))
     contents = extractor(source_path)
 
     summary = ImportSummary()
@@ -489,7 +496,9 @@ def import_presentation(ctx: ProjectContext, source_path: Path, deck, language: 
     insert_at, indent = deck_editor.append_position(deck)
     media_dir = ctx.media_dir
 
-    for content in contents:
+    for n, content in enumerate(contents, 1):
+        if on_progress is not None:
+            on_progress(Progress.step(n, len(contents), "Importing slide"))
         if content.is_blank:
             summary.skipped_blank += 1
             continue

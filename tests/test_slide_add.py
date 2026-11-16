@@ -504,8 +504,12 @@ def test_import_presentation_writes_files_and_appends_deck_calls(sample_presenta
         uses_biblatex=False, preamble_end=None, chapters=[], output_folders={}, tags=[],
     )
 
-    summary = slide_import.import_presentation(ctx, path, deck, "EN")
+    progress = []
+    summary = slide_import.import_presentation(ctx, path, deck, "EN", on_progress=progress.append)
 
+    assert [p.text for p in progress] == ["Reading " + path.name + "…", "Importing slide (1 of 3)",
+                                          "Importing slide (2 of 3)", "Importing slide (3 of 3)"]
+    assert progress[0].fraction is None and progress[-1].fraction == 1
     assert len(summary.imported) == 2
     assert summary.skipped_blank == 1
     assert [s.layout for s in summary.imported] == ["standardframe", "figureframe"]

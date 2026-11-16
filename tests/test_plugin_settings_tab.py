@@ -276,12 +276,13 @@ def test_install_from_file_confirms_with_the_manifest(app, tmp_path, monkeypatch
         zf.writestr("hello/__init__.py", (FIXTURES / "hello" / "hello" / "__init__.py").read_text())
     tab = PluginsTab(app)
     asked = answer(monkeypatch, False)
-    assert tab.install_from_file(archive) is False
-    assert not (loader.plugins_dir() / "hello").exists() and not installer.pending_restart()
+    tab.install_from_file(archive)
+    assert tab._job is None and not (loader.plugins_dir() / "hello").exists() and not installer.pending_restart()
     assert "not from the SlideMage plugin list. It runs with your rights." in asked[0]
     assert "hello fixture 0.1.0" in asked[0] and "api.example.org" in asked[0]
     answer(monkeypatch, True)
-    assert tab.install_from_file(archive) is True
+    tab.install_from_file(archive)
+    idle(tab)
     assert (loader.plugins_dir() / "hello" / "plugin.toml").is_file()
     assert tab.banner.isVisibleTo(tab) and "hello" in tab.rows
     assert "starts after a restart" in tab.rows["hello"].state_chip.text()
@@ -292,20 +293,23 @@ def test_install_from_file_checks_a_sha256_file(app, tmp_path, monkeypatch):
     tab = PluginsTab(app)
     asked = answer(monkeypatch, True)
     Path(str(archive) + ".sha256").write_text(f"{'1' * 64}  hello.smplugin\n")
-    assert tab.install_from_file(archive) is False
+    tab.install_from_file(archive)
     assert asked == [] and "does not match" in tab.status.text()          # not even asked
     assert tab.status.property("tone") == "error" and not (loader.plugins_dir() / "hello").exists()
     Path(str(archive) + ".sha256").write_text("garbage")
-    assert tab.install_from_file(archive) is False and "SHA-256" in tab.status.text()
+    tab.install_from_file(archive)
+    assert "SHA-256" in tab.status.text() and tab._job is None
     Path(str(archive) + ".sha256").write_text(f"{sha(archive)}  hello.smplugin\n")
-    assert tab.install_from_file(archive) is True
+    tab.install_from_file(archive)
+    idle(tab)
+    assert (loader.plugins_dir() / "hello").is_dir()
 
 
 def test_install_from_file_bad_archive_is_a_caption(app, tmp_path):
     bad = tmp_path / "bad.smplugin"
     bad.write_bytes(b"not a zip")
     tab = PluginsTab(app)
-    assert tab.install_from_file(bad) is False
+    tab.install_from_file(bad)
     assert "not a valid zip" in tab.status.text()
 
 
@@ -315,6 +319,7 @@ def test_file_dialog_installs_the_chosen_file(app, tmp_path, monkeypatch):
     answer(monkeypatch, True)
     tab = PluginsTab(app)
     tab.file_button.click()
+    idle(tab)
     assert (loader.plugins_dir() / "hello").is_dir()
 
 

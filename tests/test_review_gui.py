@@ -14,7 +14,7 @@ from slidemage import alt_images, housekeeping
 from slidemage.ui.workspace import window as window_module
 from slidemage.ui.dialogs.open_project import OpenProjectSheet
 
-from conftest import build_window
+from conftest import build_window, wait_until
 
 
 def _make_window(monkeypatch, qapp):
@@ -109,6 +109,7 @@ def test_temp_cleanup_removes_only_helper_returned_build_items(monkeypatch, qapp
     )
 
     maintenance.remove_temp_files(window)
+    wait_until(lambda: not old_run.exists())
 
     assert not old_file.exists()
     assert not old_run.exists()

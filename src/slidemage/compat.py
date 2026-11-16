@@ -50,11 +50,12 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from . import (compat_bibliography, compat_citation_format, compat_color_cut, compat_color_roles, compat_hooks,
                compat_names, compat_own_theme, compat_project_macros, project)
 from .fileio import atomic_write
+from .progress import Progress
 from .tex_source import is_commented
 from .updater import parse_version
 
@@ -519,10 +520,11 @@ class UpdateResult:
     errors: list[str] = field(default_factory=list)
 
 
-def run_update(root: Path, pending: list[Pending], *, dry_run: bool = False,
-               now: Optional[datetime] = None) -> UpdateResult:
+def run_update(root: Path, pending: list[Pending], *, dry_run: bool = False, now: Optional[datetime] = None,
+               on_progress: Optional[Callable[[Progress], None]] = None) -> UpdateResult:
     """Run the migrations of `pending`. Every file that changes is copied to
     .slidemage/backups/<time>/compat/ first; with dry_run nothing is written.
+    `on_progress` gets one step per file backed up and one per file written.
     A deck snapshot (deck_snapshot.py) is never migrated: it stays as it was."""
     result = UpdateResult()
     if project.is_snapshot(root) and not dry_run:
@@ -549,7 +551,9 @@ def run_update(root: Path, pending: list[Pending], *, dry_run: bool = False,
         return result
     # Back everything up before the first change, so a failure leaves the project as it was.
     try:
-        for path, rel, _data in todo:
+        for n, (path, rel, _data) in enumerate(todo, 1):
+            if on_progress:
+                on_progress(Progress.step(n, len(todo), "Backing up"))
             if path.is_file():
                 (backup / rel).parent.mkdir(parents=True, exist_ok=True)
                 (backup / rel).write_bytes(path.read_bytes())
@@ -560,7 +564,10 @@ def run_update(root: Path, pending: list[Pending], *, dry_run: bool = False,
         return result
     done: list[tuple[Path, Optional[bytes]]] = []        # (file, what it held before; None = it did not exist)
     try:
-        for path, _rel, data in sorted(todo, key=lambda item: item[2] is None):    # writes first, removals last
+        writes_first = sorted(todo, key=lambda item: item[2] is None)    # removals last
+        for n, (path, _rel, data) in enumerate(writes_first, 1):
+            if on_progress:
+                on_progress(Progress.step(n, len(todo), "Updating"))
             before = path.read_bytes() if path.is_file() else None
             if data is None:
                 path.unlink()

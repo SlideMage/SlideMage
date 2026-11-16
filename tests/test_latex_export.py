@@ -86,6 +86,13 @@ def test_the_folder_holds_the_deck_its_slides_and_only_the_media_they_use(projec
         p.relative_to(result.folder).as_posix() for p in result.folder.rglob("*") if p.is_file())
 
 
+def test_a_step_is_reported_for_every_file_copied(project):
+    steps = []
+    result = latex_export.export_deck(project, deck_of(project, "acme"), project.root.parent, on_progress=steps.append)
+    n = len(result.files) - 1                      # every file but the generated .latexmkrc
+    assert [s.text for s in steps] == [f"Copying ({i} of {n})" for i in range(1, n + 1)] and steps[-1].fraction == 1
+
+
 def test_the_preambles_theme_logo_bib_and_code_files_come_along(project):
     names = set(export(project).files)
     assert {"SlideMage_template_acme.tex", "SlideMage_base.tex", "SlideMage_alt.lua",
