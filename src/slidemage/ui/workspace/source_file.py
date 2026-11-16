@@ -32,6 +32,7 @@ from ... import (
     latex_lint,
     slide_language,
     slide_source,
+    slide_templates,
     slide_versioning,
 )
 from ...deck_scan import is_generated_wrapper
@@ -128,6 +129,7 @@ class SourceFile(Surface):
         tab_width = app_settings.get(app.project, latex_edit.TAB_WIDTH_SETTING_KEY, latex_edit.DEFAULT_TAB_WIDTH_CHARS)
         hover_help = bool(app_settings.get(app.project, latex_help.HOVER_HELP_SETTING_KEY, True))
         self.editor = LatexPlainTextEdit(app.theme, tab_width, hover_help)
+        self.editor.set_help_provider(lambda: slide_templates.template_help(app.project))
         self.editor.set_text(self.text)
         self.editor.modified_changed.connect(self.modified_changed)
         self.editor.escape_pressed.connect(self._abort_ai_fix)

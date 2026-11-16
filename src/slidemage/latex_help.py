@@ -17,7 +17,8 @@ from __future__ import annotations
 
 import html
 import re
-from dataclasses import dataclass
+import tomllib
+from dataclasses import dataclass, field
 from typing import Optional
 
 # app_settings key: Settings -> General, "Show help for LaTeX commands on hover" (on by default).
@@ -447,6 +448,123 @@ COMMANDS: dict[str, CommandHelp] = {h.name: h for h in _COMMANDS}
 ENVIRONMENTS: dict[str, CommandHelp] = {h.name: h for h in _ENVIRONMENTS}
 
 
+# -- the other catalogues: standard LaTeX/beamer (latex_help_standard.py) and a theme's own (help.toml) ----------
+
+@dataclass(frozen=True)
+class HelpSet:
+    """Help beyond SlideMage's own: what a theme package's help.toml supplies (parse_help)."""
+    commands: dict[str, CommandHelp] = field(default_factory=dict)
+    environments: dict[str, CommandHelp] = field(default_factory=dict)
+
+
+NO_EXTRA = HelpSet()
+_standard: Optional[HelpSet] = None
+
+
+def standard() -> HelpSet:
+    """The standard LaTeX, beamer and math commands (latex_help_standard.py), loaded on first use."""
+    global _standard
+    if _standard is None:
+        from . import latex_help_standard
+        _standard = HelpSet(latex_help_standard.COMMANDS, latex_help_standard.ENVIRONMENTS)
+    return _standard
+
+
+def lookup(name: str, environment: bool, extra: HelpSet = NO_EXTRA) -> Optional[CommandHelp]:
+    """The entry for a command or environment name: SlideMage's own, then the theme's (`extra`), then standard
+    LaTeX/beamer. SlideMage's win a name clash, so a theme cannot change what its framework commands say."""
+    if environment:
+        return ENVIRONMENTS.get(name) or extra.environments.get(name) or standard().environments.get(name)
+    return COMMANDS.get(name) or extra.commands.get(name) or standard().commands.get(name)
+
+
+class HelpFileError(ValueError):
+    """A help.toml with a problem; the message says which entry."""
+
+
+HELP_FILE_NAME = "help.toml"
+MAX_ENTRIES = 300
+_NAME_RE = re.compile(r"^[A-Za-z]+\*?$")
+_MAX_TEXT = {"signature": 200, "summary": 1500, "example": 600, "values": 200}
+
+
+def _field(table: dict, name: str, where: str, required: bool = True) -> str:
+    value = table.get(name, "")
+    if not isinstance(value, str):
+        raise HelpFileError(f"{where}: {name} must be text")
+    value = value.strip()
+    if required and not value:
+        raise HelpFileError(f"{where}: {name} is missing")
+    if len(value) > _MAX_TEXT.get(name, 1000):
+        raise HelpFileError(f"{where}: {name} is too long")
+    return value
+
+
+def _entry(table: object, environment: bool, index: int) -> CommandHelp:
+    kind = "environment" if environment else "command"
+    if not isinstance(table, dict):
+        raise HelpFileError(f"[[{kind}]] number {index} is not a table")
+    name = table.get("name")
+    if not isinstance(name, str) or not _NAME_RE.match(name):
+        raise HelpFileError(f"[[{kind}]] number {index}: name must be letters only, without the backslash")
+    where = f"{kind} {name}"
+    keys = table.get("keys", [])
+    if not isinstance(keys, list):
+        raise HelpFileError(f"{where}: keys must be a list of [[{kind}.keys]] tables")
+    built = []
+    for key in keys:
+        if not isinstance(key, dict):
+            raise HelpFileError(f"{where}: a key is not a table")
+        key_name = _field(key, "name", f"{where}, key")
+        built.append(KeyHelp(key_name, _field(key, "values", f"{where}, key {key_name}", False),
+                             _field(key, "text", f"{where}, key {key_name}")))
+    if len({key.name for key in built}) != len(built):
+        raise HelpFileError(f"{where}: a key is listed twice")
+    return CommandHelp(name, _field(table, "signature", where), _field(table, "summary", where), tuple(built),
+                       _field(table, "example", where, False), environment)
+
+
+def parse_help(text: str, strict: bool = True) -> HelpSet:
+    """A theme's help.toml: [[command]] and [[environment]] tables with name, signature, summary, an optional
+    example and [[command.keys]] tables (name, values, text). Data only. Strict (the packing tools): the first
+    problem raises HelpFileError. Lenient (the editor): a bad entry, or a file that does not parse, is skipped."""
+    try:
+        data = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as e:
+        if strict:
+            raise HelpFileError(f"{HELP_FILE_NAME} is not valid TOML: {e}") from None
+        return NO_EXTRA
+    sections = (("command", False), ("environment", True))
+    if strict:
+        unknown = sorted(set(data) - {name for name, _ in sections})
+        if unknown:
+            raise HelpFileError(f"{HELP_FILE_NAME} has an unknown section: {unknown[0]}")
+    commands: dict[str, CommandHelp] = {}
+    environments: dict[str, CommandHelp] = {}
+    for section, environment in sections:
+        tables = data.get(section, [])
+        if not isinstance(tables, list):
+            if strict:
+                raise HelpFileError(f"{section} must be written as [[{section}]] tables")
+            continue
+        target = environments if environment else commands
+        for index, table in enumerate(tables, 1):
+            try:
+                entry = _entry(table, environment, index)
+            except HelpFileError:
+                if strict:
+                    raise
+                continue
+            if entry.name in target and strict:
+                raise HelpFileError(f"{section} {entry.name} is listed twice")
+            if len(commands) + len(environments) >= MAX_ENTRIES:
+                if strict:
+                    raise HelpFileError(f"{HELP_FILE_NAME} has more than {MAX_ENTRIES} entries")
+                break
+            target[entry.name] = entry
+    return HelpSet(commands, environments)
+
+
 # -- what is under the pointer -----------------------------------------------------------------
 
 _COMMAND_RE = re.compile(r"\\([A-Za-z]+)\*?")
@@ -481,23 +599,23 @@ def _line_bounds(text: str, offset: int) -> tuple[int, int]:
     return start, len(text) if end < 0 else end
 
 
-def _token_at(text: str, offset: int) -> Optional[HelpHit]:
+def _token_at(text: str, offset: int, extra: HelpSet = NO_EXTRA) -> Optional[HelpHit]:
     """A known command or environment name under `offset`."""
     start, end = _line_bounds(text, offset)
     line = text[start:end]
     column = offset - start
     for match in _ENV_RE.finditer(line):
         if match.start() <= column < match.end():
-            help_ = ENVIRONMENTS.get(match.group(1))
+            help_ = lookup(match.group(1), True, extra)
             return None if help_ is None else HelpHit(help_, None, start + match.start(), start + match.end())
     for match in _COMMAND_RE.finditer(line):
         if match.start() <= column < match.end() and not _escaped(line, match.start()):
-            help_ = COMMANDS.get(match.group(1))
+            help_ = lookup(match.group(1), False, extra)
             return None if help_ is None else HelpHit(help_, None, start + match.start(), start + match.end())
     return None
 
 
-def _option_at(text: str, offset: int) -> Optional[HelpHit]:
+def _option_at(text: str, offset: int, extra: HelpSet = NO_EXTRA) -> Optional[HelpHit]:
     """A known key in the [...] options of a known command, under `offset`."""
     if text[offset] in ",=[]{}":
         return None
@@ -523,7 +641,7 @@ def _option_at(text: str, offset: int) -> Optional[HelpHit]:
     owner = _OPTIONS_OWNER_RE.search(text, max(0, opener - 300), opener)
     if owner is None:
         return None
-    help_ = ENVIRONMENTS.get(owner.group("env")) if owner.group("env") else COMMANDS.get(owner.group("cmd"))
+    help_ = lookup(owner.group("env") or owner.group("cmd"), bool(owner.group("env")), extra)
     if help_ is None or not help_.keys:
         return None
     # The entry of the option list that holds `offset`: from the comma before it to the comma after it.
@@ -555,12 +673,12 @@ def _option_at(text: str, offset: int) -> Optional[HelpHit]:
     return HelpHit(help_, name, seg_start + lead, seg_start + len(entry.rstrip()))
 
 
-def help_at(text: str, offset: int) -> Optional[HelpHit]:
+def help_at(text: str, offset: int, extra: HelpSet = NO_EXTRA) -> Optional[HelpHit]:
     """The help for what is at `offset` (the character under the pointer), or None: plain text, a comment, a
-    command SlideMage has no help for."""
+    command nobody has help for. `extra` is the current theme's help (parse_help)."""
     if not 0 <= offset < len(text) or text[offset] in "\n\r" or _in_comment(text, offset):
         return None
-    return _token_at(text, offset) or _option_at(text, offset)
+    return _token_at(text, offset, extra) or _option_at(text, offset, extra)
 
 
 # -- the tooltip ----------------------------------------------------------------------------------

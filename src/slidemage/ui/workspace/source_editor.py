@@ -15,7 +15,7 @@ Qt reports count UTF-16 code units, latex_edit's count characters;
 from __future__ import annotations
 
 import re
-from typing import Any, Optional, Protocol
+from typing import Any, Callable, Optional, Protocol
 
 from PySide6.QtCore import QEvent, QPoint, QRect, QSize, Qt, Signal
 from PySide6.QtGui import (
@@ -207,6 +207,7 @@ class LatexPlainTextEdit(QPlainTextEdit):
         self.setObjectName(q.SOURCE)
         self._theme = theme
         self._hover_help = hover_help
+        self._help_provider: Optional[Callable[[], latex_help.HelpSet]] = None
         self._header_lines = 0
         self._header_folded = True
         self.setFont(source_font())
@@ -501,6 +502,16 @@ class LatexPlainTextEdit(QPlainTextEdit):
         self._tab_chars = chars
         self.setTabStopDistance(QFontMetricsF(self.font()).horizontalAdvance(" ") * chars)
 
+    def set_help_provider(self, provider: Optional[Callable[[], latex_help.HelpSet]]) -> None:
+        """`provider()` gives the current theme's help (a help.toml), asked at each tooltip."""
+        self._help_provider = provider
+
+    def _extra_help(self) -> latex_help.HelpSet:
+        try:
+            return self._help_provider() if self._help_provider is not None else latex_help.NO_EXTRA
+        except Exception:                      # a tooltip must never raise
+            return latex_help.NO_EXTRA
+
     def set_hover_help(self, on: bool) -> None:
         self._hover_help = on
         if not on:
@@ -599,7 +610,7 @@ class LatexPlainTextEdit(QPlainTextEdit):
         # on the character before it.
         if caret.x() > pos.x() and cursor.positionInBlock() > 0:
             position -= 1
-        hit = latex_help.help_at(utf16_units(self.toPlainText()), position)
+        hit = latex_help.help_at(utf16_units(self.toPlainText()), position, self._extra_help())
         if hit is None:
             return None
         return hit, self._token_rect(hit, caret)
@@ -617,7 +628,8 @@ class LatexPlainTextEdit(QPlainTextEdit):
         """Shift+F1: the help for the command at the text cursor (on it, or right after it)."""
         text = utf16_units(self.toPlainText())
         position = self.textCursor().position()
-        hit = latex_help.help_at(text, position) or latex_help.help_at(text, position - 1)
+        extra = self._extra_help()
+        hit = latex_help.help_at(text, position, extra) or latex_help.help_at(text, position - 1, extra)
         if hit is None:
             QToolTip.hideText()
             return False

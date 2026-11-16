@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import project, themes
+from . import latex_help, project, themes
 
 
 # Every institution template is a one-line \input{} swap on top of an
@@ -88,6 +88,12 @@ def preamble_file(template: str, root: Path) -> Path:
         if (folder / name).is_file():
             return folder / name
     return root / name
+
+
+def template_help(ctx: project.ProjectContext) -> latex_help.HelpSet:
+    """The hover help of the render template's folder (themes.help_of): an installed theme's help.toml. The
+    framework's and the project folder's have none."""
+    return themes.help_of(preamble_file(render_template(ctx), ctx.root).parent)
 
 
 def available_templates(root: Path) -> list[str]:
