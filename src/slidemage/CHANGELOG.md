@@ -4244,3 +4244,8 @@ v0.16.58 (2026-11-16, direct request: docs/plans/busy-indicators.md, step 5): (1
 NEW: The Housekeeping sheet no longer freezes SlideMage.
 - It opens at once and counts what there is to clean up in the background.
 - Emptying pdf/, removing temp files and reestablishing translation links show a sheet with a progress bar while they run, and archiving unused content shows a bar too.
+
+v0.16.59 (2026-11-16, direct request: docs/plans/busy-indicators.md, step 6): Import PPTX/ODP runs in a worker (busy.working("importing slides")); slide_import.import_presentation takes on_progress: an indeterminate "Reading <file>…", then one step per source slide. ImportPresentationSheet shows a BusyIndicator, disables its inputs and buttons and ignores reject() while the import runs (no Cancel: a half-imported deck is worse than waiting); the log lines are written on the GUI thread through the same channel as the progress; the result message, after_deck_edit and accept stay in done. A failed import re-enables the sheet.
+
+NEW: Importing a PowerPoint or OpenDocument file no longer freezes SlideMage.
+- The import sheet shows a progress bar ("Importing slide (3 of 12)") and stays open until the import has finished.
