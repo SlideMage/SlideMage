@@ -581,6 +581,9 @@ class CompileJob:
     # deck's and the view's mode.
     mode: Optional[str] = None
     resolve_translations: bool = True   # False for a maintenance deck rendering each file independently
+    # This run typesets the slides with a "+" as they are now, whatever Settings -> General says (issue #97: the
+    # notice before a deck compile offers it). False: the setting decides (saved_versions()).
+    current_edits: bool = False
 
     @property
     def _appendix_applies(self) -> bool:
@@ -669,10 +672,16 @@ def override_lines(ctx: project.ProjectContext, job: CompileJob, *, appendix_lin
     if job.language:
         lines.append(f"\\def\\decklanguageoverride{{{job.language.lower()}}}")
 
-    if saved_versions and not app_settings.get(ctx, slide_versioning.RENDER_CHANGES_SETTING_KEY, False):
+    if saved_versions and uses_saved_versions(ctx, job):
         from . import deck_language
         lines += slide_versioning.saved_version_lines(ctx, job.deck, deck_language.language_for_job(job))
     return lines
+
+
+def uses_saved_versions(ctx: project.ProjectContext, job: CompileJob) -> bool:
+    """Whether `job` typesets each slide with a "+" from its last version (slide_versioning.saved_versions): Settings
+    -> General does not compile the changes, and this run was not asked to (job.current_edits)."""
+    return not job.current_edits and not app_settings.get(ctx, slide_versioning.RENDER_CHANGES_SETTING_KEY, False)
 
 
 def with_mode(ctx: project.ProjectContext, preamble: str, mode: str) -> str:

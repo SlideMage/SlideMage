@@ -147,6 +147,18 @@ class GeneralTab(Page):
             "use Update version. On, it shows the slide as it is now. The slide's own Preview always shows "
             "it as it is now."))
 
+        self.ask_saved_versions_check = QCheckBox("Ask before a deck compiles slides from their last version")
+        self.ask_saved_versions_check.setChecked(
+            bool(app_settings.get(app.project, slide_versioning.ASK_SAVED_VERSIONS_SETTING_KEY, True)))
+        self.ask_saved_versions_check.toggled.connect(
+            lambda on: app_settings.set(app.project, slide_versioning.ASK_SAVED_VERSIONS_SETTING_KEY, bool(on)))
+        self.render_changes_check.toggled.connect(lambda on: self.ask_saved_versions_check.setEnabled(not on))
+        self.ask_saved_versions_check.setEnabled(not self.render_changes_check.isChecked())
+        layout.addWidget(Field("Last versions in decks", self.ask_saved_versions_check))
+        layout.addWidget(caption(
+            "With the setting above off, a deck compile lists the slides it takes from their last version, and you "
+            "can compile them with the edits this time, or update their versions first. Off, the Log lists them."))
+
         self.resume_tabs_check = QCheckBox("Reopen the tabs a project had open, when it opens again")
         self.resume_tabs_check.setChecked(bool(layout_settings.get(RESUME_TABS_SETTING, True)))
         self.resume_tabs_check.toggled.connect(lambda on: layout_settings.set(RESUME_TABS_SETTING, bool(on)))

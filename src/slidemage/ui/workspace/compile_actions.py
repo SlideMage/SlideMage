@@ -23,6 +23,7 @@ from ...compiler import PDF_MOVE_RETRY_TOTAL_SECONDS, CompileJob, order_jobs, re
 from ...deck_scan import Deck
 from ...partial_compile import PartialError, parse_page_spec
 from ...project import ProjectContext
+from ..dialogs import saved_versions as saved_versions_sheet
 from ..dialogs import snapshot as snapshot_sheets
 from . import deck_actions, render_check
 from .multi_compile import MultiCompileSheet
@@ -271,6 +272,8 @@ def compile_jobs(window, jobs: list[CompileJob]) -> bool:
             + "\n".join(f"  • {d}" for d in empty_descriptions)
             + "\n\nCompiling the rest.",
         )
+    if not _confirm_saved_versions(window, jobs):
+        return False
     jobs = _confirm_unchanged_jobs(window, jobs, outputs)
     if not jobs:
         return False
@@ -300,6 +303,66 @@ def _confirm_build(window, result: latex_lint.CheckResult, what: str) -> bool:
         show_in_editor=lambda issue: render_check.open_issue_in_editor(window, issue))
 
 
+def _saved_versions(ctx: ProjectContext, jobs: list[CompileJob]) -> dict[str, list[str]]:
+    """{deck name: the id-slugs it typesets from their last version} for the decks of `jobs`
+    (compiler.uses_saved_versions, slide_versioning.saved_versions), in the order of the jobs."""
+    from ... import deck_language
+    found: dict[str, dict[str, None]] = {}
+    for job in jobs:
+        if compiler.uses_saved_versions(ctx, job):
+            slugs = slide_versioning.saved_versions(ctx, job.deck, deck_language.language_for_job(job))
+            found.setdefault(job.deck.name, {}).update(dict.fromkeys(slugs))
+    return {name: list(slugs) for name, slugs in found.items() if slugs}
+
+
+def _slide_list(slugs: list[str]) -> str:
+    """The first 8 ids of `slugs`, then "…"."""
+    return ", ".join(slide_language.bare_id(slug) for slug in slugs[:8]) + (", …" if len(slugs) > 8 else "")
+
+
+def _confirm_saved_versions(window, jobs: list[CompileJob]) -> bool:
+    """Issue #97: with Settings → General not compiling the changes, a deck compile typesets each slide with a "+"
+    from its last version, while the slide's Preview shows the edits. Say so before the run: Compile last versions,
+    Compile with edits (this run: CompileJob.current_edits), Update versions first (then compile), or Cancel. The
+    checkbox makes the compile choice the setting (issue comment: switch it in the dialog): with edits turns
+    RENDER_CHANGES_SETTING_KEY on, last versions keeps it off and stops asking (ASK_SAVED_VERSIONS_SETTING_KEY;
+    the Log still names the slides). False when the user cancelled."""
+    ctx = window.project
+    found = _saved_versions(ctx, jobs)
+    if not found:
+        return True
+    if not app_settings.get(ctx, slide_versioning.ASK_SAVED_VERSIONS_SETTING_KEY, True):
+        _log_saved_versions(window, found)
+        return True
+    sheet = saved_versions_sheet.SavedVersionsSheet(
+        window, {name: [slide_language.bare_id(slug) for slug in slugs] for name, slugs in found.items()})
+    sheet.exec()
+    if sheet.choice == saved_versions_sheet.EDITS:
+        if sheet.remember:
+            app_settings.set(ctx, slide_versioning.RENDER_CHANGES_SETTING_KEY, True)
+        for job in jobs:
+            job.current_edits = True
+        return True
+    if sheet.choice == saved_versions_sheet.UPDATE:
+        slugs = list(dict.fromkeys(slug for slugs in found.values() for slug in slugs))
+        if not window.centre.update_versions(slugs, "Update version of all changed slides", "before compiling"):
+            return False
+        found = _saved_versions(ctx, jobs)   # the slides whose version could not be updated
+    elif sheet.choice == saved_versions_sheet.LAST:
+        if sheet.remember:
+            app_settings.set(ctx, slide_versioning.ASK_SAVED_VERSIONS_SETTING_KEY, False)
+    else:
+        return False
+    _log_saved_versions(window, found)
+    return True
+
+
+def _log_saved_versions(window, found: dict[str, list[str]]) -> None:
+    for name, slugs in found.items():
+        window.log(f"{name}: {len(slugs)} slide(s) compiled from their last version, without their newer edits "
+                   f"({_slide_list(slugs)})")
+
+
 def _confirm_changed_slides(window, decks: list[Deck], what: str) -> bool:
     """A snapshot or an export is a record: warn when a slide a deck calls has changes since its last
     version (a "+" on its version line), so no version stands for what is being recorded. False when the
@@ -311,8 +374,7 @@ def _confirm_changed_slides(window, decks: list[Deck], what: str) -> bool:
     for deck in decks:
         changed = slide_versioning.changed_slides(window.project, deck, window.state.language)
         if changed:
-            shown = ", ".join(slide_language.bare_id(slug) for slug in changed[:8]) + (", …" if len(changed) > 8 else "")
-            lines.append(f"  • {deck.name}: {len(changed)} slide(s) ({shown})")
+            lines.append(f"  • {deck.name}: {len(changed)} slide(s) ({_slide_list(changed)})")
     if not lines:
         return True
     box = QMessageBox(window)
