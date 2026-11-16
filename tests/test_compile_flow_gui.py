@@ -14,6 +14,7 @@ from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QPushButton
 from slidemage import compile_progress, compiler, deck_outline, latex_lint
 from slidemage.compile_status import DONE, FAILED, QUEUED, STOPPED
 from conftest import EXAMPLE_PROJECT
+from slidemage.ui.dialogs.saved_versions import SavedVersionsSheet
 from slidemage.ui.workspace import compile_actions, render_check
 
 from test_workspace_window import COURSE, MANUAL, OLD, WORK, make_deck, qapp, window as window  # noqa: F401 -- fixtures
@@ -402,13 +403,12 @@ def saved(env, monkeypatch):
     monkeypatch.setattr(env.window, "log", lambda line: env.logged.append(line))
 
     def choose(text, remember=False):
-        def fake_exec(box):
-            env.asked.append(box.text())
-            box.checkBox().setChecked(remember)
-            chosen = next(b for b in box.buttons() if b.text() == text)
-            monkeypatch.setattr(QMessageBox, "clickedButton", lambda _box: chosen)
-            return 0
-        monkeypatch.setattr(QMessageBox, "exec", fake_exec)
+        def fake_exec(sheet):
+            env.asked.append("\n".join(label.text() for label in sheet.findChildren(QLabel)))
+            sheet.remember_check.setChecked(remember)
+            next(b for b in sheet.findChildren(QPushButton) if b.text() == text).click()
+            return sheet.result()
+        monkeypatch.setattr(SavedVersionsSheet, "exec", fake_exec)
     env.choose = choose
     env.setting = lambda key, default: settings.get(getattr(slide_versioning, key), default)
     return env
@@ -418,8 +418,8 @@ def test_a_deck_compile_names_the_slides_it_takes_from_their_last_version(saved)
     saved.choose("Compile last versions")
     build(saved, "instructor")
     saved.finished()
-    assert len(saved.asked) == 1 and "2 slide(s) will be compiled from their last version" in saved.asked[0]
-    assert "course: ijp, mgt" in saved.asked[0]
+    assert len(saved.asked) == 1 and "2 slides have edits that are not a version yet" in saved.asked[0]
+    assert "course · 2 slides\nijp, mgt" in saved.asked[0]
     assert saved.edits == [False]
     assert any("course: 2 slide(s) compiled from their last version" in line for line in saved.logged)
     assert saved.setting("ASK_SAVED_VERSIONS_SETTING_KEY", True)
@@ -430,7 +430,7 @@ def test_making_last_versions_the_setting_stops_asking_but_still_logs(saved, mon
     build(saved, "instructor")
     saved.finished()
     assert not saved.setting("ASK_SAVED_VERSIONS_SETTING_KEY", True)
-    monkeypatch.setattr(QMessageBox, "exec", lambda box: pytest.fail("asked again"))
+    monkeypatch.setattr(SavedVersionsSheet, "exec", lambda sheet: pytest.fail("asked again"))
     saved.logged.clear()
     build(saved, "instructor")
     saved.finished()

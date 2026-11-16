@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QCheckBox, QFileDialog, QInputDialog, QMessageBox
+from PySide6.QtWidgets import QApplication, QFileDialog, QInputDialog, QMessageBox
 
 from ... import app_settings, compile_log, compile_progress, compiler, deck_snapshot, latex_export, latex_lint, open_path, partial_compile
 from ... import background_renders, batch_render, slide_language, slide_versioning
@@ -23,6 +23,7 @@ from ...compiler import PDF_MOVE_RETRY_TOTAL_SECONDS, CompileJob, order_jobs, re
 from ...deck_scan import Deck
 from ...partial_compile import PartialError, parse_page_spec
 from ...project import ProjectContext
+from ..dialogs import saved_versions as saved_versions_sheet
 from ..dialogs import snapshot as snapshot_sheets
 from . import deck_actions, render_check
 from .multi_compile import MultiCompileSheet
@@ -330,42 +331,25 @@ def _confirm_saved_versions(window, jobs: list[CompileJob]) -> bool:
     found = _saved_versions(ctx, jobs)
     if not found:
         return True
-    total = len({slug for slugs in found.values() for slug in slugs})
     if not app_settings.get(ctx, slide_versioning.ASK_SAVED_VERSIONS_SETTING_KEY, True):
         _log_saved_versions(window, found)
         return True
-    box = QMessageBox(window)
-    box.setIcon(QMessageBox.Icon.Warning)
-    box.setWindowTitle("Slides compiled from their last version")
-    box.setText(f"{total} slide(s) will be compiled from their last version; their newer edits "
-                "(the \"+\" after the version number) are not included:\n\n"
-                + "\n".join(f"  • {name}: {_slide_list(slugs)}" for name, slugs in found.items()))
-    box.setInformativeText("The slides' Previews show the edits. Tick the box to make your choice the setting for "
-                           "every deck compile (Settings → General → Changed slides in decks): with edits, decks "
-                           "always show the \"+\" edits; with last versions, they show only versioned slides, "
-                           "without this question.")
-    anyway = box.addButton("Compile last versions", QMessageBox.ButtonRole.AcceptRole)
-    current = box.addButton("Compile with edits (+)", QMessageBox.ButtonRole.AcceptRole)
-    update = box.addButton("Update versions first", QMessageBox.ButtonRole.AcceptRole)
-    box.addButton(QMessageBox.StandardButton.Cancel)
-    box.setDefaultButton(anyway)
-    remember = QCheckBox("Make this the setting for deck compiles")
-    box.setCheckBox(remember)
-    box.exec()
-    clicked = box.clickedButton()
-    if clicked is current:
-        if remember.isChecked():
+    sheet = saved_versions_sheet.SavedVersionsSheet(
+        window, {name: [slide_language.bare_id(slug) for slug in slugs] for name, slugs in found.items()})
+    sheet.exec()
+    if sheet.choice == saved_versions_sheet.EDITS:
+        if sheet.remember:
             app_settings.set(ctx, slide_versioning.RENDER_CHANGES_SETTING_KEY, True)
         for job in jobs:
             job.current_edits = True
         return True
-    if clicked is update:
+    if sheet.choice == saved_versions_sheet.UPDATE:
         slugs = list(dict.fromkeys(slug for slugs in found.values() for slug in slugs))
         if not window.centre.update_versions(slugs, "Update version of all changed slides", "before compiling"):
             return False
         found = _saved_versions(ctx, jobs)   # the slides whose version could not be updated
-    elif clicked is anyway:
-        if remember.isChecked():
+    elif sheet.choice == saved_versions_sheet.LAST:
+        if sheet.remember:
             app_settings.set(ctx, slide_versioning.ASK_SAVED_VERSIONS_SETTING_KEY, False)
     else:
         return False
