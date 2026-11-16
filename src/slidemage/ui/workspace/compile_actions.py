@@ -24,6 +24,7 @@ from ...deck_scan import Deck
 from ...partial_compile import PartialError, parse_page_spec
 from ...project import ProjectContext
 from ..dialogs import snapshot as snapshot_sheets
+from ..kit.widgets import BusySheet
 from . import deck_actions, render_check
 from .multi_compile import MultiCompileSheet
 
@@ -469,7 +470,8 @@ def on_toast_action(key: str) -> None:
 
 def export_latex(window, deck: Deck) -> None:
     """Writes `deck` as a folder that compiles on its own (latex_export.py) into a folder the user picks,
-    asking before it replaces an earlier export. Copying files is quick, so it runs here, not as a compile run."""
+    asking before it replaces an earlier export. The copy runs on a worker behind a BusySheet: it reads the
+    project's files, which must not change meanwhile."""
     chosen = QFileDialog.getExistingDirectory(window, f"Export {deck.name} as LaTeX to", str(window.project.root))
     if not chosen:
         return
@@ -479,16 +481,23 @@ def export_latex(window, deck: Deck) -> None:
     ) != QMessageBox.StandardButton.Yes:
         return
     window.centre.source.flush_all()
-    try:
-        result = latex_export.export_deck(window.project, deck, Path(chosen), window.log)
-    except OSError as exc:
-        window.log(f"*** Export LaTeX failed: {exc} ***")
-        QMessageBox.critical(window, "Export LaTeX", f"Couldn't export {deck.name}: {exc}")
-        return
-    text = f"Exported to {result.folder}"
-    if result.missing:
-        text += f" · {len(result.missing)} referenced file(s) not found, see the Log"
-    window.toast.show_message(text, [(OPEN_FOLDER + str(result.folder), "Open folder")], timeout_ms=12000)
+    lines: list[str] = []       # the widget log is written in done, on the GUI thread
+
+    def done(result, error) -> None:
+        for line in lines:
+            window.log(line)
+        if error is not None:
+            window.log(f"*** Export LaTeX failed: {error} ***")
+            QMessageBox.critical(window, "Export LaTeX", f"Couldn't export {deck.name}: {error}")
+            return
+        text = f"Exported to {result.folder}"
+        if result.missing:
+            text += f" · {len(result.missing)} referenced file(s) not found, see the Log"
+        window.toast.show_message(text, [(OPEN_FOLDER + str(result.folder), "Open folder")], timeout_ms=12000)
+
+    BusySheet.run(window, "Exporting LaTeX…",
+                  lambda report: latex_export.export_deck(window.project, deck, Path(chosen), lines.append, report),
+                  done, busy_reason="exporting LaTeX")
 
 
 # -- Export PPTX -------------------------------------------------------------------------

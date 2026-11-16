@@ -4255,3 +4255,8 @@ v0.16.60 (2026-11-16, direct request: docs/plans/busy-indicators.md, step 7): (1
 NEW: Checking for and installing SlideMage updates no longer freezes SlideMage.
 - Checking for updates shows a small sheet while it asks GitHub.
 - The download shows a progress bar with the size so far and a Cancel button; the installation that follows cannot be cancelled.
+
+v0.16.61 (2026-11-16, direct request: docs/plans/busy-indicators.md, step 8): Export LaTeX copies the files on a worker behind a BusySheet ("Exporting LaTeX…", busy.working("exporting LaTeX"), no Cancel). latex_export.export_deck takes on_progress and reports one step per file copied ("Copying (n of m)"), Qt-free. The folder picker, the question about replacing an export and the Source view flush stay before the sheet; the log lines the export writes (files not found, the summary) are collected on the worker and written to the window log in done, with the toast and the error box. Measured: export_deck takes 0.12 s on the manual deck (164 files) on a local disk, so the sheet matters for a synced folder, not here. Tests: test_latex_export.py (a step per file), test_latex_export_gui.py (the command tests wait for the toast).
+
+NEW: Exporting a deck as LaTeX no longer freezes SlideMage.
+- The export shows a small sheet with a progress bar ("Copying (12 of 164)") while it copies the files.
