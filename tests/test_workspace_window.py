@@ -9,6 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from slidemage.ui.workspace.menus import VIEW_LABELS
 from PySide6.QtCore import QPoint, QRect, QSize, Qt
 from PySide6.QtGui import QIcon, QKeySequence, QShortcut, QTextLayout
 from PySide6.QtSvg import QSvgRenderer
@@ -668,15 +669,40 @@ def test_the_menu_bar_has_its_nine_menus_and_runs_the_choice(window, monkeypatch
     assert window.stack.currentWidget() is window.images_page
 
 
+def _auto_dialog(monkeypatch, untick=()):
+    """Accepts the All views dialog at once, after unticking the views named in `untick`."""
+    from PySide6.QtWidgets import QCheckBox, QDialog
+    def run(dialog):
+        for box in dialog.findChildren(QCheckBox):
+            if box.text() in untick:
+                box.setChecked(False)
+        return True
+    monkeypatch.setattr(QDialog, "exec", run)
+    from slidemage.ui.workspace import deck_actions
+    monkeypatch.setattr(deck_actions, "generate_deck_transcript", lambda *a, **k: True)
+
+
+def test_all_views_dialog_remembers_unticked_views(window, monkeypatch):
+    jobs = compiled(window, monkeypatch)
+    window.state.set_deck(COURSE)
+    _auto_dialog(monkeypatch, untick=(VIEW_LABELS["during-course"],))
+    window.topbar.command.emit("compile:all")
+    _auto_dialog(monkeypatch)                                            # second time: ticks as left last time
+    window.topbar.command.emit("compile:all")
+    expected = [("course", "instructor"), ("course", "after-course"), ("course", "instructor")]
+    assert [[describe(j)[:2] for j in batch] for batch in jobs] == [expected, expected]
+
+
 def test_all_views_compiles_every_view_the_deck_has(window, monkeypatch):
+    _auto_dialog(monkeypatch)
     jobs = compiled(window, monkeypatch)
     window.state.set_deck(COURSE)
     window.topbar.command.emit("compile:all")
     window.state.set_deck(WORK)
     window.topbar.command.emit("compile:all")
     assert [[describe(j)[:2] for j in batch] for batch in jobs] == [
-        [("course", "instructor"), ("course", "during-course"), ("course", "after-course")],
-        [("#workdeck", None)],
+        [("course", "instructor"), ("course", "during-course"), ("course", "after-course"), ("course", "instructor")],
+        [("#workdeck", None), ("#workdeck", None)],
     ]
 
 

@@ -78,6 +78,65 @@ def compile_current(window, kind: str, pages: Optional[list[int]] = None, mode: 
         compile_jobs(window, jobs)
 
 
+_ALL_VIEWS_KEY = "all_views_selection"
+
+
+def compile_all_views(window) -> None:
+    """Compile -> "All views of this deck": a small dialog with every PDF and transcript of the deck ticked (or the
+    ones ticked last time for this deck, kept in the project's app settings); the ticked PDFs go to one compile
+    run, then the ticked transcripts are written."""
+    from PySide6.QtWidgets import QCheckBox, QDialog, QDialogButtonBox, QLabel, QVBoxLayout
+    from ...transcript import STUDENT_VERSIONS
+    from .menus import VIEW_LABELS
+    deck = window.state.deck
+    if deck is None or _busy(window):
+        return
+    if deck.supports_version:
+        entries = [(view, VIEW_LABELS.get(view, view)) for view in compiler.VIEWS]
+        entries.append(("presenter", "Presenter (speaker notes)"))
+        entries += [(f"transcript:{v}", f"Transcript, {VIEW_LABELS.get(v, v)}") for v in STUDENT_VERSIONS]
+    else:
+        entries = [("instructor", "PDF"), ("presenter", "Presenter (speaker notes)")]
+    remembered = (app_settings.get(window.project, _ALL_VIEWS_KEY, {}) or {}).get(deck.name)
+    dialog = QDialog(window)
+    dialog.setWindowTitle("Compile all views")
+    layout = QVBoxLayout(dialog)
+    layout.addWidget(QLabel(f"What to create for {deck.name}:"))
+    boxes = {}
+    for key, label in entries:
+        box = QCheckBox(label)
+        box.setChecked(key in remembered if isinstance(remembered, list) else True)
+        layout.addWidget(box)
+        boxes[key] = box
+    buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+    ok = buttons.button(QDialogButtonBox.StandardButton.Ok)
+    ok.setText("Compile")
+
+    def refresh() -> None:
+        ok.setEnabled(any(box.isChecked() for box in boxes.values()))
+    for box in boxes.values():
+        box.toggled.connect(refresh)
+    refresh()
+    buttons.accepted.connect(dialog.accept)
+    buttons.rejected.connect(dialog.reject)
+    layout.addWidget(buttons)
+    if not dialog.exec():
+        return
+    chosen = [key for key, box in boxes.items() if box.isChecked()]
+    stored = dict(app_settings.get(window.project, _ALL_VIEWS_KEY, {}) or {})
+    stored[deck.name] = chosen
+    app_settings.set(window.project, _ALL_VIEWS_KEY, stored)
+    jobs = [job for key in chosen if not key.startswith("transcript:") for job in compiler.build_jobs(deck, key)]
+    for job in jobs:
+        job.language = window.state.language
+    transcripts = [key.removeprefix("transcript:") for key in chosen if key.startswith("transcript:")]
+    if jobs:
+        compile_jobs(window, jobs)
+    if transcripts:
+        failures = sum(not deck_actions.generate_deck_transcript(window, deck, v, quiet=True) for v in transcripts)
+        window.log(f"==== Create Transcript: {len(transcripts) - failures} of {len(transcripts)} transcript(s) generated ====")
+
+
 def shown_view(window) -> Optional[str]:
     """The view a current-view compile builds: the one shown, the instructor one where the deck has no versions."""
     deck = window.state.deck
