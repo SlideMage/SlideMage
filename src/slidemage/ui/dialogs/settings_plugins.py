@@ -111,6 +111,11 @@ def download_citation(release: CitationRelease) -> Path:
     return folder
 
 
+def download_and_install(release: Release) -> Manifest:
+    """download_release, then install_downloaded: a worker thread's job. Raises InstallError."""
+    return install_downloaded(download_release(release), release)
+
+
 def install_downloaded(folder: Path, release: Release) -> Manifest:
     """Install what download_release fetched when its SHA-256 is the one the catalogue promised, then delete the
     folder. Raises InstallError."""
@@ -1379,14 +1384,9 @@ class PluginsTab(Page):
     def install_release(self, plugin: CataloguePlugin, release: Release, *, ask_auto: bool = False) -> None:
         """Download `release`, then install it when its SHA-256 is the one the catalogue promised. A new install
         (`ask_auto`, the Install button; not an update) asks whether later releases install automatically."""
-        def done(folder: Path | None, error: Exception | None) -> None:
+        def done(manifest: Manifest | None, error: Exception | None) -> None:
             if error is not None:
                 self._fail(error)
-                return self.refresh()
-            try:
-                manifest = install_downloaded(folder, release)
-            except installer.InstallError as exc:
-                self._say(str(exc), error=True)
             else:
                 self._say(f"{manifest.name} {manifest.version} is installed. It starts after a restart.")
                 if ask_auto:
@@ -1397,7 +1397,7 @@ class PluginsTab(Page):
                     plugin_updates_changed(self.app)
             self.refresh()
 
-        self._start(partial(download_release, release), done, f"Downloading {plugin.name}…")
+        self._start(partial(download_and_install, release), done, f"Downloading {plugin.name}…")
 
     # -- a file
 

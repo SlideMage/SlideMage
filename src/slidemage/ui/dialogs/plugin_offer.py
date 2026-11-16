@@ -34,8 +34,7 @@ from .. import background
 from ..kit import kit_qss as q
 from ..kit.tokens import SPACE
 from ..kit.widgets import Button, Card, ModalSheet, Page, Surface, caption, clear_layout, row
-from .settings_plugins import (PLUGINS_PAGE, download_release, install_downloaded, network_line, pick_plugin_file,
-                               prepare_file)
+from .settings_plugins import PLUGINS_PAGE, download_and_install, network_line, pick_plugin_file, prepare_file
 
 log = logging.getLogger(__name__)
 
@@ -215,18 +214,13 @@ class PluginOfferSheet(ModalSheet):
         self._current = self._queue.pop(0)
         plugin, release = self._current
         self._say(f"Downloading {plugin.name} ({self._total - len(self._queue)} of {self._total})…")
-        self._start(partial(download_release, release), self._downloaded)
+        self._start(partial(download_and_install, release), self._installed_one)
 
-    def _downloaded(self, folder, error: Exception | None) -> None:
-        plugin, release = self._current
+    def _installed_one(self, manifest, error: Exception | None) -> None:
+        plugin, _release = self._current
         if error is None:
-            try:
-                manifest = install_downloaded(folder, release)
-            except installer.InstallError as exc:
-                error = exc
-            else:
-                self._installed.append(f"{manifest.name} {manifest.version}")
-        if error is not None:
+            self._installed.append(f"{manifest.name} {manifest.version}")
+        else:
             if not isinstance(error, installer.InstallError):
                 log.error("plugin job failed", exc_info=error)
             self._failed.append(f"{plugin.name}: {error}")
