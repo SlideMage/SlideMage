@@ -245,8 +245,8 @@ def build_registry(mac: bool = sys.platform == "darwin") -> CommandRegistry:
     add("compile:current", "Compile PDF · current view", VIEW_AND_BUILD,
         lambda w: w.commands.run(f"compile:{w.state.view if _versioned(w) else VIEWS[0]}", w), icon="picture_as_pdf",
         shortcut="Ctrl+Shift+B", enabled=_has_deck)
-    add("compile:all", "All views of this deck", VIEW_AND_BUILD, lambda w: compile_actions.compile_current(w, "all"),
-        enabled=_has_deck)
+    add("compile:all", "All views of this deck", VIEW_AND_BUILD, compile_actions.compile_all_views,
+        meta="choose views", enabled=_has_deck)
     add("compile:mode", lambda w: "Current view in " + _other_mode_title(w), VIEW_AND_BUILD,
         compile_actions.compile_in_mode, icon="contrast", meta="own PDF, once",
         enabled=lambda w: bool(compile_actions.other_modes(w)), keywords="dark light colors colours mode handout")

@@ -1266,6 +1266,24 @@
 % dialog), placed just before \begin{document}.
 \newcommand{\decktags}[1]{}
 
+% \SMReview[note]{\slide{ID-slug}} - marks this slide as "under review" in
+% this deck only (2026-11-16, direct request): the slide is included
+% provisionally and is to be looked at again when going through the deck.
+% The wrapper goes around any call of the \slide{} family, on one line:
+%   \SMReview{\slide{abc-EN-Some-Slide}}
+%   \SMReview[check the numbers]{\conditionalslide[instructor]{xyz-EN-Answer-Key}}
+% For LaTeX it does nothing but run the call: the compiled PDF is the same
+% with and without it. SlideMage reads the wrapper out of the deck's source
+% text (deck_editor.py, REVIEW_OPEN_RE) and draws a watermark over the
+% slide's preview and its thumbnail in the slide list; the slide file, its
+% frozen versions and its renders are not touched. Set and cleared in the
+% slide list ("Mark for review in this deck").
+% \SMReviewText{text} in the preamble sets the watermark's text for the
+% deck (default REVIEW); read by SlideMage only (deck_scan.py,
+% REVIEW_TEXT_RE), a no-op here like \decktags.
+\NewDocumentCommand{\SMReview}{O{} m}{#2}
+\NewDocumentCommand{\SMReviewText}{m}{}
+
 % Deck language system (added 2026-08-24) -- fixed per deck, like
 % \FooterText or the institution \input{} choice, not a per-compile-run
 % toggle like \deckversion above: a German course is its own deck file

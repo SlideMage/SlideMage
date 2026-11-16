@@ -57,6 +57,15 @@ class SlideRow:
         """The physical call to edit; `call` is the file shown in this language."""
         return self.original_call or self.call
 
+    @property
+    def review(self) -> bool:
+        """Under review in this deck: its call is wrapped in \\SMReview{...}."""
+        return self.deck_call.review
+
+    @property
+    def review_note(self) -> str:
+        return self.deck_call.review_note
+
     def matches(self, slide_id: str) -> bool:
         return deck_language.SlideSlot(self.deck_call, self.call, self.folded_calls, self.related_ids).matches(slide_id)
 

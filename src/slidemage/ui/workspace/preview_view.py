@@ -55,6 +55,7 @@ from ...step_renders import BACKGROUND, FOREGROUND, StepRenderQueue
 from ..dialogs.transcript_preview import show_transcript_preview
 from ..kit.tokens import SPACE, RADIUS_SM
 from ..kit import kit_qss as q
+from ..kit.review_mark import paint_review_mark
 from ..kit.tokens import Tokens
 from ..kit.widgets import Button, Chip, PopoverMenu, SplitButton, Surface, clear_layout
 from . import render_check
@@ -324,6 +325,7 @@ class PageView(QWidget):
         self.message = ""
         self.dimmed = False     # the page of the slide shown before, kept faint while the new one loads
         self.badge = ""         # a short note drawn on the page's top-right corner
+        self.review = ("", "")  # the watermark's text and note for a slide its deck marks as under review
         self.setMinimumSize(320, 180)
         self.render_button = Button("Render now", "primary", self)
         self.render_button.hide()
@@ -332,6 +334,12 @@ class PageView(QWidget):
         self.pixmap, self.message, self._scaled, self.dimmed, self.badge = pixmap, "", None, False, badge
         self.render_button.hide()
         self.update()
+
+    def set_review(self, text: str, note: str = "") -> None:
+        """Draw the "under review in this deck" watermark over the slide's image ("" for none)."""
+        if self.review != (text, note):
+            self.review = (text, note)
+            self.update()
 
     def keep_dimmed(self) -> None:
         """Keep the page on show, faint: it is the slide shown before, while the new one's check is out."""
@@ -399,6 +407,8 @@ class PageView(QWidget):
                 painter.setOpacity(0.35)
             painter.drawPixmap(page, scaled, QRectF(scaled.rect()))
             painter.setOpacity(1.0)
+            if self.review[0]:
+                paint_review_mark(painter, page, *self.review)
             if self.badge:
                 metrics = painter.fontMetrics()
                 box = QRectF(0, 0, metrics.horizontalAdvance(self.badge) + 16, metrics.height() + 8)
@@ -595,7 +605,7 @@ class PreviewPane(Surface):
         self._name.setObjectName(q.PREVIEW_TITLE)
         footer.addWidget(self._id)
         footer.addWidget(self._name, 1)
-        self._render = SplitButton("Render")
+        self._render = SplitButton("Render this slide")
         self._render.clicked.connect(self.render_now)
         footer.addWidget(self._render)
         layout.addLayout(footer)
@@ -998,6 +1008,9 @@ class PreviewPane(Surface):
             return
         target, row = self._target, self._row
         view, language = self.state.view, self.language
+        deck = self.state.deck
+        marked = target is not None and row is not None and deck is not None and row.review
+        self._page.set_review(deck.review_text if marked else "", row.review_note if marked else "")
         job = self._pending[1] if self._pending else self._active
         busy_here = (target is not None and job is not None and job.generation == self._generation
                      and job.target_key == target.key and (job.view, job.language) == (view, language))
@@ -1037,7 +1050,7 @@ class PreviewPane(Surface):
         self._render.buttons()[0].setEnabled(target is not None and not hidden and self._batch_cancel is None)
         self._render.buttons()[0].setToolTip("This slide is hidden in the selected view." if hidden
                                            else "Render the saved file in the selected view")
-        self._render.set_text(f"Render · {short_view(view)} · {language}")
+        self._render.set_text(f"Render this slide · {short_view(view)} · {language}")
 
         status, tone, icon, can_render = "", "muted", "", False
         has_image = False

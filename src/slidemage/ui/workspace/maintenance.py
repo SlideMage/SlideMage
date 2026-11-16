@@ -44,7 +44,8 @@ from ..dialogs.housekeeping import ARCHIVE_PAGE, LIST_PAGE, HousekeepingJobs, Ho
 from ..dialogs.open_project import NewerProjectSheet
 from ..dialogs.plugin_offer import PluginOfferSheet
 from ..dialogs.project_compat import DONT_ASK, MARK_READ, UPDATE, CompatSheet, ProjectUpdatedSheet
-from ..dialogs.settings_plugins import ask_citation_update, ask_theme_update, download_release, install_downloaded
+from ..dialogs.settings_plugins import (ask_citation_update, ask_plugin_update, ask_theme_update, download_release,
+                                        install_downloaded)
 from . import compile_actions
 
 STARTUP_UPDATE_CHECK_DELAY_MS = 3000
@@ -755,55 +756,108 @@ def plugin_update_check(window) -> None:
 
 
 class PluginUpdates:
-    """What one plugin update check found: (id, installed version, release) for each update, the "name version"
-    texts installed in auto mode, and what failed."""
+    """What one plugin update check found: (id, installed version, release) for each update to offer (not skipped,
+    not installed automatically), the "name version" texts installed automatically, and what failed."""
 
     def __init__(self, names: dict[str, str], updates: list, installed: list[str], failed: list[str]) -> None:
         self.names, self.updates, self.installed, self.failed = names, updates, installed, failed
 
 
 def plugin_update_work(mode: str) -> PluginUpdates | Exception:
-    """Fetch the catalogue and compare (a worker thread's job); in auto mode also download and install each update,
-    hash checked. Failures are returned, not raised: they are only logged."""
+    """Fetch the catalogue and compare (a worker thread's job). A plugin that updates automatically (its own choice,
+    else the app's update mode) is downloaded and installed here, hash checked; the others are returned to be
+    offered, without the versions the user skipped. Failures are returned, not raised: they are only logged."""
     try:
         fresh = plugin_catalogue.fetch()
     except plugin_catalogue.CatalogueError as exc:
         return exc
     loaded = plugin_session.loaded()
     names = {p.id: p.manifest.name for p in plugin_updates.installed_plugins(loaded)}
-    found = plugin_updates.available_updates(loaded, fresh)
-    installed: list[str] = []
-    failed: list[str] = []
-    if mode == updater.UPDATE_MODE_AUTO:
-        for plugin_id, _have, release in found:
-            try:
-                manifest = install_downloaded(download_release(release), release)
-            except Exception as exc:        # one plugin failing must not stop the others
-                failed.append(f"{names[plugin_id]}: {exc}")
-            else:
-                installed.append(f"{manifest.name} {manifest.version}")
-    return PluginUpdates(names, found, installed, failed)
+    found = plugin_updates.offered_updates(plugin_updates.available_updates(loaded, fresh))
+    offered, installed, failed = [], [], []
+    for plugin_id, have, release in found:
+        if not plugin_updates.wants_auto_update(plugin_id, mode):
+            offered.append((plugin_id, have, release))
+            continue
+        try:
+            manifest = install_downloaded(download_release(release), release)
+        except Exception as exc:        # one plugin failing must not stop the others
+            failed.append(f"{names[plugin_id]}: {exc}")
+            offered.append((plugin_id, have, release))       # offered by hand instead
+        else:
+            installed.append(f"{manifest.name} {manifest.version}")
+    return PluginUpdates(names, offered, installed, failed)
 
 
 def on_plugin_updates_done(window, result) -> None:
-    """Quiet by design: a failed check is only logged and tried again at the next start."""
+    """A failed check is only logged and tried again at the next start. Updates installed automatically are said in a
+    notice; each other update is offered in a dialog that stays until answered (Install now / Not now / Skip this
+    version), and is kept in `window.plugin_updates_pending` for the assistant's note until it is installed or
+    skipped. The check runs at most once a day, so a "Not now" is asked again the next day."""
     if isinstance(result, Exception):
         window.log(f"Plugin update check failed: {result}")
         return
     plugin_updates.mark_checked()
     for line in result.failed:
         window.log(f"Plugin update failed: {line}")
-    mode = updater.get_update_mode()
-    if mode == updater.UPDATE_MODE_OFF or not result.updates:
+    if result.installed:
+        window.log("Plugin updates installed: " + ", ".join(result.installed))
+        window.toast.show_message("Plugin updates installed: " + ", ".join(result.installed)
+                                  + ". They take effect after a restart.", timeout_ms=10000)
+    if updater.get_update_mode() == updater.UPDATE_MODE_OFF:
         return
-    if mode == updater.UPDATE_MODE_AUTO:
-        if result.installed:
-            window.log("Plugin updates installed: " + ", ".join(result.installed))
-            window.toast.show_message("Plugin updates installed; they take effect after a restart", timeout_ms=7000)
-        return
-    text = ", ".join(f"{result.names.get(plugin_id, plugin_id)} {release.version}"
-                     for plugin_id, _have, release in result.updates)
-    window.toast.show_message(f"Plugin updates: {text}", [(OPEN_PLUGINS, "Open Extensions")], timeout_ms=12000)
+    pending = getattr(window, "plugin_updates_pending", None)
+    if pending is None:
+        pending = window.plugin_updates_pending = {}
+    for plugin_id, have, release in result.updates:
+        pending[plugin_id] = (result.names.get(plugin_id, plugin_id), have, release)
+    plugin_updates_changed(window)
+    for plugin_id, have, release in result.updates:
+        offer_plugin_update(window, plugin_id, result.names.get(plugin_id, plugin_id), have, release)
+
+
+def plugin_updates_changed(window) -> None:
+    """The pending plugin updates changed: the assistant's note follows."""
+    header = getattr(getattr(window, "assistant", None), "header", None)
+    if header is not None and hasattr(header, "refresh_update_note"):
+        header.refresh_update_note()
+
+
+def offer_plugin_update(window, plugin_id: str, name: str, have: str, release) -> None:
+    """Install now / Not now / Skip this version for one plugin update."""
+    choice = ask_plugin_update(window, name, have, release)
+    if choice == "install":
+        install_plugin_update(window, plugin_id, release)
+    elif choice == "skip":
+        try:
+            plugin_updates.skip_version(plugin_id, release.version)
+        except OSError as exc:
+            window.log(f"Couldn't save the skipped plugin version: {exc}")
+        window.plugin_updates_pending.pop(plugin_id, None)
+        plugin_updates_changed(window)
+        window.log(f"Plugin {name} {release.version} skipped; a later version is offered")
+    else:
+        window.log(f"Plugin {name} {release.version} is available; not installed for now")
+
+
+def install_plugin_update(window, plugin_id: str, release) -> None:
+    """Download and install `release` on a thread (the window stays usable); the outcome comes back through
+    `plugin_updates_done` as a PluginUpdates of what was installed or failed."""
+    name = getattr(window, "plugin_updates_pending", {}).get(plugin_id, (plugin_id,))[0]
+    window.toast.show_message(f"Downloading {name} {release.version}…", timeout_ms=4000)
+
+    def work() -> None:
+        try:
+            manifest = install_downloaded(download_release(release), release)
+        except Exception as exc:        # reported, never raised in the thread
+            outcome = PluginUpdates({plugin_id: name}, [], [], [f"{name}: {exc}"])
+        else:
+            outcome = PluginUpdates({plugin_id: name}, [], [f"{manifest.name} {manifest.version}"], [])
+        window.plugin_updates_done.emit(outcome)
+
+    window.plugin_updates_pending.pop(plugin_id, None)
+    plugin_updates_changed(window)
+    threading.Thread(target=work, name="plugin-update", daemon=True).start()
 
 
 def schedule_theme_update_check(window) -> None:
@@ -829,8 +883,8 @@ def theme_update_check(window) -> None:
 
 
 def on_theme_updates_done(window, result) -> None:
-    """A failed check is only logged (Settings → Extensions → Themes says why); a newer release is offered, never
-    installed silently, whatever the update mode."""
+    """A failed check is only logged (Settings → Extensions says why); a newer release is offered, or installed
+    when the theme's own "Update automatically" is on (2026-11-16), whatever the app's update mode."""
     if isinstance(result, Exception):
         window.log(f"Theme update check failed: {result}")
         return
@@ -842,7 +896,29 @@ def on_theme_updates_done(window, result) -> None:
             offer.fetched.discard()
         return
     for offer in offers:
-        offer_theme_update(window, offer)
+        if _auto(theme_sources, offer.key):
+            install_theme_update(window, offer)
+        else:
+            offer_theme_update(window, offer)
+
+
+def _auto(sources, key: str) -> bool:
+    source = sources.read_source(key)
+    return bool(source and source.auto_update)
+
+
+def install_theme_update(window, offer: theme_sources.Offer) -> None:
+    """The theme updates automatically: installed now, and said in a notice."""
+    try:
+        manifest = theme_sources.install(offer.fetched)
+    except themes.ThemeError as exc:
+        window.log(f"Theme update failed: {exc}")
+        window.toast.show_message(f"The theme {offer.name} could not be updated: {exc}", error=True, timeout_ms=10000)
+        return
+    window.log(f"Theme {manifest.name} updated to {manifest.version} automatically (from "
+               f"{offer.fetched.release.repository})")
+    window.toast.show_message(f"The theme {manifest.name} was updated to {manifest.version}.", timeout_ms=8000)
+    window.theme_installed(manifest.id)
 
 
 def offer_theme_update(window, offer: theme_sources.Offer) -> None:
@@ -894,8 +970,8 @@ def citation_update_check(window) -> None:
 
 
 def on_citation_updates_done(window, result) -> None:
-    """A failed check is only logged (Settings → Extensions says why); a newer release is offered, never installed
-    silently, whatever the update mode."""
+    """A failed check is only logged (Settings → Extensions says why); a newer release is offered, or installed
+    when the format's own "Update automatically" is on (2026-11-16), whatever the app's update mode."""
     if isinstance(result, Exception):
         window.log(f"Citation format update check failed: {result}")
         return
@@ -907,7 +983,26 @@ def on_citation_updates_done(window, result) -> None:
             offer.fetched.discard()
         return
     for offer in offers:
-        offer_citation_update(window, offer)
+        if _auto(citation_sources, offer.key):
+            install_citation_update(window, offer)
+        else:
+            offer_citation_update(window, offer)
+
+
+def install_citation_update(window, offer: theme_sources.Offer) -> None:
+    """The citation format updates automatically: installed now, and said in a notice."""
+    try:
+        manifest = citation_sources.install(offer.fetched)
+    except citations.CitationError as exc:
+        window.log(f"Citation format update failed: {exc}")
+        window.toast.show_message(f"The citation format {offer.name} could not be updated: {exc}", error=True,
+                                  timeout_ms=10000)
+        return
+    window.log(f"Citation format {manifest.name} updated to {manifest.version} automatically (from "
+               f"{offer.fetched.release.repository})")
+    window.toast.show_message(f"The citation format {manifest.name} was updated to {manifest.version}.",
+                              timeout_ms=8000)
+    window.citation_installed(manifest.id)
 
 
 def offer_citation_update(window, offer: theme_sources.Offer) -> None:

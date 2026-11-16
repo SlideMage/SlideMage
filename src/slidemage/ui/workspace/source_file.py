@@ -26,7 +26,7 @@ from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout
 
 from ...ai import routes
-from ... import app_settings, timing
+from ... import app_settings, latex_help, timing
 from ... import (
     latex_edit,
     latex_lint,
@@ -34,6 +34,7 @@ from ... import (
     slide_source,
     slide_versioning,
 )
+from ...deck_scan import is_generated_wrapper
 from ...slide_language import bare_id
 from .. import layout_settings
 from ..kit.tokens import SPACE
@@ -119,11 +120,14 @@ class SourceFile(Surface):
             self.id_slug = ""
         self.bare_id = bare_id(self.id_slug)
         self.is_bib = path == self.app.project.bibliography_path
+        self.is_deck = (not self.is_slide and path.suffix.lower() == ".tex"
+                        and path.parent in self.app.project.deck_folders and not is_generated_wrapper(path.name))
         self.lint: Optional[latex_lint.CheckResult] = None     # of the buffer; None for a .bib
 
         self.text, self.eol = slide_source.read_slide_source(path)
         tab_width = app_settings.get(app.project, latex_edit.TAB_WIDTH_SETTING_KEY, latex_edit.DEFAULT_TAB_WIDTH_CHARS)
-        self.editor = LatexPlainTextEdit(app.theme, tab_width)
+        hover_help = bool(app_settings.get(app.project, latex_help.HOVER_HELP_SETTING_KEY, True))
+        self.editor = LatexPlainTextEdit(app.theme, tab_width, hover_help)
         self.editor.set_text(self.text)
         self.editor.modified_changed.connect(self.modified_changed)
         self.editor.escape_pressed.connect(self._abort_ai_fix)
@@ -184,6 +188,11 @@ class SourceFile(Surface):
             shortcut = QShortcut(sequence, self)
             shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
             shortcut.activated.connect(action)
+
+    @property
+    def reindent_kind(self) -> Optional[str]:
+        """Which reindent rules fit this file (latex_edit.REINDENTERS), None for a file Reindent does not offer."""
+        return "slide" if self.is_slide else "deck" if self.is_deck else "bib" if self.is_bib else None
 
     @property
     def dirty(self) -> bool:

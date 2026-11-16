@@ -1625,5 +1625,8 @@ class CentreColumn(QFrame):
     def set_tab_width(self, chars: int) -> None:
         self.source.set_tab_width(chars)
 
+    def set_hover_help(self, on: bool) -> None:
+        self.source.set_hover_help(on)
+
     def refresh_model_preferences(self, models: list[str]) -> None:
         self.source.refresh_model_preferences(models)

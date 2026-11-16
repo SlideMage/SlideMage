@@ -199,3 +199,39 @@ def test_an_install_re_renders_only_when_the_open_deck_uses_the_key(monkeypatch)
     deck.preamble_text = "\\input{SlideMage_template_sample-theme}\n"
     maintenance.on_theme_installed(window, "sample-theme")
     assert calls == ["replan", "replan", "render"]
+
+
+# -- updating without asking (2026-11-16) -----------------------------------------------------------------------
+
+def test_a_theme_that_updates_automatically_is_installed_at_the_start_without_asking(window, github, tmp_path,
+                                                                                     monkeypatch):
+    github.release("1.0.0", ASSET.read_bytes())
+    theme_sources.install(theme_sources.newest_eligible(GH)[0])
+    theme_sources.set_auto_update("sample-theme", True)
+    github.release("1.1.0", build(tmp_path, "1.1.0"))
+    updater.set_update_mode("ask")
+    offered = choose(monkeypatch, "later")
+    maintenance.on_theme_updates_done(window, theme_sources.check_updates())
+    assert offered == [] and themes.installed()[0].manifest.version == "1.1.0" and window.installed == ["sample-theme"]
+    assert any("updated to 1.1.0" in text for text in window.toast.shown)
+    assert theme_sources.read_source("sample-theme").auto_update                   # the choice survives the update
+
+
+def test_the_row_switch_and_the_question_after_adding_from_github(tab, github, monkeypatch):
+    github.release("1.0.0", ASSET.read_bytes())
+    asked = []
+    monkeypatch.setattr(settings_plugins, "ask_auto_update", lambda parent, what: asked.append(what) or True)
+    answer(monkeypatch, True)                                                    # the install's own confirmation
+    tab.add_theme_from_github(GH)
+    idle(tab)
+    assert asked == ["the theme Sample Theme"] and theme_sources.read_source("sample-theme").auto_update
+    row = tab.theme_rows["sample-theme"]
+    assert row.auto_check is not None and row.auto_check.isChecked()
+    row.auto_check.setChecked(False)
+    assert not theme_sources.read_source("sample-theme").auto_update
+
+
+def test_a_theme_from_a_file_has_no_switch(tab):
+    themes.install_file(ASSET)
+    tab.refresh()
+    assert tab.theme_rows["sample-theme"].auto_check is None

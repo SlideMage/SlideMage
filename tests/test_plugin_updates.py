@@ -95,11 +95,17 @@ class Toast:
 
 @pytest.fixture
 def window(monkeypatch):
-    fake = SimpleNamespace(logged=[], toast=Toast(), opened=0, threads=[])
+    fake = SimpleNamespace(logged=[], toast=Toast(), opened=0, threads=[], asked=[], answer="later")
     fake.log = fake.logged.append
     fake.open_plugins = lambda: setattr(fake, "opened", fake.opened + 1)
     fake.plugin_updates_done = SimpleNamespace(emit=lambda result: fake.threads.append(result))
     session.set_loaded([plugin("hello", "0.1.0")])
+
+    def ask(parent, name, have, release):
+        fake.asked.append((name, have, release.version))
+        return fake.answer
+
+    monkeypatch.setattr(maintenance, "ask_plugin_update", ask)
     return fake
 
 
@@ -126,37 +132,76 @@ def deliver(window, mode):
     return result
 
 
-def test_ask_mode_shows_a_notice_with_an_action(window, work_calls):
+def wait_for_thread(window, count=1):
+    end = time.monotonic() + 5
+    while len(window.threads) < count and time.monotonic() < end:
+        time.sleep(0.01)
+    return len(window.threads) >= count
+
+
+def test_ask_mode_offers_each_update_in_a_dialog_and_keeps_it_for_the_assistant(window, work_calls):
     deliver(window, "ask")
-    text, actions = window.toast.shown[0]
-    assert text == "Plugin updates: Hello 0.2.0" and actions[0][0] == maintenance.OPEN_PLUGINS
-    assert work_calls["installed"] == []
-    maintenance.on_plugin_toast_action(window, maintenance.OPEN_PLUGINS)
-    maintenance.on_plugin_toast_action(window, "other")
-    assert window.opened == 1
+    assert window.asked == [("Hello", "0.1.0", "0.2.0")] and work_calls["installed"] == []
+    assert window.toast.shown == []                                       # no notice that disappears
+    assert window.plugin_updates_pending["hello"][2].version == "0.2.0"   # "Not now": the assistant's note stays
+    assert any("not installed for now" in line for line in window.logged)
 
 
-def test_ask_notice_lists_every_plugin(window, work_calls, monkeypatch):
+def test_every_plugin_gets_its_own_offer(window, work_calls, monkeypatch):
     session.set_loaded([plugin("hello", "0.1.0"), plugin("other", "0.3.0")])
     monkeypatch.setattr(catalogue, "fetch", lambda timeout=10: parsed(
         entry("hello", "Hello", version="0.2.0"), entry("other", "Other", version="0.4.0")))
     deliver(window, "ask")
-    assert window.toast.shown[0][0] == "Plugin updates: Hello 0.2.0, Other 0.4.0"
+    assert [a[0] for a in window.asked] == ["Hello", "Other"]
+
+
+def test_install_now_installs_on_a_thread_and_says_so(window, work_calls):
+    window.answer = "install"
+    deliver(window, "ask")
+    assert wait_for_thread(window)
+    assert work_calls["installed"] == ["0.2.0"] and "hello" not in window.plugin_updates_pending
+    maintenance.on_plugin_updates_done(window, window.threads[0])
+    assert window.toast.shown[-1][0] == "Plugin updates installed: Hello 0.2.0. They take effect after a restart."
+
+
+def test_skip_this_version_is_not_offered_again_but_a_later_one_is(window, work_calls, monkeypatch):
+    window.answer = "skip"
+    deliver(window, "ask")
+    assert updates.skipped_version("hello") == "0.2.0" and "hello" not in window.plugin_updates_pending
+    window.asked.clear()
+    deliver(window, "ask")
+    assert window.asked == []
+    monkeypatch.setattr(catalogue, "fetch", lambda timeout=10: parsed(entry("hello", "Hello", version="0.3.0")))
+    deliver(window, "ask")
+    assert window.asked == [("Hello", "0.1.0", "0.3.0")]
 
 
 def test_auto_mode_installs_and_says_so(window, work_calls):
     deliver(window, "auto")
-    assert work_calls["installed"] == ["0.2.0"]
-    assert window.toast.shown == [("Plugin updates installed; they take effect after a restart", [])]
+    assert work_calls["installed"] == ["0.2.0"] and window.asked == []
+    assert window.toast.shown == [("Plugin updates installed: Hello 0.2.0. They take effect after a restart.", [])]
 
 
-def test_auto_mode_reports_a_failed_install_in_the_log_only(window, work_calls, monkeypatch):
+def test_a_plugins_own_choice_wins_over_the_apps_update_mode(window, work_calls):
+    updates.set_auto_update("hello", True)
+    deliver(window, "ask")                                                # ask mode, but the plugin updates itself
+    assert work_calls["installed"] == ["0.2.0"] and window.asked == []
+    work_calls["installed"].clear()
+    updates.set_auto_update("hello", False)
+    deliver(window, "auto")                                               # auto mode, but the plugin asks
+    assert work_calls["installed"] == [] and window.asked == [("Hello", "0.1.0", "0.2.0")]
+    updates.forget_choices("hello")
+    assert updates.auto_choice("hello") is None
+
+
+def test_auto_mode_offers_a_failed_install_by_hand(window, work_calls, monkeypatch):
     def boom(folder, release):
         raise installer.InstallError("checksum")
 
     monkeypatch.setattr(maintenance, "install_downloaded", boom)
     deliver(window, "auto")
-    assert window.toast.shown == [] and any("checksum" in line for line in window.logged)
+    assert any("checksum" in line for line in window.logged)
+    assert window.asked == [("Hello", "0.1.0", "0.2.0")]
 
 
 def test_off_mode_checks_nothing(window, work_calls):
@@ -164,7 +209,7 @@ def test_off_mode_checks_nothing(window, work_calls):
     maintenance.plugin_update_check(window)
     assert work_calls["fetch"] == 0 and window.threads == []
     deliver(window, "off")                  # switched off while the check ran
-    assert window.toast.shown == []
+    assert window.toast.shown == [] and window.asked == []
 
 
 def test_schedule_follows_the_mode(monkeypatch):

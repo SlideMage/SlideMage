@@ -48,7 +48,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, 
                                QScrollArea, QSizePolicy, QVBoxLayout, QWidget)
 
 from ... import (citation_sources, citations, open_path, packages, slide_templates, theme_export, theme_source_folder,
-                 theme_sources, themes)
+                 theme_sources, themes, updater)
 from ...plugins import catalogue, installer, loader, session, updates
 from ...plugins.catalogue import (Catalogue, CatalogueCitation, CataloguePlugin, CatalogueError, CatalogueTooNew,
                                   CitationRelease, Release)
@@ -261,6 +261,8 @@ def _confirm_citation(parent: QWidget, manifest: citations.CitationManifest, rep
 
 
 NOTES_LIMIT = 1500       # characters of a release's notes in the update offer
+AUTO_UPDATE_TIP = ("Install new versions when SlideMage finds them at a start, without asking. Off: SlideMage "
+                   "asks each time (Install now, Not now, Skip this version).")
 
 
 def _ask_package_update(parent: QWidget, offer: theme_sources.Offer, kind: packages.PackageKind,
@@ -283,6 +285,36 @@ def _ask_package_update(parent: QWidget, offer: theme_sources.Offer, kind: packa
     box.setEscapeButton(later)
     box.exec()
     return {install: "install", skip: "skip"}.get(box.clickedButton(), "later")
+
+
+def ask_plugin_update(parent: QWidget, name: str, installed_version: str, release: Release) -> str:
+    """"install", "later" or "skip": the offer of a newer catalogue release of the plugin `name` (2026-11-16: the
+    short notice of before was easy to miss, and an outdated Claude plugin kept telling Claude that \\vbox to 0pt
+    blocks were protected long after SlideMage had stopped protecting them). It stays until it is answered."""
+    box = QMessageBox(parent)
+    box.setIcon(QMessageBox.Icon.Question)
+    box.setWindowTitle("Plugin update available")
+    box.setText(f"{name} {release.version} is available (you have {installed_version}).")
+    notes = f"What changed: {release.notes_url}\n\n" if release.notes_url else ""
+    box.setInformativeText(f"{notes}The update is checked against the plugin list's SHA-256 and takes effect after a "
+                           "restart. Settings → Extensions can install updates of this plugin automatically.")
+    install = box.addButton("Install now", QMessageBox.ButtonRole.AcceptRole)
+    later = box.addButton("Not now", QMessageBox.ButtonRole.RejectRole)
+    skip = box.addButton("Skip this version", QMessageBox.ButtonRole.ActionRole)
+    box.setDefaultButton(install)
+    box.setEscapeButton(later)
+    box.exec()
+    return {install: "install", skip: "skip"}.get(box.clickedButton(), "later")
+
+
+def ask_auto_update(parent: QWidget, what: str) -> bool:
+    """After an install: should later releases of `what` ("the plugin Claude") be installed without asking?"""
+    return QMessageBox.question(
+        parent, "Update automatically?",
+        f"Install new versions of {what} automatically when SlideMage finds them at a start?\n\n"
+        "With No, SlideMage asks each time. You can change this on its row in Settings → Extensions.",
+        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes
 
 
 def ask_theme_update(parent: QWidget, offer: theme_sources.Offer) -> str:
@@ -378,6 +410,7 @@ class InstalledRow(_ListRow):
         self.remove_button: Button | None = None
         self.update_button: Button | None = None
         self.details_button: Button | None = None
+        self.auto_check: QCheckBox | None = None
         layout = self.layout()
 
         title = QLabel(f"{manifest.name}  {manifest.version}" if manifest else self.plugin_id)
@@ -407,6 +440,13 @@ class InstalledRow(_ListRow):
             self.update_button = Button(f"Update to {release.version}", compact=True)
             self.update_button.clicked.connect(partial(tab.install_release, catalogue_plugin, release))
             buttons.append(self.update_button)
+        if source == "installed" and manifest is not None:
+            # A plugin installed through SlideMage is updated from the plugin list, whatever it came from.
+            self.auto_check = QCheckBox("Update automatically")
+            self.auto_check.setToolTip(AUTO_UPDATE_TIP)
+            self.auto_check.setChecked(updates.wants_auto_update(self.plugin_id, updater.get_update_mode()))
+            self.auto_check.toggled.connect(partial(tab.set_plugin_auto_update, self.plugin_id))
+            buttons.append(self.auto_check)
         if source == "installed":
             self.remove_button = Button("Remove", compact=True)
             self.remove_button.clicked.connect(partial(tab.remove_plugin, self.plugin_id,
@@ -456,7 +496,7 @@ class AvailableRow(_ListRow):
             self.install_button.setEnabled(False)
             layout.addWidget(caption("No release of this plugin works with this SlideMage."))
         else:
-            self.install_button.clicked.connect(partial(tab.install_release, plugin, release))
+            self.install_button.clicked.connect(partial(tab.install_release, plugin, release, ask_auto=True))
 
 
 class ThemeRow(_ListRow):
@@ -474,10 +514,16 @@ class ThemeRow(_ListRow):
         self.check_error_label: QLabel | None = None
         self.update_button: Button | None = None
         buttons: list[QWidget] = []
+        self.auto_check: QCheckBox | None = None
         if self.source is not None and manifest is not None and (not theme.problem or theme.needs_update):
             self.update_button = Button("Check for update", compact=True)
             self.update_button.clicked.connect(partial(tab.check_theme_update, theme.key))
             buttons.append(self.update_button)
+            self.auto_check = QCheckBox("Update automatically")
+            self.auto_check.setToolTip(AUTO_UPDATE_TIP)
+            self.auto_check.setChecked(self.source.auto_update)
+            self.auto_check.toggled.connect(partial(tab.set_theme_auto_update, theme.key))
+            buttons.append(self.auto_check)
         self.copy_button: Button | None = None
         if not theme.problem:
             self.copy_button = Button("Copy to my project and edit", compact=True)
@@ -589,10 +635,16 @@ class CitationRow(_ListRow):
         self.check_error_label: QLabel | None = None
         self.update_button: Button | None = None
         buttons: list[QWidget] = []
+        self.auto_check: QCheckBox | None = None
         if self.source is not None and manifest is not None and not item.problem:
             self.update_button = Button("Check for update", compact=True)
             self.update_button.clicked.connect(partial(tab.check_citation_update, item.key))
             buttons.append(self.update_button)
+            self.auto_check = QCheckBox("Update automatically")
+            self.auto_check.setToolTip(AUTO_UPDATE_TIP)
+            self.auto_check.setChecked(self.source.auto_update)
+            self.auto_check.toggled.connect(partial(tab.set_citation_auto_update, item.key))
+            buttons.append(self.auto_check)
         self.remove_button = Button("Remove", compact=True)
         self.remove_button.clicked.connect(partial(tab.remove_citation, item.key,
                                                    manifest.name if manifest else item.key))
@@ -1043,7 +1095,9 @@ class PluginsTab(Page):
             if not _confirm_github_theme(self, fetched):
                 fetched.discard()
                 return self._say("")
-            self._install_fetched(fetched)
+            if self._install_fetched(fetched):
+                self.set_theme_auto_update(fetched.manifest.id, ask_auto_update(self, f"the theme {fetched.manifest.name}"))
+                self.refresh_themes()
 
         self._start(partial(theme_sources.newest_eligible, repo), done, f"Reading the releases of {repo}…")
 
@@ -1073,18 +1127,19 @@ class PluginsTab(Page):
         self._start(partial(_check_package_update, theme_sources, key, source.repository, theme.manifest.version),
                     done, f"Checking {source.repository} for a newer release…")
 
-    def _install_fetched(self, fetched: theme_sources.Fetched) -> None:
+    def _install_fetched(self, fetched: theme_sources.Fetched) -> bool:
         try:
             manifest = theme_sources.install(fetched)
         except themes.ThemeError as exc:
             self._say(str(exc), error=True)
-            return
+            return False
         self._say(f"The theme {manifest.name} {manifest.version} is installed from {fetched.release.repository}. "
                   f"Choose the template {manifest.id!r} in a deck's settings to use it.")
         self.refresh_themes()
         installed = getattr(self.app, "theme_installed", None)
         if installed is not None:
             installed(manifest.id)
+        return True
 
     def _theme_failed(self, error: Exception) -> None:
         if not isinstance(error, (theme_sources.SourceError, themes.ThemeError)):
@@ -1187,7 +1242,10 @@ class PluginsTab(Page):
             if not _confirm_citation(self, fetched.manifest, fetched.release.repository):
                 fetched.discard()
                 return self._say("")
-            self._install_citation_fetched(fetched)
+            if self._install_citation_fetched(fetched):
+                self.set_citation_auto_update(fetched.manifest.id,
+                                              ask_auto_update(self, f"the citation format {fetched.manifest.name}"))
+                self.refresh_citations()
 
         self._start(partial(citation_sources.newest_eligible, repo), done, f"Reading the releases of {repo}…")
 
@@ -1217,17 +1275,18 @@ class PluginsTab(Page):
         self._start(partial(_check_package_update, citation_sources, key, source.repository, item.manifest.version),
                     done, f"Checking {source.repository} for a newer release…")
 
-    def _install_citation_fetched(self, fetched: theme_sources.Fetched) -> None:
+    def _install_citation_fetched(self, fetched: theme_sources.Fetched) -> bool:
         try:
             manifest = citation_sources.install(fetched)
         except citations.CitationError as exc:
             self._say(str(exc), error=True)
-            return
+            return False
         self._say(_citation_installed(manifest, fetched.release.repository))
         self.refresh_citations()
         installed = getattr(self.app, "citation_installed", None)
         if installed is not None:
             installed(manifest.id)
+        return True
 
     def _citation_failed(self, error: Exception) -> None:
         if not isinstance(error, (citation_sources.SourceError, citations.CitationError)):
@@ -1304,6 +1363,7 @@ class PluginsTab(Page):
         except installer.InstallError as exc:
             self._say(str(exc), error=True)
             return
+        updates.forget_choices(plugin_id)
         self._say(f"{name} is removed. It stops with the next start.")
         self.refresh()
 
@@ -1332,8 +1392,9 @@ class PluginsTab(Page):
         page = self.catalogue.plugins_page if self.catalogue else PLUGINS_PAGE
         QDesktopServices.openUrl(QUrl(page))
 
-    def install_release(self, plugin: CataloguePlugin, release: Release) -> None:
-        """Download `release`, then install it when its SHA-256 is the one the catalogue promised."""
+    def install_release(self, plugin: CataloguePlugin, release: Release, *, ask_auto: bool = False) -> None:
+        """Download `release`, then install it when its SHA-256 is the one the catalogue promised. A new install
+        (`ask_auto`, the Install button; not an update) asks whether later releases install automatically."""
         def done(folder: Path | None, error: Exception | None) -> None:
             if error is not None:
                 self._fail(error)
@@ -1344,6 +1405,12 @@ class PluginsTab(Page):
                 self._say(str(exc), error=True)
             else:
                 self._say(f"{manifest.name} {manifest.version} is installed. It starts after a restart.")
+                if ask_auto:
+                    self.set_plugin_auto_update(manifest.id, ask_auto_update(self, f"the plugin {manifest.name}"))
+                pending = getattr(self.app, "plugin_updates_pending", None)
+                if pending is not None and pending.pop(manifest.id, None) is not None:
+                    from ..workspace.maintenance import plugin_updates_changed
+                    plugin_updates_changed(self.app)
             self.refresh()
 
         self._start(partial(download_release, release), done, f"Downloading {plugin.name}…")
@@ -1356,11 +1423,41 @@ class PluginsTab(Page):
             self.install_from_file(path)
 
     def install_from_file(self, path: Path) -> bool:
-        """Install `path` after the user has seen what it is. Whether it was installed."""
+        """Install `path` after the user has seen what it is. Whether it was installed. A plugin installed from a file
+        is updated from the plugin list like any other, so it is asked about automatic updates too; a theme or
+        citation format from a file is never updated, so nothing is asked."""
+        manifest: Manifest | None = None
+        if path.suffix.lower() not in (themes.PACKAGE_SUFFIX, citations.PACKAGE_SUFFIX):
+            try:
+                manifest = installer.peek(path)
+            except (installer.InstallError, OSError):
+                manifest = None         # install_file says why
         installed = install_file(self, path, lambda text, error: self._say(text, error))
+        if installed and manifest is not None:
+            self.set_plugin_auto_update(manifest.id, ask_auto_update(self, f"the plugin {manifest.name}"))
         if installed:
             self.refresh()
         return installed
+
+    # -- updates without asking
+
+    def set_plugin_auto_update(self, plugin_id: str, value: bool) -> None:
+        try:
+            updates.set_auto_update(plugin_id, value)
+        except OSError as exc:
+            self._say(f"Couldn't save the choice: {exc}", error=True)
+
+    def set_theme_auto_update(self, key: str, value: bool) -> None:
+        try:
+            theme_sources.set_auto_update(key, value)
+        except OSError as exc:
+            self._say(f"Couldn't save the choice: {exc}", error=True)
+
+    def set_citation_auto_update(self, key: str, value: bool) -> None:
+        try:
+            citation_sources.set_auto_update(key, value)
+        except OSError as exc:
+            self._say(f"Couldn't save the choice: {exc}", error=True)
 
     # -- restart
 

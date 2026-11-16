@@ -71,6 +71,13 @@ SLIDE_CALL_RE = re.compile(
 )
 
 _LEADING_BLANK_RE = re.compile(r"^[ \t]*$")
+# \SMReview[note]{<call>}: the deck-side mark "this slide is under review in this deck" (SlideMage_base.tex). The
+# wrapper and its call share one line, so every line edit below moves and removes them together, and an edit of the
+# call's own token leaves the wrapper in place. For LaTeX it is a no-op; the app draws the watermark.
+REVIEW_MACRO = "SMReview"
+REVIEW_OPEN_RE = re.compile(r"\\SMReview[ \t]*(?:\[(?P<note>[^\]\r\n]*)\])?[ \t]*\{[ \t]*$")
+_REVIEW_CLOSE_RE = re.compile(r"[ \t]*\}")
+_REVIEW_NOTE_BAD_RE = re.compile(r"[\\{}\[\]%#&$^_~\r\n]")
 _TRAILING_OK_RE = re.compile(r"^[ \t]*(%.*)?$")
 
 
@@ -90,6 +97,10 @@ class SlideCall:
     editable: bool
     readonly_reason: Optional[str]
     chapter: Optional[Chapter]
+    review: bool = False          # wrapped in \SMReview{...}: under review in this deck
+    review_note: str = ""         # the wrapper's optional [note]
+    outer_start: Optional[int] = None   # the wrapper's own span, when there is one
+    outer_end: Optional[int] = None
     source: Optional[Path] = None   # the file physically holding the call, for a call a block put in the deck
     block: Optional[str] = None     # the topic block's name, when that file is one
     index: Optional[int] = None     # the call's number within its block's occurrence
@@ -137,7 +148,19 @@ def line_span(text: str, call_start: int, call_end: int) -> tuple[int, int]:
     return line_start, line_end
 
 
+def review_wrapper(text: str, line_start: int, call_start: int, call_end: int, line_end: int) -> Optional[tuple[int, int, str]]:
+    """The \\SMReview[note]{...} around the call at call_start:call_end, as (start, end, note), or None."""
+    opened = REVIEW_OPEN_RE.search(text[line_start:call_start])
+    closed = _REVIEW_CLOSE_RE.match(text, call_end, line_end)
+    if opened is None or closed is None or is_commented(text, line_start + opened.start()):
+        return None
+    return line_start + opened.start(), closed.end(), (opened.group("note") or "").strip()
+
+
 def _editability(text: str, line_start: int, call_start: int, call_end: int, line_end: int) -> tuple[bool, Optional[str]]:
+    wrapper = review_wrapper(text, line_start, call_start, call_end, line_end)
+    if wrapper is not None:
+        call_start, call_end = wrapper[0], wrapper[1]
     leading = text[line_start:call_start]
     trailing_raw = text[call_end:line_end]
     # Strip the line's own terminator (bare \n, or \r\n for this project's
@@ -190,6 +213,8 @@ def parse_slide_calls(deck: Deck) -> list[SlideCall]:
         slide_id, _, slug = idslug.partition("-")
         line_start, line_end = line_span(deck.text, m.start(), m.end())
         editable, readonly_reason = _editability(deck.text, line_start, m.start(), m.end(), line_end)
+        wrapper = review_wrapper(deck.text, line_start, m.start(), m.end(), line_end)
+        outer_start = wrapper[0] if wrapper else m.start()
 
         calls.append(SlideCall(
             macro=macro,
@@ -202,10 +227,14 @@ def parse_slide_calls(deck: Deck) -> list[SlideCall]:
             call_end=m.end(),
             line_start=line_start,
             line_end=line_end,
-            indent=deck.text[line_start:m.start()] if editable else "",
+            indent=deck.text[line_start:outer_start] if editable else "",
             editable=editable,
             readonly_reason=readonly_reason,
             chapter=_find_chapter(deck.chapters, m.start()),
+            review=wrapper is not None,
+            review_note=wrapper[2] if wrapper else "",
+            outer_start=wrapper[0] if wrapper else None,
+            outer_end=wrapper[1] if wrapper else None,
         ))
     return calls
 
@@ -515,6 +544,38 @@ def set_calls_visibility(
     def mutate(text: str) -> str:
         for call, token in sorted(edits, key=lambda e: e[0].call_start, reverse=True):
             text = text[: call.call_start] + token + text[call.call_end :]
+        return text
+
+    return apply(deck_path, expected_text, mutate)
+
+
+def review_open(note: str = "") -> str:
+    """The wrapper's opening text, up to and including its brace."""
+    note = " ".join((note or "").split())
+    if _REVIEW_NOTE_BAD_RE.search(note):
+        raise ValueError("A review note is plain text: it can't contain \\ { } [ ] % # & $ ^ _ or ~.")
+    return f"\\{REVIEW_MACRO}[{note}]{{" if note else f"\\{REVIEW_MACRO}{{"
+
+
+def set_calls_review(deck_path: Path, expected_text: str, calls: list[SlideCall], review: bool,
+                     note: Optional[str] = None) -> str:
+    """Mark `calls` as under review in this deck (\\SMReview[note]{call}) or clear the mark, as one edit. `note`
+    None keeps the note of a call that is marked already; the slide files are not touched."""
+    edits: list[tuple[int, int, str]] = []
+    for call in calls:
+        if not call.editable:
+            raise ValueError(f"can't change {call.id_slug} -- {call.readonly_reason}")
+        token = expected_text[call.call_start:call.call_end]
+        if review:
+            opening = review_open(call.review_note if note is None else note)
+            start, end = (call.outer_start, call.outer_end) if call.review else (call.call_start, call.call_end)
+            edits.append((start, end, opening + token + "}"))
+        elif call.review:
+            edits.append((call.outer_start, call.outer_end, token))
+
+    def mutate(text: str) -> str:
+        for start, end, new in sorted(edits, reverse=True):
+            text = text[:start] + new + text[end:]
         return text
 
     return apply(deck_path, expected_text, mutate)
