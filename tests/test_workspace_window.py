@@ -151,6 +151,20 @@ def test_picking_a_deck_updates_the_state_the_label_and_the_page(window):
     assert window.stack.currentWidget() is window.centre
 
 
+def test_a_deck_picked_in_the_menu_asks_the_slide_list_to_focus_its_first_slide():
+    from types import SimpleNamespace
+    from slidemage.ui.workspace.topbar import TopBar
+
+    asked = []
+    switches = iter([True, False])
+    stub = SimpleNamespace(_decks=[WORK, MANUAL], _state=SimpleNamespace(set_deck=lambda deck: next(switches)),
+                           _window=SimpleNamespace(slide_list=SimpleNamespace(focus_first_slide=lambda: asked.append(1))))
+    TopBar._on_deck_picked(stub, deck_key(MANUAL))
+    assert asked == [1]
+    TopBar._on_deck_picked(stub, deck_key(MANUAL))                  # the deck already open: no switch, no focus
+    assert asked == [1]
+
+
 def test_the_slide_list_follows_the_deck_and_the_stack_starts_on_the_hint(qapp, monkeypatch):
     decks = [WORK, COURSE]
     monkeypatch.setattr(window_module, "scan_decks", lambda _ctx: decks)

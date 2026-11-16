@@ -1251,3 +1251,13 @@ def test_a_slide_is_marked_for_review_in_its_deck_from_the_menu(make_list, monke
     focus(slide_list, "ccc")
     slide_list._on_menu_chosen("review:note")
     assert "plain text" in make_list.errors[-1] and "SMReview" not in read(path)
+
+
+def test_a_deck_opened_from_the_menu_starts_on_its_first_slide_unless_it_has_a_focus(make_list):
+    slide_list, window, _path = make_list("\\slide{aaa-EN-One}\n\\slide{bbb-EN-Two}\n")
+    assert window.state.focused_slide is None                       # a rebuild alone focuses nothing
+    slide_list.focus_first_slide()
+    assert window.state.focused_slide == "aaa"
+    window.state.set_focused_slide("bbb")
+    slide_list.focus_first_slide()                                  # a deck returned to keeps its own focus
+    assert window.state.focused_slide == "bbb"

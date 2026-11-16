@@ -4210,3 +4210,9 @@ NEW: Extensions can update themselves, and updates are harder to miss.
 - A plugin update you have not chosen to install automatically is offered in a dialog that stays until you answer: Install now, Not now (asked again the next day) or Skip this version.
 - While the plugin behind the AI assistant has an update waiting, the assistant says so under its switch, with a button to Settings → Extensions.
 - Fixed: the manual's slide on the AI assistant said \vbox to 0pt blocks were off limits; they can be edited since 2026-10-30.
+
+v0.16.53 (2026-11-16, direct request: commit the fixes left uncommitted in the main checkout): (1) A deck picked in the top bar's deck menu focuses its first slide (SlideList.focus_first_slide, from TopBar._on_deck_picked), unless the deck comes back with a focus of its own. Not in slide_list.rebuild, where the fix first was: a rebuild also follows a tab that shows another deck behind the scenes, and focusing a slide there moved the centre off that tab and wrote a pending note to the wrong slide (eight tests caught it). The deck the window starts with is not focused either, for the same reason. (2) theme_form._Cell.bind_label: hovering a row's label in the palette, role and code-color sections lights up the sample slides as hovering the cell does; the cells are left-aligned in their column. (3) The handover picker page (docs/handover_list.template.html, not part of the app) has an Archive button per task, sent with Update and Start tasks; the handover skill says what an archive mark asks for.
+
+NEW: Small fixes in the slide list and the theme form.
+- A deck you pick in the deck menu now starts with its first slide selected.
+- In the theme form, hovering a color's name highlights where it is used in the sample slides, as hovering its field does.
