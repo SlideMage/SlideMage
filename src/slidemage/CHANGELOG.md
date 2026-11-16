@@ -4260,3 +4260,8 @@ v0.16.61 (2026-11-16, direct request: docs/plans/busy-indicators.md, step 8): Ex
 
 NEW: Exporting a deck as LaTeX no longer freezes SlideMage.
 - The export shows a small sheet with a progress bar ("Copying (12 of 164)") while it copies the files.
+
+v0.16.62 (2026-11-16, direct request: docs/plans/busy-indicators.md, step 9): Nothing changes for users. The debug log now shows how long five GUI-thread operations take: compat.evaluate (the start-up check and Project compatibility, when="startup" or "menu"), images.reload (the Images page scan), update_previews.needed_slides (the scan before Update previews), compile.unchanged_jobs (the unchanged-PDF check under the wait cursor) and transcript_preview.build (the transcript preview under the wait cursor), each as a timing line with seconds=. Measured on example/ before any change: compat.evaluate 0.07 s, the Images scan 0.03 s, the transcript preview build 0.005 s; none is over 0.5 s.
+
+NEW: The debug log now shows how long five slow-prone steps take.
+- The project compatibility check, the Images page scan, the scan before Update previews, the unchanged-PDF check and the transcript preview each log their seconds.

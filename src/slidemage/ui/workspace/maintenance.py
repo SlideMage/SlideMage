@@ -32,7 +32,7 @@ from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from ... import alt_images, app_settings, bundled_copies, compat, housekeeping, open_path, project, project_access
-from ... import slide_preview, slide_rename, updater
+from ... import slide_preview, slide_rename, timing, updater
 from ... import citation_sources, diagnostics, slide_templates, theme_sources, view_themes
 from ... import version as version_mod
 from ...progress import Progress
@@ -131,7 +131,8 @@ def check_project_compat(window) -> None:
         return
     app_version = version_mod.VERSION_NUMBER
     try:
-        evaluation = compat.evaluate(window.project.root, app_version)
+        with timing.span("compat.evaluate", when="startup"):
+            evaluation = compat.evaluate(window.project.root, app_version)
     except Exception as exc:  # noqa: BLE001 -- a broken detector must not stop the app
         window.log(f"Couldn't check the project's compatibility: {exc}")
         return
@@ -236,7 +237,8 @@ def compat_update(window, evaluation) -> None:
 
 
 def on_project_compat(window) -> None:
-    evaluation = compat.evaluate(window.project.root, version_mod.VERSION_NUMBER)
+    with timing.span("compat.evaluate", when="menu"):
+        evaluation = compat.evaluate(window.project.root, version_mod.VERSION_NUMBER)
     show_compat(window, evaluation, review=True)
 
 

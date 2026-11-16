@@ -17,7 +17,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QFileDialog, QInputDialog, QMessageBox
 
 from ... import app_settings, compile_log, compile_progress, compiler, deck_snapshot, latex_export, latex_lint, open_path, partial_compile
-from ... import background_renders, batch_render, slide_language, slide_versioning
+from ... import background_renders, batch_render, slide_language, slide_versioning, timing
 from ...compile_status import job_title
 from ...compiler import PDF_MOVE_RETRY_TOTAL_SECONDS, CompileJob, order_jobs, resolve_output_location, run_job, run_jobs
 from ...deck_scan import Deck
@@ -337,8 +337,9 @@ def _confirm_unchanged_jobs(window, jobs: list[CompileJob], outputs: dict[str, P
     Cancel. Returns the jobs to compile ([] = nothing)."""
     QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
     try:
-        unchanged = compiler.unchanged_jobs(
-            window.project, jobs, outputs, resolver=window.centre.preview._renders.renderer(window.project).resolver)
+        with timing.span("compile.unchanged_jobs", jobs=len(jobs)):
+            unchanged = compiler.unchanged_jobs(
+                window.project, jobs, outputs, resolver=window.centre.preview._renders.renderer(window.project).resolver)
     finally:
         QApplication.restoreOverrideCursor()
     if not unchanged:
@@ -582,7 +583,8 @@ def update_previews(window) -> None:
     if _busy(window):
         return
     renderer = window.background.renderer
-    requests = batch_render.plan_project(renderer)
+    with timing.span("update_previews.needed_slides"):
+        requests = batch_render.plan_project(renderer)
     if not requests:
         QMessageBox.information(window, "Nothing to do", "No deck references any slides right now.")
         return

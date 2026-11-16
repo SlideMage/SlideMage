@@ -13,7 +13,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QMessageBox, QTextBrowser, QWidget
 
-from ... import transcript
+from ... import timing, transcript
 from ..kit.widgets import ModalSheet
 
 
@@ -34,7 +34,8 @@ def show_transcript_preview(app, source_text: str, bare_id: str, id_slug: str, v
     render is regex-only and fast enough for a wait cursor."""
     QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
     try:
-        result = transcript.generate_single_slide(app.project, source_text, bare_id, version, language.lower())
+        with timing.span("transcript_preview.build"):
+            result = transcript.generate_single_slide(app.project, source_text, bare_id, version, language.lower())
     except Exception as exc:  # noqa: BLE001 -- surface any failure to the user
         QApplication.restoreOverrideCursor()
         QMessageBox.critical(app, "Transcript render failed", str(exc))

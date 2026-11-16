@@ -186,11 +186,16 @@ plain tests for `on_progress` callbacks). "Today" below is develop @ 539df49d.
 8. **Export LaTeX.** Today: `compile_actions.export_latex` calls `latex_export.export_deck` synchronously. Change:
    worker + determinate `BusyIndicator` via `on_progress`; the toast stays in `done`. Lowest priority: dropped if
    step 9 measures it under 0.5 s on the manual deck.
-9. **Measure the rest.** Today: `timing.span` exists, `reload_decks` already has `reload_decks.scan`. Change: add
+9. **Measure the rest.** Done (v0.16.62). Today: `timing.span` exists, `reload_decks` already has `reload_decks.scan`. Change: add
    `timing.span` around `compat.evaluate` (start-up check and ⋮ Project compatibility), `needed_slides_by_template`,
    the Images page `reload`, `compiler.unchanged_jobs` (under a wait cursor in `_confirm_unchanged_jobs`) and the
    transcript preview (wait cursor, `transcript_preview.py:35`). The owner measures on their project; anything over
    0.5 s gets a follow-up PR.
+   Measured on `example/` (v0.16.62, before any change, one run each): `compat.evaluate` takes 0.07 s; the Images
+   scan (`alt_images.load_store` and `image_review.scan_views`, without the store sync that writes) takes 0.03 s;
+   the transcript preview build takes 0.005 s; `needed_slides` (`batch_render.plan_project`) and
+   `compiler.unchanged_jobs` were not measured, since both need the GUI's renderer or compile jobs. None is over
+   0.5 s, so no follow-up PR from these; the owner's own project may be larger.
 
 Out of scope: the compile progress card, the AI status displays, and the plugin's own `Progress` (the Ollama plugin
 can switch to `slidemage.progress.Progress` in a later release of its own; nothing forces it).
