@@ -4168,3 +4168,12 @@ v0.16.46 (2026-11-16, Compile -> All views asks what to build): "All views of th
 
 NEW: Compile > All views now lets you choose which views, the presenter PDF and the transcripts to create.
 - New: "All views of this deck" opens a dialog with everything ticked; untick what you do not need. Your choice is remembered for each deck.
+
+v0.16.47 (2026-11-16, direct request: a deck marks a slide as under review without changing the slide): (1) Framework: \SMReview[note]{<call>} around any call of the \slide family, on the call's line, and \SMReviewText{text} in the preamble (SlideMage_base.tex). Both do nothing in LaTeX, so the compiled PDF is the same with and without them; a compile of eight calls of all kinds, plain and wrapped, gave the same pages in the instructor and the during-course version. (2) deck_editor reads the wrapper (SlideCall.review, review_note, outer_start, outer_end; review_wrapper) and treats wrapper and call as the line's one call, so the call stays editable and every line edit moves or removes both; an edit of the call's token leaves the wrapper. set_calls_review sets, renotes and clears it as one edit; a note is plain text. deck_scan reads \SMReviewText (Deck.review_text, default REVIEW), and preview_target.preamble_sha leaves it out, so setting it keeps the slides' renders current. (3) The mark is drawn by the app, not rendered: ui/kit/review_mark.paint_review_mark over the Preview page (PageView.set_review) and over the slide list's thumbnail; the row's small line says "review" and its tooltip the note. The slide file, its versions, its renders and thumbnails are not touched. (4) Slide list menus (one slide and several): "Mark for review in this deck" / "Clear review mark" and "Review note…".
+
+NEW: Mark a slide as under review in one deck.
+- Right-click a slide in the slide list and choose "Mark for review in this deck": its preview and its thumbnail show a REVIEW watermark while that deck is open. "Review note…" adds a note under it; a long note wraps and then gets smaller.
+- The mark belongs to the deck, not to the slide: other decks that use the slide do not show it, and the slide file is not changed.
+- The compiled PDF never shows the mark.
+- `\SMReviewText{...}` in a deck's preamble sets another text for the watermark.
+- A deck with a marked slide needs the framework of this version to compile: update the project's framework files when SlideMage offers it.

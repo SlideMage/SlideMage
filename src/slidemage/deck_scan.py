@@ -62,6 +62,12 @@ TAG_MANUAL = deck_groups.TAG_MANUAL
 SELECTABLE_GROUP_TAGS = deck_groups.selectable_tags()
 
 
+# \SMReviewText{text} in the preamble: the text of the watermark SlideMage draws over the previews of the slides this
+# deck marks with \SMReview{...} (deck_editor.py). Read here only; a no-op for LaTeX (SlideMage_base.tex).
+REVIEW_TEXT_DEFAULT = "REVIEW"
+REVIEW_TEXT_RE = re.compile(r"\\SMReviewText[ \t]*\{([^{}\r\n]*)\}")
+
+
 @dataclass
 class Chapter:
     order: int          # 1-based position within the deck
@@ -99,6 +105,8 @@ class Deck:
     appendix_toc: bool = False
     # which PDF "Open pdf" opens by default (parse_open_pdf(); None = instructor)
     open_pdf: str | None = None
+    # the watermark text for its slides under review (parse_review_text())
+    review_text: str = REVIEW_TEXT_DEFAULT
 
     # The deck's groups in switcher order and their roles (deck_groups.groups_of(),
     # roles_of()), from the project's list at scan time; a Deck made without them
@@ -253,6 +261,16 @@ def parse_open_pdf(text: str) -> str | None:
     return value if value in OPEN_PDF_CHOICES else None
 
 
+def parse_review_text(text: str) -> str:
+    """The deck's watermark text: its first live \\SMReviewText{...} in the preamble, or REVIEW."""
+    begin = DOCUMENT_BEGIN_RE.search(text)
+    preamble = text[:begin.start()] if begin else text
+    for m in REVIEW_TEXT_RE.finditer(preamble):
+        if not is_commented(preamble, m.start()) and m.group(1).strip():
+            return m.group(1).strip()
+    return REVIEW_TEXT_DEFAULT
+
+
 def read_deck(path: Path, archived: bool = False,
               groups: Sequence[deck_groups.DeckGroup] = deck_groups.DEFAULT_GROUPS) -> Deck:
     """Read one deck or body fragment, preserving its literal line endings.
@@ -289,6 +307,7 @@ def deck_from_text(path: Path, text: str, archived: bool = False,
         tags=tags,
         appendix_toc=parse_appendix_toc(text),
         open_pdf=parse_open_pdf(text),
+        review_text=parse_review_text(text),
         groups=in_groups,
         roles=deck_groups.roles_of(in_groups, groups),
     )
