@@ -591,7 +591,7 @@ class PreviewPane(Surface):
         self._name.setObjectName(q.PREVIEW_TITLE)
         footer.addWidget(self._id)
         footer.addWidget(self._name, 1)
-        self._render = SplitButton("Render")
+        self._render = SplitButton("Render this slide")
         self._render.clicked.connect(self.render_now)
         footer.addWidget(self._render)
         layout.addLayout(footer)
@@ -1027,7 +1027,7 @@ class PreviewPane(Surface):
         self._render.buttons()[0].setEnabled(target is not None and not hidden and self._batch_cancel is None)
         self._render.buttons()[0].setToolTip("This slide is hidden in the selected view." if hidden
                                            else "Render the saved file in the selected view")
-        self._render.set_text(f"Render · {short_view(view)} · {language}")
+        self._render.set_text(f"Render this slide · {short_view(view)} · {language}")
 
         status, tone, icon, can_render = "", "muted", "", False
         has_image = False

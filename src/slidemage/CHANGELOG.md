@@ -4184,3 +4184,8 @@ NEW: Reindent also works for decks and the bibliography.
 - In a deck's source tab, Tools > Reindent indents the body one tab, \if...\else...\fi blocks and multi-line definitions in the preamble. It keeps how the deck indents the slides under its sections and subsections.
 - In the SlideMage.bib tab, Tools > Reindent puts each field one tab in and each entry's first and last line flush left. Values that span several lines are left as they are.
 - As before, one Ctrl+Z undoes it.
+
+v0.16.49 (2026-11-16, direct request: clearer labels on the Render and Compile buttons): The Preview's Render button reads "Render this slide · <view> · <language>" (preview_view.py), the top bar's Compile button and its tooltip "Compile deck PDF · <view>" (topbar.py). The short "Compile" of the narrow top bar and the Compile menu's entries are unchanged. Tests in tests/test_workspace_window.py follow.
+
+NEW: The Render and Compile buttons say what they act on.
+- The Preview's button now reads "Render this slide · Instructor · EN", the top bar's "Compile deck PDF · Instructor".

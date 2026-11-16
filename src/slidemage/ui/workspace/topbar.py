@@ -313,12 +313,12 @@ class TopBar(QWidget):
 
     def _update_compile_label(self) -> None:
         deck = self._state.deck
-        label = "Compile PDF"
+        label = "Compile deck PDF"
         if deck is not None and deck.supports_version:
             label += " · " + VIEW_LABELS[self._state.view].replace(" course", "")
         self._compile.set_text(label if self._density == "full" else "Compile")
         versioned = deck is not None and deck.supports_version
-        self._compile.setToolTip("Compile PDF" + (" · " + VIEW_LABELS[self._state.view] if versioned else ""))
+        self._compile.setToolTip("Compile deck PDF" + (" · " + VIEW_LABELS[self._state.view] if versioned else ""))
         self._compile.setEnabled(deck is not None)
 
     def refresh_compile_menu(self) -> None:

@@ -219,7 +219,7 @@ def test_top_bar_densities_fit_the_available_width_and_grow_back(topbar, window,
         assert bar._view_as.isHidden() == short
         assert bar._images.isHidden()            # only while the Images page is open
         assert bar._save.text() == ("●" if density == "tiny" else "Saved")
-        assert bar._compile.text() == ("Compile" if short else "Compile PDF · Instructor")
+        assert bar._compile.text() == ("Compile" if short else "Compile deck PDF · Instructor")
         assert bar._deck_button.text() == MANUAL.name or (density == "tiny" and bar._deck_button.text().endswith("…"))
         assert bar._deck_button.toolTip() == MANUAL.name
         assert [button.text() for button in bar._views._buttons.values()] == (
@@ -251,7 +251,7 @@ def test_narrow_top_bar_keeps_hidden_text_and_images_reachable(topbar, window, q
     assert bar._save.text() == "●" and bar._save.toolTip() == "Unsaved changes"
     window.state.set_dirty(False)
     assert bar._save.text() == "●" and bar._save.toolTip() == "Saved"
-    assert bar._compile.toolTip() == "Compile PDF · Instructor"
+    assert bar._compile.toolTip() == "Compile deck PDF · Instructor"
     assert ("compile:instructor", "Compile PDF · Instructor", True) in entries(bar._compile_menu)
     monkeypatch.setattr(window.images_page, "ensure_loaded", lambda: None)
     images = menu_actions(filled_menu(window, "View"))["images"]     # Images is in the menu bar at every width
@@ -281,7 +281,7 @@ def test_narrow_top_bar_controls_and_lint_badge_survive_relabeling(topbar, windo
     bar._languages._buttons["DE"].click()
     buttons["source"].click()
     assert (window.state.view, window.state.language, window.state.mode) == ("during-course", "DE", "source")
-    assert bar._compile.toolTip() == "Compile PDF · During course"
+    assert bar._compile.toolTip() == "Compile deck PDF · During course"
     jobs = compiled(window, monkeypatch)
     bar._compile._main.click()
     assert describe(jobs[0][0])[:2] == ("course", "during-course")
@@ -291,7 +291,7 @@ def test_narrow_top_bar_controls_and_lint_badge_survive_relabeling(topbar, windo
     assert (bar._views.current(), bar._languages.current(), bar._modes.current()) == ("after-course", "EN", "details")
     bar.resize(1700, bar.height())
     qapp.processEvents()
-    assert bar._density == "full" and bar._compile.text() == "Compile PDF · After"
+    assert bar._density == "full" and bar._compile.text() == "Compile deck PDF · After"
     assert bar._modes._buttons == buttons
     assert badge.isVisible() and badge.geometry().right() < buttons["source"].width()
     window.state.set_lint_errors(0)
@@ -358,7 +358,7 @@ def test_the_view_comes_back_with_the_deck(window):
     assert window.topbar._views.current() == "instructor"
     window.state.set_deck(COURSE)
     assert window.topbar._views.current() == "after-course"
-    assert window.topbar._compile.text() == "Compile PDF · After"
+    assert window.topbar._compile.text() == "Compile deck PDF · After"
 
 
 # -- compile -------------------------------------------------------------------
