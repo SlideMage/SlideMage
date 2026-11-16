@@ -1102,10 +1102,10 @@ class PopoverMenu(Popover):
         self._flyout_key = ""             # the row whose flyout is open, or was just closed by a mouse press on it
 
     def add_item(self, key: str, text: str, *, meta: str = "", icon: str = "",
-                 tone: str = "", enabled: bool = True, swatch: str = "") -> None:
+                 tone: str = "", enabled: bool = True, swatch: str = "", detail: str = "") -> None:
         """tone "danger" colors the text as an error; `swatch` is a color ("#rrggbb")
-        shown as a small square before the text."""
-        self._entries.append(("item", key, text, meta, icon, tone, enabled, swatch))
+        shown as a small square before the text; `detail` is a muted second line."""
+        self._entries.append(("item", key, text, meta, icon, tone, enabled, swatch, detail))
 
     def add_submenu(self, key: str, text: str, build: Callable[[PopoverMenu], PopoverMenu], *,
                     enabled: bool = True) -> None:
@@ -1174,8 +1174,8 @@ class PopoverMenu(Popover):
                 target.addWidget(sep)
                 target.addSpacing(5)
             else:
-                _, key, text, meta, icon, tone, enabled, swatch = entry
-                row = MenuRow(key, text, meta, icon, tone, slot, swatch)
+                _, key, text, meta, icon, tone, enabled, swatch, detail = entry
+                row = MenuRow(key, text, meta, icon, tone, slot, swatch, detail)
                 row.setEnabled(enabled)
                 row.setProperty("off", not enabled)
                 row.activated.connect(self._on_activated)

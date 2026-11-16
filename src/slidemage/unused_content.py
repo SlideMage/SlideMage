@@ -24,7 +24,7 @@ Two independent scans (find_unused_media(), find_unused_slides()), archived by a
 - slides/: a slides/<id>-current.tex or slides/<id>-vX-Y-Z.tex file is "in
   use" if actually \\slide{}/\\conditionalslide{}/\\omitslide{}/
   \\slidestep{}/\\slideversion{}/\\omitslideversion{}-ed from any *.tex file
-  directly inside decks/ or decks/archive/ -- deliberately every *.tex file
+  directly inside decks/, decks/archive/, or blocks/ -- deliberately every *.tex file
   there,
   not just ones with \\documentclass (i.e. not deck_scan.scan_decks()):
   decks/test-slides.tex is a shared \\input{}-ed fragment with real
@@ -62,7 +62,7 @@ import shutil
 from pathlib import Path
 from typing import Callable, Iterable
 
-from . import ai_review, languages
+from . import ai_review, deck_language, languages, library_data
 from .progress import Progress
 from .project import ProjectContext
 from .slide_language import current_name
@@ -97,26 +97,19 @@ LogCallback = Callable[[str], None]
 
 
 def _deck_texts(ctx: ProjectContext) -> list[str]:
-    """Raw text of deck and archived-deck .tex files, excluding generated wrappers."""
-    texts: list[str] = []
-    for directory in (ctx.decks_dir, ctx.archive_dir):
-        if not directory.is_dir():
-            continue
-        for path in directory.glob("*.tex"):
-            if path.name.startswith("_"):
-                continue
-            texts.append(_strip_comments(path.read_text(encoding="utf-8", errors="replace")))
-    return texts
+    """Text of decks and blocks, with comments and generated wrappers excluded."""
+    return [_strip_comments(path.read_text(encoding="utf-8", errors="replace"))
+            for path in (*(p for p in deck_language.deck_files(ctx) if not p.name.startswith("_")),
+                         *deck_language.block_files(ctx))]
 
 
 def slide_filenames_in(ctx: ProjectContext, text: str) -> set[str]:
     """Every slides/*.tex filename the \\slide{}-family calls of this deck text load, the
     translation partners (any language) of each included. The text is read as it is: a deck's
     commented-out calls count unless the comments were stripped first."""
-    from types import SimpleNamespace
-    from . import deck_editor, deck_language
+    from . import deck_language
     used: set[str] = set()
-    calls = deck_editor.parse_slide_calls(SimpleNamespace(text=text, chapters=[]))
+    calls = deck_language.calls_in(text, [], comments=True)
     # Keep explicit pins even when a translation call is folded into another slot.
     used.update(call.source_filename for call in calls)
     for language in languages.project_languages(ctx).codes:
@@ -129,15 +122,20 @@ def slide_filenames_in(ctx: ProjectContext, text: str) -> set[str]:
 
 
 def find_used_slide_filenames(ctx: ProjectContext) -> set[str]:
-    """Every slides/*.tex filename actually referenced from any deck."""
+    """Every slides/*.tex filename referenced by a deck or kept in the library pool."""
     used: set[str] = set()
     for text in _deck_texts(ctx):
         used |= slide_filenames_in(ctx, text)
+    pool = library_data.read(ctx).pool
+    if pool:
+        ids = library_data.group_ids(ctx)
+        used.update(path.name for path in ctx.slides_dir.glob("*-current.tex")
+                    if ids.get(path.name.split("-", 1)[0]) in pool)
     return used
 
 
 def find_unused_slides(ctx: ProjectContext) -> list[Path]:
-    """slides/*.tex files not referenced by any deck."""
+    """slides/*.tex files not referenced by a deck or kept in the library pool."""
     if not ctx.slides_dir.is_dir():
         return []
     used = find_used_slide_filenames(ctx)

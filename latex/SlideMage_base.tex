@@ -1052,6 +1052,20 @@
 }
 \makeatother
 
+% Topic blocks share the deck's scope, so settings in their slides persist.
+\makeatletter
+\newif\ifSM@intopicblock
+\newcommand{\slideblock}[1]{%
+	\ifSM@intopicblock
+		\PackageError{SlideMage}{\string\slideblock\space inside a topic block}{Topic blocks cannot be nested.}%
+	\else
+		\SM@intopicblocktrue
+		\input{blocks/#1.tex}%
+		\SM@intopicblockfalse
+	\fi
+}
+\makeatother
+
 % Define a new \slide command to automatically pick the current version of the slide
 % 2026-07-08 (direct instruction): slide filenames dropped their leading
 % "s-" (e.g. slides/ab3-Some-Slide-current.tex, not the old

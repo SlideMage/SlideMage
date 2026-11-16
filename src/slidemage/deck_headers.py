@@ -16,9 +16,9 @@ Attribution is to whichever decks/*.tex file directly contains the
 \\slide{}-family call -- not resolved through \\input{} chains. A wrapper
 deck like test.tex/test-student.tex that only \\input{test-slides}s a
 shared list of calls (rather than calling \\slide{} itself) contributes no
-attribution of its own; the slides it pulls in are already correctly
-attributed to "test-slides" directly, since that file is itself picked up
-by the decks/*.tex glob below and contains the actual calls.
+attribution of its own; the slides it pulls in are attributed to "test-slides" directly.
+Topic blocks in blocks/ instead contribute the names of the decks that use them,
+resolved through deck_language.expand_fragments.
 
 Only touches the "%% Included in decks: ...\n%%\n" block itself (inserted
 right after the leading comment, before the first blank line/real content,
@@ -52,7 +52,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import languages, slide_language, timing
+from . import deck_editor, deck_language, deck_scan, languages, slide_language, timing
 from .fileio import StaleFileError, atomic_write, read_text_exact
 from .project import ProjectContext
 
@@ -63,10 +63,6 @@ _LOCK = threading.Lock()
 
 HEADER_RE = re.compile(
     r"%% Included in decks: [^\r\n]*\r?\n%%\r?\n(?:\r?\n)?")
-
-
-def _deck_display_name(path) -> str:
-    return path.stem
 
 
 def regenerate_headers(ctx: ProjectContext) -> tuple[int, int]:
@@ -109,11 +105,9 @@ def _regenerate_headers_impl(ctx: ProjectContext) -> tuple[int, int]:
 
 def _deck_membership(ctx: ProjectContext) -> tuple[dict[str, set[str]], list[Path]]:
     """(slide id -> the names of the decks that include it, the deck files read)."""
-    deck_paths = [
-        p for directory in ctx.deck_folders if directory.is_dir()
-        for p in directory.glob("*.tex")
-        if p.name != "#workdeck.tex" and not p.name.startswith(("zzz_", "_"))
-    ]
+    blocks = {p.resolve() for p in deck_language.block_files(ctx)}
+    deck_paths = [p for p in deck_language.deck_files(ctx)
+                  if p.name != "#workdeck.tex" and not p.name.startswith(("zzz_", "_"))]
 
     # id -> sorted list of deck display names that include it
     id_to_decks: dict[str, set[str]] = {}
@@ -122,11 +116,13 @@ def _deck_membership(ctx: ProjectContext) -> tuple[dict[str, set[str]], list[Pat
     links = slide_language.links_for(ctx)
     codes = languages.project_languages(ctx).codes
     for deck_path in deck_paths:
-        deck_name = _deck_display_name(deck_path)
-        text = read_text_exact(deck_path)
-        from types import SimpleNamespace
-        from . import deck_editor, deck_language
-        calls = deck_editor.parse_slide_calls(SimpleNamespace(text=text, chapters=[]))
+        deck_name = deck_path.stem
+        deck = deck_scan.read_deck(deck_path)
+        calls = deck_editor.parse_slide_calls(deck)
+        _, dependencies = deck_language.expand_fragments(deck)
+        for path in dependencies:
+            if path.resolve() in blocks:
+                calls.extend(deck_editor.parse_slide_calls(deck_scan.read_deck(path)))
         for call in calls:
             id_to_decks.setdefault(call.id, set()).add(deck_name)
         for language in codes:

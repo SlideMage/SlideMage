@@ -31,7 +31,7 @@ from .project import ProjectContext
 from .fileio import StaleFileError as StaleFileError, read_text_exact, write_text_exact
 from .deck_scan import DOCUMENT_BEGIN_LINE_RE, DOCUMENT_END_RE, Chapter, Deck, parse_chapters, SECTION_RE, find_decktags
 from .slide_language import FROZEN_RE, current_name, frozen_name
-from .tex_source import COMMENT_RE, is_commented
+from .tex_source import COMMENT_RE, INPUT_RE, is_commented
 
 
 # Macros that take a pinned version as a second brace argument.
@@ -59,6 +59,7 @@ DEFAULT_CONDITIONS = list(VIEWS)
 # add_slide_dialog.py) -- the four macros with no separate version file.
 BASE_MACROS = ["slide", "slidefinal", "omitslide", "conditionalslide", "slidestep"]
 
+BLOCK_KEY_RE = re.compile(r"[A-Za-z0-9_-]+")   # a topic block's file stem and its \slideblock key
 SLIDE_CALL_RE = re.compile(
     r"\\slideversion\s*\{(?P<sv_idslug>[^}]+)\}\s*\{(?P<sv_version>[^}]+)\}"
     r"|\\omitslideversion\s*\{(?P<osv_idslug>[^}]+)\}\s*\{(?P<osv_version>[^}]+)\}"
@@ -100,6 +101,13 @@ class SlideCall:
     review_note: str = ""         # the wrapper's optional [note]
     outer_start: Optional[int] = None   # the wrapper's own span, when there is one
     outer_end: Optional[int] = None
+    source: Optional[Path] = None   # the file physically holding the call, for a call a block put in the deck
+    block: Optional[str] = None     # the topic block's name, when that file is one
+    index: Optional[int] = None     # the call's number within its block's occurrence
+
+    @property
+    def identity(self) -> tuple[int, int | None]:
+        return self.call_start, self.index
 
     @property
     def id_slug(self) -> str:
@@ -391,6 +399,35 @@ def remove_slide_calls(deck_path: Path, expected_text: str, calls: list[SlideCal
     return apply(deck_path, expected_text, mutate)
 
 
+def _block_marker(path: Path, text: str, call: SlideCall) -> tuple[int, int]:
+    """Check the deck's block marker, rather than the expanded slide's editability."""
+    marker = INPUT_RE.fullmatch(text[call.call_start:call.call_end])
+    if not call.block or marker is None or Path(marker.group(1)).stem != call.block:
+        raise ValueError("This block marker changed; reload the deck and retry.")
+    start, end = line_span(text, call.call_start, call.call_end)
+    editable, reason = _editability(text, start, call.call_start, call.call_end, end)
+    if not editable:
+        raise ValueError(f"can't edit this block marker -- {reason}")
+    return start, end
+
+
+def unlink_block(path: Path, text: str, call: SlideCall, block_text: str) -> str:
+    """Replace one block marker with its body, leaving the section heading in place."""
+    start, end = _block_marker(path, text, call)
+    newline = eol(text)
+    indent = text[start:call.call_start]
+    body = "".join((indent + line if line else "") + newline for line in block_text.splitlines()
+                   if not line.startswith("%%"))   # the block's own metadata stays in the block
+    replacement = f"{indent}% from block {call.block}{newline}{body}"
+    return apply(path, text, lambda current: current[:start] + replacement + current[end:])
+
+
+def remove_block(path: Path, text: str, call: SlideCall) -> str:
+    """Remove one block marker, keeping its section and the block file."""
+    start, end = _block_marker(path, text, call)
+    return apply(path, text, lambda current: current[:start] + current[end:])
+
+
 def _refuse_blocked(calls: list[SlideCall]) -> None:
     blocked = [c for c in calls if not c.editable]
     if blocked:
@@ -559,6 +596,8 @@ def step_block(text: str, calls: list[SlideCall], call: SlideCall) -> list[Slide
     r"""The calls that together decide which versions typeset which steps at `call`'s place: for a \slidestep, the
     run of \slidestep calls of the same slide next to each other (alternatives: each version has one of them), with
     only blank or comment lines between; any other call stands alone."""
+    if call.index is not None:
+        raise ValueError("Edit reveal steps in the topic block's source file.")
     if call.macro != "slidestep":
         return [call]
     index = next(i for i, c in enumerate(calls) if c.call_start == call.call_start)
@@ -566,6 +605,7 @@ def step_block(text: str, calls: list[SlideCall], call: SlideCall) -> list[Slide
     def joined(first: SlideCall, second: SlideCall) -> bool:
         between = text[first.line_end:second.line_start]
         return (first.macro == second.macro == "slidestep" and first.id_slug == second.id_slug == call.id_slug
+                and first.index is None and second.index is None
                 and all(_BLANK_OR_COMMENT_RE.match(line) for line in between.split("\n")))
 
     low = index
@@ -579,6 +619,8 @@ def step_block(text: str, calls: list[SlideCall], call: SlideCall) -> list[Slide
 
 def step_edit_problem(call: SlideCall, view: str) -> Optional[str]:
     r"""Why the steps of `call` cannot be changed for `view` from the step bar, or None when they can."""
+    if call.index is not None:
+        return "Edit reveal steps in the topic block's source file."
     if not call.editable:
         return call.readonly_reason or "This call cannot be edited."
     if call.macro not in STEP_EDIT_MACROS:
@@ -776,9 +818,9 @@ def section_append_point(deck: Deck, chapter: Optional[Chapter]) -> int:
     """Where a slide goes to become the last one of a section (None: the slides
     before the first one): after its last call, or below its marker line
     when it has none."""
-    last = next((c for c in reversed(parse_slide_calls(deck)) if c.chapter == chapter), None)
+    last = next((p for p in reversed(_call_placements(deck)) if _find_chapter(deck.chapters, p[1] - 1) == chapter), None)
     if last is not None:
-        return last.line_end
+        return last[1]
     if chapter is None:
         raise ValueError("there are no slides before the first section")
     return section_line_span(deck.text, chapter)[1]
@@ -923,6 +965,20 @@ def insert_slide_call(
     return apply(deck_path, expected_text, mutate)
 
 
+def insert_block(deck_path: Path, expected_text: str, insert_at: int, indent: str, key: str, title: str) -> str:
+    """Insert a block and its section heading together, as one undoable edit."""
+    if not BLOCK_KEY_RE.fullmatch(key):
+        raise ValueError("Invalid topic block key.")
+    title = _section_title(title)
+
+    def mutate(text: str) -> str:
+        newline = eol(text)
+        return _splice(text, insert_at,
+                       f"{indent}\\section{{{title}}}{newline}{indent}\\slideblock{{{key}}}{newline}")
+
+    return apply(deck_path, expected_text, mutate)
+
+
 def insert_slide_calls(
     deck_path: Path, expected_text: str, insert_at: int, indent: str, id_slugs: list[str],
 ) -> str:
@@ -1020,21 +1076,34 @@ class InsertPosition:
     indent: str
 
 
+def _call_placements(deck: Deck) -> list[tuple[int, int, str, str]]:
+    """Physical lines holding calls or includes, without reading any fragments."""
+    from .deck_language import masked
+
+    calls = parse_slide_calls(deck)
+    places = [(c.line_start, c.line_end, c.indent, f"{i}. {c.id_slug}")
+              for i, c in enumerate(calls, 1)]
+    text = masked(deck.text)
+    # Plugins pass their own deck objects (plugin_api.Deck), which need not carry preamble_end.
+    begin = getattr(deck, "preamble_end", None) or 0
+    for match in INPUT_RE.finditer(text, begin):
+        start, end = line_span(deck.text, match.start(), match.end())
+        indent = deck.text[start:match.start()]
+        places.append((start, end, indent if not indent.strip() else "", match.group().strip()))
+    return sorted(places)
+
+
 def slide_insert_positions(deck: Deck) -> list[InsertPosition]:
     """Places for inserting a slide before the first or after each existing call."""
-    calls = parse_slide_calls(deck)
-    if not calls:
+    places = _call_placements(deck)
+    if not places:
         return [InsertPosition("At the end of the deck", end_insert_point(deck.text), "")]
-    return [InsertPosition("At the beginning", calls[0].line_start, calls[0].indent)] + [
-        InsertPosition(f"After {number}. {call.id_slug}", call.line_end, call.indent)
-        for number, call in enumerate(calls, start=1)
+    return [InsertPosition("At the beginning", places[0][0], places[0][2])] + [
+        InsertPosition(f"After {label}", end, indent) for _, end, indent, label in places
     ]
 
 
 def append_position(deck: Deck) -> tuple[int, str]:
-    """(insert_at, indent) for a call appended after the last slide."""
-    calls = parse_slide_calls(deck)
-    if not calls:
-        return end_insert_point(deck.text), ""
-    last = calls[-1]
-    return last.line_end, last.indent
+    """(insert_at, indent) for a call appended after the last slide or include."""
+    places = _call_placements(deck)
+    return (places[-1][1], places[-1][2]) if places else (end_insert_point(deck.text), "")

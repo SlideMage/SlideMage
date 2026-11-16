@@ -476,20 +476,22 @@ def resolve_deck(ctx: ProjectContext, deck_path: Path, version: str) -> list[Dec
     language = deck_language_of(deck.text).upper()
     # Preamble definitions and text after the document are not slide placements.
     body = _document_body(deck.text)
-    deck = replace(deck, text=body, preamble_end=0)
-    deck, _dependencies = deck_language.expand_fragments(deck, strict_includes=True)
+    deck = replace(deck, text=body, preamble_end=0, chapters=deck_scan.parse_chapters(body))
+    resolution = deck_language.resolve(deck, strict_includes=True)
+    expanded, calls = resolution.deck, resolution.calls
     slides: list[DeckSlide] = []
     number = 0
     # the LaTeX counter: \subsection{}s since the chapter's \section{}
-    subsection_starts = [m.start() for m in _SUBSECTION_RE.finditer(deck_language.masked(deck.text))]
+    subsection_starts = [m.start() for m in _SUBSECTION_RE.finditer(deck_language.masked(expanded.text))]
 
-    for slot in deck_language.deck_slots(ctx, deck, language):
+    for slot in deck_language.slots(ctx, calls, language):
         call = slot.call
         included = call.included_in(version)
         if call.macro == "slidestep" and not included:
             continue
-        chapter_start = call.chapter.start if call.chapter else 0
-        subsection = (bisect.bisect_left(subsection_starts, slot.original.call_start)
+        chapter = slot.original.expanded.chapter
+        chapter_start = chapter.start if chapter else 0
+        subsection = (bisect.bisect_left(subsection_starts, slot.original.expanded.call_start)
                       - bisect.bisect_left(subsection_starts, chapter_start))
         number += 1
         slides.append(DeckSlide(
@@ -497,7 +499,7 @@ def resolve_deck(ctx: ProjectContext, deck_path: Path, version: str) -> list[Dec
             slide_id=call.id,
             path=ctx.slides_dir / call.source_filename,
             included=included,
-            chapter=call.chapter.order if call.chapter else 0,
+            chapter=chapter.order if chapter else 0,
             subsection=subsection,
         ))
     return slides

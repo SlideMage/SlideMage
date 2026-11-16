@@ -60,6 +60,9 @@ ASK_ON_LEAVE_SETTING_KEY = "ask_update_version_on_leave"
 # is now. Off, it typesets the slide's last version, the frozen file of the version on its "+" line
 # (saved_version_lines).
 RENDER_CHANGES_SETTING_KEY = "render_slide_changes_in_decks"
+# app_settings key (Settings -> General, on by default): with RENDER_CHANGES_SETTING_KEY off, a deck compile that
+# typesets some slides from their last version asks first (compile_actions._confirm_saved_versions, issue #97).
+ASK_SAVED_VERSIONS_SETTING_KEY = "ask_before_compiling_last_versions"
 
 _EMBEDDED_VERSION_RE = re.compile(r"\\setSlideVersion\{(\d+)-(\d+)-(\d+)(\+?)\}")
 # Matches the whole tool-managed line, trailing newline included, so
@@ -288,23 +291,32 @@ def changed_slides(ctx: ProjectContext, deck, language: str) -> list[str]:
     return list(found)
 
 
-def saved_version_lines(ctx: ProjectContext, deck, language: str) -> list[str]:
-    """The lines a deck compile's wrapper starts with so that each slide `deck` calls with a "+" (changed_slides)
-    is typeset from its last version's frozen file instead of its current file: LaTeX's file substitution
-    (\\declare@file@substitution, LaTeX 2020-10), which \\slide{} and the other calls' \\input{slides/<id>-current.tex}
-    then follow. Nothing in the framework or the deck changes. A slide whose frozen file is missing keeps its
-    current file. No lines when no slide qualifies."""
+def saved_versions(ctx: ProjectContext, deck, language: str) -> dict[str, str]:
+    """{id-slug: its last version's frozen file name} for each slide `deck` calls with a "+" (changed_slides) whose
+    frozen file is there: what a deck compile typesets instead of the slide's current file while Settings → General
+    does not compile the changes (saved_version_lines). A slide whose frozen file is missing keeps its current file."""
     from . import slide_language, slide_source
 
-    substitutions = []
+    found = {}
     for slug in changed_slides(ctx, deck, language):
         marker = parse_marker(slide_source.read_slide_source(ctx.slides_dir / slide_language.current_name(slug))[0])
         if marker is None:
             continue
         frozen = slide_language.frozen_name(slug, format_hyphen(marker[0]))
         if (ctx.slides_dir / frozen).is_file():
-            substitutions.append(f"\\declare@file@substitution{{slides/{slide_language.current_name(slug)}}}"
-                                 f"{{slides/{frozen}}}")
+            found[slug] = frozen
+    return found
+
+
+def saved_version_lines(ctx: ProjectContext, deck, language: str) -> list[str]:
+    """The lines a deck compile's wrapper starts with so that each slide of saved_versions() is typeset from its
+    last version's frozen file instead of its current file: LaTeX's file substitution
+    (\\declare@file@substitution, LaTeX 2020-10), which \\slide{} and the other calls' \\input{slides/<id>-current.tex}
+    then follow. Nothing in the framework or the deck changes. No lines when no slide qualifies."""
+    from . import slide_language
+
+    substitutions = [f"\\declare@file@substitution{{slides/{slide_language.current_name(slug)}}}{{slides/{frozen}}}"
+                     for slug, frozen in saved_versions(ctx, deck, language).items()]
     return ["\\makeatletter", *substitutions, "\\makeatother"] if substitutions else []
 
 

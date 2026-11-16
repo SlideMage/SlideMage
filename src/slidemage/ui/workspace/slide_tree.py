@@ -11,6 +11,7 @@ click; the slides under it are selectable and can be dragged.
 from __future__ import annotations
 
 from pathlib import Path
+from dataclasses import dataclass
 from typing import Optional
 
 from PySide6.QtCore import QEvent, QModelIndex, QRectF, QSize, Qt, Signal
@@ -37,10 +38,18 @@ from .state import WorkspaceState
 from .topbar import VIEW_TONES
 
 DATA = Qt.ItemDataRole.UserRole       # the SectionRow or SlideRow of an item
+BLOCK = int(DATA) + 1
 SECTION_HEIGHT = 36                   # 8 px gap above the heading, then 28
 SLIDE_HEIGHT = 44
 REVIEW_HEIGHT = 68
 THUMB_W, THUMB_H = 56, 31.5
+
+
+@dataclass
+class BlockRow:
+    block: str
+    title: str
+    rows: list[SlideRow]
 
 
 def variant_label(call: SlideCall) -> str:
@@ -126,7 +135,7 @@ class SlideDelegate(QStyledItemDelegate):
 
     def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex) -> QSize:
         row = index.data(DATA)
-        return QSize(0, SECTION_HEIGHT if isinstance(row, SectionRow) else REVIEW_HEIGHT if row.unreviewed else SLIDE_HEIGHT)
+        return QSize(0, SECTION_HEIGHT if isinstance(row, (SectionRow, BlockRow)) else REVIEW_HEIGHT if row.unreviewed else SLIDE_HEIGHT)
 
     @staticmethod
     def review_button(rect) -> QRectF:
@@ -134,6 +143,12 @@ class SlideDelegate(QStyledItemDelegate):
 
     def editorEvent(self, event, model, option, index) -> bool:
         row = index.data(DATA)
+        block = index.data(BLOCK)
+        if (block is not None and event.type() == QEvent.Type.MouseButtonRelease
+                and event.button() == Qt.MouseButton.LeftButton
+                and event.position().x() >= option.rect.right() - 28):
+            self._tree.block_menu.emit(block, event.position().toPoint())
+            return True
         if (isinstance(row, SlideRow) and row.unreviewed
                 and event.type() == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton
                 and self.review_button(option.rect).contains(event.position())):
@@ -165,7 +180,7 @@ class SlideDelegate(QStyledItemDelegate):
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         tokens = self._theme.tokens
-        if isinstance(data, SectionRow):
+        if isinstance(data, (SectionRow, BlockRow)):
             self._paint_section(painter, option, index, data, tokens)
         else:
             self._paint_slide(painter, option, index, data, tokens)
@@ -180,11 +195,38 @@ class SlideDelegate(QStyledItemDelegate):
 
     def _paint_section(self, painter, option, index, section: SectionRow, t) -> None:
         rect = QRectF(option.rect.adjusted(0, 8, 0, 0))
-        if option.state & QStyle.StateFlag.State_MouseOver:
-            painter.setBrush(QColor(t.hover))
+        block = index.data(BLOCK)
+        if block or option.state & QStyle.StateFlag.State_MouseOver:
+            painter.setBrush(QColor(t.info_bg if block else t.hover))
             painter.setPen(Qt.PenStyle.NoPen)
             painter.drawRoundedRect(rect, RADIUS_SM, RADIUS_SM)
         painter.setPen(QColor(t.text_2))
+        if block:
+            painter.setPen(QColor(t.info_fg))
+            painter.setFont(self._font(FONT_ICONS, 16))
+            painter.drawText(QRectF(rect.left() + 5, rect.top(), 18, rect.height()),
+                             Qt.AlignmentFlag.AlignCenter, "link")
+            painter.setFont(self._font(FONT_SANS, TYPE.body, QFont.Weight.Medium))
+            painter.drawText(QRectF(rect.right() - 24, rect.top(), 20, rect.height()),
+                             Qt.AlignmentFlag.AlignCenter, "⋮")
+            left, right = rect.left() + 27, rect.right() - 30
+            font = self._font(FONT_SANS, TYPE.micro)
+            painter.setFont(font)
+            caption = f"topic block · {len(block.rows)} slides"
+            width = QFontMetrics(font).horizontalAdvance(caption)
+            if rect.width() < 380:
+                # Two lines keep the full caption readable in the default narrow column.
+                painter.drawText(QRectF(left, rect.top() + 14, right - left, 14), Qt.AlignmentFlag.AlignVCenter, caption)
+                title_rect = QRectF(left, rect.top(), right - left, 15)
+            else:
+                painter.drawText(QRectF(right - width, rect.top(), width, rect.height()),
+                                 Qt.AlignmentFlag.AlignVCenter, caption)
+                title_rect = QRectF(left, rect.top(), right - width - left - 8, rect.height())
+            font = self._font(FONT_SANS, TYPE.body, QFont.Weight.Medium)
+            painter.setFont(font)
+            title = QFontMetrics(font).elidedText(section.title, Qt.TextElideMode.ElideRight, int(title_rect.width()))
+            painter.drawText(title_rect, Qt.AlignmentFlag.AlignVCenter, title)
+            return
         # The disclosure caret stays small inside its narrow section gutter.
         painter.setFont(self._font(FONT_SANS, 9))
         caret = "▾" if option.state & QStyle.StateFlag.State_Open else "▸"
@@ -231,6 +273,8 @@ class SlideDelegate(QStyledItemDelegate):
             painter.drawRoundedRect(rect.adjusted(0.75, 0.75, -0.75, -0.75), RADIUS_SM, RADIUS_SM)
         if row.hidden and not current:
             painter.setOpacity(0.4)
+        if row.deck_call.block:
+            painter.fillRect(QRectF(rect.left(), rect.top(), 3, rect.height()), QColor(t.info))
 
         if row.unreviewed:
             font = self._font(FONT_SANS, TYPE.micro, QFont.Weight.Medium)
@@ -270,6 +314,11 @@ class SlideDelegate(QStyledItemDelegate):
 
         # the right edge: lock for a call that can't be edited here, then the variant chip
         right = rect.right() - 6
+        if row.deck_call.block:
+            painter.setPen(QColor(t.info))
+            painter.setFont(self._font(FONT_ICONS, 14))
+            painter.drawText(QRectF(right - 14, rect.top(), 15, rect.height()), Qt.AlignmentFlag.AlignCenter, "link")
+            right -= 20
         painter.setPen(Qt.PenStyle.NoPen)
         if not row.call.editable:
             # The per-slide lock stays smaller to leave room for the adjacent variant chip.
@@ -340,6 +389,7 @@ class SlideDelegate(QStyledItemDelegate):
 class SlideTree(QTreeWidget):
     command = Signal(str)             # "open", "remove", "rename", "move_up", "move_down"
     moved = Signal(list, object, int)    # dragged SlideRows or [SectionRow], drop target, indicator position
+    block_menu = Signal(object, object)   # BlockRow, viewport position
 
     def __init__(self, theme: ThemeManager, state: WorkspaceState, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -370,7 +420,8 @@ class SlideTree(QTreeWidget):
 
     # -- content ---------------------------------------------------------------
 
-    def populate(self, outline: list[SectionRow], view_label: str, language: str) -> None:
+    def populate(self, outline: list[SectionRow], view_label: str, language: str,
+                 block_titles: dict[Path, str] | None = None) -> None:
         """Replace the items by `outline`; the sections in `collapsed` start closed."""
         self.clear()
         self.delegate.forget_pixmaps()
@@ -381,7 +432,24 @@ class SlideTree(QTreeWidget):
             if section.chapter is not None and section.editable:
                 flags |= Qt.ItemFlag.ItemIsDragEnabled | Qt.ItemFlag.ItemIsEditable
             head.setFlags(flags)
+            blocks = {}
             for row in section.rows:
+                call = row.deck_call
+                if call.block:
+                    blocks.setdefault((call.source, call.call_start), []).append(row)
+            only_block = len(blocks) == 1 and len(next(iter(blocks.values()))) == len(section.rows)
+            for row in section.rows:
+                call = row.deck_call
+                if call.block:
+                    rows = blocks[(call.source, call.call_start)]
+                    if row is rows[0]:
+                        block = BlockRow(call.block, (block_titles or {}).get(call.source, call.block), rows)
+                        marker = head if only_block else QTreeWidgetItem(head)
+                        if not only_block:
+                            marker.setData(0, DATA, block)
+                            marker.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                        marker.setData(0, BLOCK, block)
+                        marker.setToolTip(0, f"{block.title} · topic block · {len(rows)} slides")
                 item = QTreeWidgetItem(head)
                 item.setData(0, DATA, row)
                 item.setToolTip(0, tooltip_text(row, view_label, language))
@@ -395,7 +463,8 @@ class SlideTree(QTreeWidget):
         return [self.topLevelItem(i) for i in range(self.topLevelItemCount())]
 
     def slide_items(self) -> list[QTreeWidgetItem]:
-        return [head.child(i) for head in self.section_items() for i in range(head.childCount())]
+        return [head.child(i) for head in self.section_items() for i in range(head.childCount())
+                if isinstance(self.data_of(head.child(i)), SlideRow)]
 
     @staticmethod
     def data_of(item: Optional[QTreeWidgetItem]):
@@ -463,7 +532,7 @@ class SlideTree(QTreeWidget):
             step = self.indexBelow
         else:
             return index
-        while index.isValid() and not index.parent().isValid():
+        while index.isValid() and not isinstance(index.data(DATA), SlideRow):
             index = step(index)
         return index if index.isValid() else self.currentIndex()
 

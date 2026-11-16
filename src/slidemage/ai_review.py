@@ -13,11 +13,10 @@ earlier side of Compare rendered for the edits that left no diff card, Claude Co
 from __future__ import annotations
 
 from collections import Counter
-from types import SimpleNamespace
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import deck_editor, fileio, slide_language
+from . import deck_language, fileio, slide_language
 from .filelock import build_lock
 from .project import ProjectContext
 
@@ -111,12 +110,13 @@ def rename(ctx: ProjectContext, old: Path, new: Path) -> None:
 
 
 def inserted_slides(ctx: ProjectContext, path: Path, before: str, after: str, source: str) -> None:
-    """Note added live deck calls on their slide's mark, never on the deck itself."""
-    if path.suffix != ".tex" or not path.resolve().is_relative_to(ctx.decks_dir.resolve()):
+    """Note added calls in decks or blocks on their slide's mark, never on the caller."""
+    # A block's first call may still be in an unsaved buffer.
+    if path.suffix != ".tex" or (path.resolve() not in {p.resolve() for p in deck_language.call_files(ctx)}
+                                 and path.resolve().parent != ctx.blocks_dir.resolve()):
         return
     def calls(text):
-        return Counter(call.source_filename for call in deck_editor.parse_slide_calls(
-            SimpleNamespace(text=text, chapters=[])))
+        return Counter(call.source_filename for call in deck_language.calls_in(text, [], comments=True))
     for filename in (calls(after) - calls(before)):
         slide = ctx.slides_dir / filename
         entry = unreviewed(ctx).get(_key(ctx, slide), {})

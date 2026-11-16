@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Optional
 
 from . import ai_review, alt_blocks, deck_editor, deck_language, languages, latex_lint, slide_language
+from .fileio import text_sha256
 from .project import ProjectContext
 from .deck_editor import SlideCall
 from .deck_scan import Chapter, Deck
@@ -149,15 +150,16 @@ class ResolvedSlot:
 
 
 def resolve_slots(ctx: ProjectContext, deck: Deck, view: str, language: str, *,
-                  links: slide_language.TranslationLinks | None = None) -> tuple[ResolvedSlot, ...]:
+                  links: slide_language.TranslationLinks | None = None,
+                  resolution: deck_language.Resolution | None = None) -> tuple[ResolvedSlot, ...]:
     """Logical occurrences and their per-view frame counters (hidden steps consume none)."""
     if view not in deck_editor.VIEWS:
         raise ValueError(f"Invalid preview view: {view!r}")
     occurrences = {}
     frame = 0
     result = []
-    for position, slot in enumerate(deck_language._slots(deck_language.active_calls(deck), language,
-                                                      links or slide_language.links_for(ctx)), 1):
+    for position, slot in enumerate(deck_language.slots(
+            ctx, (resolution or deck_language.resolve(deck)).calls, language, links=links), 1):
         base = _call_key(slot.original)
         occurrence = occurrences.get(base, 0)
         occurrences[base] = occurrence + 1
@@ -205,17 +207,20 @@ class Outline:
     workspace drops the outline when a slide file is written (WorkspaceState.drop_outline)."""
     ctx: ProjectContext
     deck_path: Path
-    deck_text: str
+    deck_hash: str
     view: str
     language: str
     sections: list[SectionRow]
     links: slide_language.TranslationLinks     # the scan the rows were built with
     instructor_frames: dict[tuple, int]        # occurrence key -> frame number in the Instructor view
 
-    def matches(self, ctx: ProjectContext, deck: Deck, language: str, view: str | None = None) -> bool:
-        """Whether this is the outline of `deck` in `language` (and `view`, unless None)."""
-        return (self.ctx == ctx and self.deck_path == deck.path and self.deck_text == deck.text
-                and self.language == language and view in (None, self.view))
+    def matches(self, ctx: ProjectContext, deck: Deck, language: str, view: str | None = None, *,
+                resolution: deck_language.Resolution | None = None) -> bool:
+        """Whether this describes the deck; `resolution` reuses an expansion already read for the pass."""
+        return (self.ctx == ctx and self.deck_path == deck.path
+                and self.language == language and view in (None, self.view)
+                and self.deck_hash == (resolution.hash if resolution else
+                                       text_sha256(deck_language.expand_fragments(deck)[0].text)))
 
     @property
     def rows(self) -> list[SlideRow]:
@@ -232,21 +237,25 @@ class Outline:
         return next((row for row in matches if row.key == occurrence_key), matches[0] if matches else None)
 
 
-def resolve_outline(ctx: ProjectContext, deck: Deck, view: str, language: str) -> Outline:
+def resolve_outline(ctx: ProjectContext, deck: Deck, view: str, language: str, *,
+                    resolution: deck_language.Resolution | None = None) -> Outline:
     """`build_outline`, with what resolving it learnt kept for others to reuse."""
     links = slide_language.links_for(ctx)
-    resolved = resolve_slots(ctx, deck, view, language, links=links)
+    resolution = resolution or deck_language.resolve(deck)
+    resolved = resolve_slots(ctx, deck, view, language, links=links, resolution=resolution)
     instructor = resolved if view == deck_editor.VIEW_INSTRUCTOR else resolve_slots(
-        ctx, deck, deck_editor.VIEW_INSTRUCTOR, language, links=links)
-    return Outline(ctx, deck.path, deck.text, view, language, _sections(ctx, deck, view, language, resolved, links), links,
+        ctx, deck, deck_editor.VIEW_INSTRUCTOR, language, links=links, resolution=resolution)
+    return Outline(ctx, deck.path, resolution.hash, view, language,
+                   _sections(ctx, deck, view, language, resolved, links), links,
                    {r.key: r.frame_number for r in instructor})
 
 
-def outline_rows(ctx: ProjectContext, deck: Deck, view: str, language: str, *, outline: Outline | None = None) -> list[SlideRow]:
+def outline_rows(ctx: ProjectContext, deck: Deck, view: str, language: str, *, outline: Outline | None = None,
+                 resolution: deck_language.Resolution | None = None) -> list[SlideRow]:
     """Every slide row of `deck` in order: `outline`'s when it describes this deck, view and language, else resolved afresh."""
-    if outline is not None and outline.matches(ctx, deck, language, view):
+    if outline is not None and outline.matches(ctx, deck, language, view, resolution=resolution):
         return outline.rows
-    return [row for section in build_outline(ctx, deck, view, language) for row in section.rows]
+    return resolve_outline(ctx, deck, view, language, resolution=resolution).rows
 
 
 def slide_row(ctx: ProjectContext, deck: Deck, slide_id: str, view: str, language: str, *, occurrence_key: tuple | None = None,

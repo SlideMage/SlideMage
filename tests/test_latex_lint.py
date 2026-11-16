@@ -319,3 +319,22 @@ def test_a_colour_under_a_colour_name_macros_name_is_warned_about(ctx):
     issues = [i for i in latex_lint.lint_text(ctx, text) if i.code == "macro-color"]
     assert [(i.line, i.severity) for i in issues] == [(1, "warning"), (3, "warning")]
     assert "\\renewcommand{\\SMTitleBoxColor}" in issues[0].message
+
+
+@pytest.mark.parametrize("extra", [r"\section{Topic}", r"\slideblock{nested}", "plain text"])
+def test_lint_reports_forbidden_block_content(ctx, extra):
+    ctx.blocks_dir.mkdir(parents=True)
+    ctx.decks_dir.mkdir(parents=True)
+    ctx.slides_dir.mkdir(parents=True)
+    block = ctx.blocks_dir / "topic_block.tex"
+    block.write_text("%% Topics: Example\n% \\section{Comment}\n\n" + extra
+                     + "\n\\slide{abc-EN-Hello} % kept\n", encoding="utf-8")
+    (ctx.slides_dir / "abc-EN-Hello-current.tex").write_text("Hello\n", encoding="utf-8")
+    (ctx.decks_dir / "test.tex").write_text(
+        "\\documentclass{beamer}\n\\begin{document}\n"
+        "\\slideblock{topic_block}\n\\end{document}\n", encoding="utf-8")
+    deck, = deck_scan.scan_dir(ctx.decks_dir, False)
+    result = latex_lint.check_deck_job(ctx, deck)
+    assert [(i.code, i.line, i.path) for i in result.errors] == [("block-content", 4, block)]
+    assert extra in result.errors[0].message
+    assert not result.warnings

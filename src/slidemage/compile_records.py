@@ -244,10 +244,14 @@ def write_record(
         entries = []
         seen: set[str] = set()
         inline_inputs = [deck_path] if deck_path is not None else []
+        expanded_hash = None
         if deck_path is not None and deck_path.is_file():
             from . import deck_groups, deck_language, deck_scan
             deck = next((d for d in deck_scan.scan_dir(deck_path.parent, False, deck_groups.load(ctx)) if d.path == deck_path), None)
             if deck is not None:
+                expanded, fragments = deck_language.expand_fragments(deck)
+                expanded_hash = text_sha256(expanded.text)
+                inline_inputs.extend(fragments)
                 # Include dependencies in every language: the wrapper can inline
                 # a shared slide list instead of having TeX open its original file.
                 for language in languages.project_languages(ctx).codes:
@@ -276,6 +280,8 @@ def write_record(
                 target.unlink(missing_ok=True)
                 return None
             entry = {"path": str(path), "sha256": sha256(path)}
+            if path == deck_path and expanded_hash is not None:
+                entry["text_sha256"] = expanded_hash
             if is_within(path, ctx.slides_dir) and path in typeset_inputs:
                 entry["text_sha256"] = text_sha256(path.read_text(encoding="utf-8", errors="replace"))
             entries.append(entry)

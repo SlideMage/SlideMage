@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
     QApplication, QCheckBox, QFrame, QHBoxLayout, QMessageBox, QSplitter, QSplitterHandle, QStackedWidget, QVBoxLayout,
     QWidget)
 
-from ... import app_settings, deck_editor, deck_outline, languages, open_path, preview_build, slide_branch, slide_language, slide_source, slide_usage, slide_versioning
+from ... import app_settings, deck_editor, deck_language, deck_outline, languages, open_path, preview_build, slide_branch, slide_language, slide_source, slide_usage, slide_versioning
 from ...ai.tools.slidemage import slide_target
 from ...preview_target import PreviewTarget, for_call, for_path
 from ...slide_language import MULT, bare_id, current_path_for_bare_id, own_language
@@ -495,7 +495,7 @@ class CentreColumn(QFrame):
                                          outline=state.outline if deck is state.deck else None)
         if any(row.matches(slide_id) for row in rows):
             return True
-        return any(bare_id(call.id_slug) == slide_id for call in deck_editor.parse_slide_calls(deck))
+        return any(bare_id(call.id_slug) == slide_id for call in deck_language.active_calls(deck))
 
     def _has_list(self, tab: CentreTab) -> bool:
         """Whether the slide list is the tab's: it follows the deck on show, or has a deck of its own that is open."""
@@ -528,7 +528,8 @@ class CentreColumn(QFrame):
         if not id_slug:
             return []
         decks = getattr(self.app, "decks", None)
-        return [usage.deck for usage in slide_usage.find_usage(self.state.project, id_slug, decks)]
+        return list({d.path: d for u in slide_usage.find_usage(self.state.project, id_slug, decks)
+                     for d in (u.decks if u.block else [u.deck])}.values())
 
     def adopt_deck(self, deck, tab: Optional[CentreTab] = None) -> None:
         """The placeholder's "Open in <deck>" (tab-contexts.md E6): `tab` (default: the one on show) gets `deck` as its
@@ -805,7 +806,7 @@ class CentreColumn(QFrame):
         if not changed:
             QMessageBox.information(self.app, "Update version", f"No slide of {deck.name} has changes since its last version.")
             return
-        self._update_versions(changed, "Update version of all changed slides", f"in {deck.name}")
+        self.update_versions(changed, "Update version of all changed slides", f"in {deck.name}")
 
     def update_selected_versions(self) -> None:
         """Make a version of each selected slide, using one shared bump level."""
@@ -813,17 +814,19 @@ class CentreColumn(QFrame):
         if not slugs:
             return
         self.source.flush_all()
-        self._update_versions(slugs, "Update versions", "selected")
+        self.update_versions(slugs, "Update versions", "selected")
 
-    def _update_versions(self, changed: list[str], title: str, label: str) -> None:
-        """Batch versioning keeps deck calls as they are, including pinned versions."""
+    def update_versions(self, changed: list[str], title: str, label: str) -> bool:
+        """Make a version of each slide of `changed` at one bump level asked here. Batch versioning keeps deck calls
+        as they are, including pinned versions. False when nothing was done: a slide's edits cannot be saved, or
+        the user cancelled."""
         blocked = [slug for slug in changed
                    if self.is_blocked(self.state.project.slides_dir / slide_language.current_name(slug))]
         if blocked:
             QMessageBox.warning(self.app, "Edits not saved",
                                 "These slides have edits that could not be saved (see the notice in the Source view); "
                                 "resolve that first: " + ", ".join(slide_language.bare_id(slug) for slug in blocked))
-            return
+            return False
         shown = ", ".join(slide_language.bare_id(slug) for slug in changed[:12]) + (", …" if len(changed) > 12 else "")
         box = QMessageBox(self.app)
         box.setWindowTitle(title)
@@ -837,7 +840,7 @@ class CentreColumn(QFrame):
         box.exec()
         level = next((name for name, button in levels.items() if box.clickedButton() is button), None)
         if level is None:
-            return
+            return False
         done, failed, updated = 0, [], []
         for slug in changed:
             current = self.state.project.slides_dir / slide_language.current_name(slug)
@@ -856,6 +859,7 @@ class CentreColumn(QFrame):
         if failed:
             QMessageBox.warning(self.app, "Update version",
                                 f"{done} slide(s) updated; not these:\n" + "\n".join(failed))
+        return True
 
     def freeze_version(self, id_slug: str, level: slide_versioning.BumpLevel) -> None:
         """Update Version (also the Versions panel's): the slide's current content becomes a frozen
@@ -1548,19 +1552,21 @@ class CentreColumn(QFrame):
             self.preview.set_step_choice(target.source_path, 1 if direction > 0 else None)
         state.set_focused_slide(other.call.id, occurrence_key=other.key)
 
-    def _english_frames(self, state) -> Optional[deck_outline.Outline]:
+    def _english_frames(self, state, resolution: deck_language.Resolution) -> Optional[deck_outline.Outline]:
         """An outline for for_call without a language, which takes the Instructor frame numbers of the English
         resolution: the state's own when it is English, else one resolution kept for the deck text. Without it each
         neighbour resolved every slot of the deck again (in German, six times after every Preview refresh)."""
         outline = state.outline
-        if outline is not None and outline.matches(state.project, state.deck, "EN"):
+        if outline is not None and outline.matches(state.project, state.deck, "EN", resolution=resolution):
             return outline
         cached = getattr(self, "_english_frames_cache", None)
-        if cached is not None and cached.matches(state.project, state.deck, "EN"):
+        if cached is not None and cached.matches(state.project, state.deck, "EN", resolution=resolution):
             return cached
         links = slide_language.links_for(state.project)
-        slots = deck_outline.resolve_slots(state.project, state.deck, deck_editor.VIEW_INSTRUCTOR, "EN", links=links)
-        cached = deck_outline.Outline(state.project, state.deck.path, state.deck.text, deck_editor.VIEW_INSTRUCTOR, "EN",
+        slots = deck_outline.resolve_slots(state.project, state.deck, deck_editor.VIEW_INSTRUCTOR, "EN", links=links, resolution=resolution)
+        cached = deck_outline.Outline(state.project, state.deck.path,
+                                      resolution.hash,
+                                      deck_editor.VIEW_INSTRUCTOR, "EN",
                                       [], links, {r.key: r.frame_number for r in slots})
         self._english_frames_cache = cached
         return cached
@@ -1579,7 +1585,8 @@ class CentreColumn(QFrame):
         cached = getattr(self, "_neighbours_cache", None)
         if cached is not None and cached[0] == key and cached[1] is state.outline:
             return cached[2]
-        rows = deck_outline.outline_rows(state.project, deck, state.view, state.language, outline=state.outline)
+        resolution = deck_language.resolve(state.deck)
+        rows = deck_outline.outline_rows(state.project, deck, state.view, state.language, outline=state.outline, resolution=resolution)
         index = next((i for i, r in enumerate(rows) if r.position == row.position), None)
         if index is None:
             return []
@@ -1588,9 +1595,9 @@ class CentreColumn(QFrame):
             picks += [rows[i] for i in (index - distance, index + distance) if 0 <= i < len(rows)]
         # Built as the focused slide's target is (batch_render.plan_slide), so a neighbour's step count is found
         # under the same key once that slide is focused.
-        frames = self._english_frames(state)
+        frames = self._english_frames(state, resolution)
         targets = [(for_call(state.project, deck, r.call, r.position, frame_number=r.frame_number,
-                             occurrence_key=r.key, hidden=r.hidden, outline=frames), r) for r in picks if not r.hidden]
+                             occurrence_key=r.key, hidden=r.hidden, outline=frames, resolution=resolution), r) for r in picks if not r.hidden]
         if state.outline is not None:           # without a resolved outline there is nothing that says it is still right
             self._neighbours_cache = (key, state.outline, targets)
         return targets
@@ -1605,10 +1612,11 @@ class CentreColumn(QFrame):
         cached = getattr(self, "_deck_targets_cache", None)
         if cached is not None and cached[0] == key and cached[1] is state.outline:
             return cached[2]
-        rows = deck_outline.outline_rows(state.project, state.deck, state.view, state.language, outline=state.outline)
-        frames = self._english_frames(state)
+        resolution = deck_language.resolve(state.deck)
+        rows = deck_outline.outline_rows(state.project, state.deck, state.view, state.language, outline=state.outline, resolution=resolution)
+        frames = self._english_frames(state, resolution)
         targets = [(for_call(state.project, state.deck, r.call, r.position, frame_number=r.frame_number,
-                             occurrence_key=r.key, hidden=r.hidden, outline=frames), r) for r in rows if not r.hidden]
+                             occurrence_key=r.key, hidden=r.hidden, outline=frames, resolution=resolution), r) for r in rows if not r.hidden]
         self._deck_targets_cache = (key, state.outline, targets)
         return targets
 

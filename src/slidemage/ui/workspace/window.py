@@ -59,6 +59,7 @@ from ..kit.kit_qss import WARNING_LABEL
 from ..kit.theme import ThemeManager
 from ..kit.widgets import Toast
 from ..pages.images import ImagesPage
+from ..pages.library.page import LibraryPage
 from ..pages.no_decks import NoDecksPage
 from ..text import plural
 from . import compile_actions, side_panels, slide_list, source_file
@@ -206,6 +207,9 @@ class WorkspaceWindow(QMainWindow):
         self.images_page = ImagesPage(self, self.state, self.centre)
         self.images_page.closed.connect(self._toggle_images)
         self.stack.addWidget(self.images_page)
+        self.library_page = LibraryPage(self)
+        self.library_page.closed.connect(self._toggle_library)
+        self.stack.addWidget(self.library_page)
         self.stack.currentChanged.connect(self._on_page_changed)
         for column in (self.slide_list, self.stack, self.side_panels):
             self.splitter.addWidget(column)
@@ -366,10 +370,10 @@ class WorkspaceWindow(QMainWindow):
         self._apply_column_visibility()
 
     def _apply_column_visibility(self) -> None:
-        # Images temporarily uses both columns' room without changing the user's preferences.
-        is_images = self.stack.currentWidget() is self.images_page
-        self.slide_list.setVisible(not is_images and not self.left_column_hidden)
-        self.side_panels.setVisible(not is_images and not self.right_column_hidden)
+        # Pages temporarily use both columns' room without changing the user's preferences.
+        is_workspace = self.stack.currentWidget() is self.centre
+        self.slide_list.setVisible(is_workspace and not self.left_column_hidden)
+        self.side_panels.setVisible(is_workspace and not self.right_column_hidden)
         if self._columns_sized:
             self.set_column_widths(left=slide_list.remembered_width(), right=side_panels.remembered_width(self.project))
         self.topbar.refresh_column_toggles()
@@ -435,7 +439,8 @@ class WorkspaceWindow(QMainWindow):
             self.decks = scan_decks(self.project)
         self.centre.decks_rescanned(old_names, self.decks)      # each working tab follows its deck, or closes with it
         self.topbar.set_decks(self.decks, self.deck_groups)
-        self.body.setCurrentWidget(self.no_decks if not self.decks else self.body.widget(0))
+        self.body.setCurrentWidget(self.no_decks if not self.decks and self.stack.currentWidget() is not self.library_page
+                                   else self.body.widget(0))
         if not self.decks:
             self.no_decks.refresh()
         timing.caller("reload_decks")
@@ -480,12 +485,13 @@ class WorkspaceWindow(QMainWindow):
     # -- the centre column's pages ---------------------------------------------
 
     def _on_page_changed(self, index: int) -> None:
-        """Tell the top bar whether Images is open; the page takes the room of the slide list and the
-        side panels, and scans the slides when it is first shown. Both write the same image store: a
-        pending edit of the panel is saved before the page shows, one of the page when it is left, and
-        what the other wrote shows then."""
+        """Full-width pages load on first opening. Images shares its store with the side panels:
+        save pending edits when switching pages so the other view sees them."""
         is_images = self.stack.widget(index) is self.images_page
+        is_library = self.stack.widget(index) is self.library_page
         self.topbar.set_images_open(is_images)
+        self.topbar.set_library_open(is_library)
+        self.body.setCurrentWidget(self.body.widget(0) if is_library or self.decks else self.no_decks)
         self._apply_column_visibility()
         if is_images:
             self.side_panels.flush()
@@ -496,9 +502,26 @@ class WorkspaceWindow(QMainWindow):
             except Exception as exc:  # noqa: BLE001 -- the edits stay in the page (and in the close prompt)
                 QMessageBox.critical(self, "Save failed", f"Could not save image edits: {exc}")
             self.side_panels.refresh()
+        if is_library:
+            self.library_page.ensure_loaded()
 
     def _toggle_images(self) -> None:
         self.stack.setCurrentWidget(self.centre if self.stack.currentWidget() is self.images_page else self.images_page)
+
+    def show_library(self, *, block: str | None = None) -> None:
+        self.stack.setCurrentWidget(self.library_page)
+        if block is not None:
+            self.library_page.show_block(block)
+
+    def _toggle_library(self) -> None:
+        self.stack.setCurrentWidget(self.centre if self.stack.currentWidget() is self.library_page else self.library_page)
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() == Qt.Key.Key_Escape and self.stack.currentWidget() is self.library_page:
+            self.stack.setCurrentWidget(self.centre)
+            event.accept()
+        else:
+            super().keyPressEvent(event)
 
     def open_images_for_slide(self, id_slug: str) -> None:
         """The slide list's "Images" entry: opens the Images page and lands on that slide's images."""
@@ -621,6 +644,7 @@ class WorkspaceWindow(QMainWindow):
         self.centre.source.stop_ai_checks()   # no worker thread outlives the window
         self.assistant.shutdown()
         self.images_page.shutdown()
+        self.library_page.shutdown()
         self.palette.stop_search(5000)
         self.compile.shutdown()
         self.background.stop()

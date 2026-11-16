@@ -39,7 +39,7 @@ def bar_order(window, *, images: bool = False) -> list[QWidget]:
     bar = window.topbar
     stops = [bar._left_column, bar._deck_button,
              bar._views.current_button(), bar._languages.current_button(), bar._modes.current_button(),
-             *bar._compile.buttons(), *([bar._images] if images else []), bar._right_column]
+             *bar._compile.buttons(), *([bar._images] if images else []), bar._library, bar._right_column]
     xs = [stop.mapTo(bar, stop.rect().topLeft()).x() for stop in stops if stop.isVisible()]
     assert xs == sorted(xs) and len(xs) == len(stops)        # the list is the visual order
     return stops

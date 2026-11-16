@@ -207,6 +207,9 @@ class SlideRef:
     """The title of the \\section the slide call stands under, as plain text, or "" before the first section
     (SlideMage v0.13.21)."""
 
+    block: str | None = None
+    """The linked topic block key, or None for a call written in the deck."""
+
 
 @dataclass(frozen=True)
 class ThemeTokens:
@@ -822,7 +825,8 @@ class Host(Protocol):
         "after-course") read in `language` (a code of project_languages()): one ref per slide call, hidden ones included (SlideRef.hidden), and a
         slide with a translation into `language` as that translation. A slide without one is the slide in its own
         language: compare SlideRef.language. Reads deck.text and the slide files as they are now and changes
-        nothing; may be called from a worker. Slides in included fragments are not listed.
+        nothing; may be called from a worker. Includes slides in linked blocks and local body fragments;
+        repeated blocks contribute one ref per call at each occurrence (SlideRef.block names the block).
         Raises ValueError for an unknown view or language."""
         ...
 
