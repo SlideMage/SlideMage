@@ -636,3 +636,47 @@ def test_color_menu_leads_with_the_roles_in_the_mode_of_the_view_shown(pane, ctx
     pane._open_color_menu()
     shown[0].triggered.emit("c_text")
     assert choose == ["textcolor{c_text}"]
+
+
+# -- Reindent in the Tools menu: slides, decks and the .bib -----------------------------------------------
+
+def _tools_menu(pane, monkeypatch):
+    from slidemage.ui.kit.widgets import PopoverMenu
+
+    shown = []
+    monkeypatch.setattr(PopoverMenu, "popup_below", lambda self, anchor, **kw: shown.append(self))
+    pane._open_tools_menu()
+    return {e[1]: e for e in shown[0]._entries if e[0] == "item"}
+
+
+def test_reindent_is_offered_for_a_deck_and_the_bib_with_their_own_rules(pane, ctx, slides, monkeypatch):
+    deck = ctx.decks_dir / "course.tex"
+    deck.parent.mkdir(parents=True, exist_ok=True)
+    deck.write_text("\\begin{document}\n\\section{A}\n\\slide{abc-EN-Demo}\n\\end{document}\n", encoding="utf-8")
+    bib = ctx.bibliography_path
+    bib.write_text("@book{alpha,\ntitle={A},\n  }\n", encoding="utf-8")
+    other = ctx.root / "notes.tex"
+    other.write_text("x\n", encoding="utf-8")
+
+    pane.show_path(deck)
+    assert pane.current.is_deck and pane.current.reindent_kind == "deck"
+    item = _tools_menu(pane, monkeypatch)["reindent"]
+    assert item[6] and "\\if" in item[3]                        # enabled, and says what it does
+    pane.reindent()
+    assert pane.current.editor.text() == "\\begin{document}\n\t\\section{A}\n\t\\slide{abc-EN-Demo}\n\\end{document}\n"
+    assert pane.app_for_test.logged[-1] == "Reindented course.tex"
+
+    pane.show_path(bib)
+    assert pane.current.reindent_kind == "bib" and _tools_menu(pane, monkeypatch)["reindent"][6]
+    pane.reindent()
+    assert pane.current.editor.text() == "@book{alpha,\n\ttitle={A},\n}\n"
+    pane.reindent()
+    assert pane.app_for_test.logged[-1] == "SlideMage.bib: indentation already correct"
+
+    pane.show_path(slides / "def-EN-Other-current.tex")
+    assert pane.current.reindent_kind == "slide" and _tools_menu(pane, monkeypatch)["reindent"][6]
+    pane.show_path(other)                                       # any other file: not offered
+    assert pane.current.reindent_kind is None and not _tools_menu(pane, monkeypatch)["reindent"][6]
+    before = pane.current.editor.text()
+    pane.reindent()
+    assert pane.current.editor.text() == before

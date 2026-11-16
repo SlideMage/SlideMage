@@ -37,6 +37,8 @@ listing shown in the GUI and in README.md):
     percent       "5% growth": the % starts a comment and swallows the rest
     overlay       \\only<2-> style overlay specification whose > is missing
     optional-arg  \\item[ label never closed on its line
+    macro-color   \\colorlet/\\definecolor of a name that is a macro holding a
+                  color's name (\\SMTitleBoxColor ...): the macro stays
     table-edges   SMTable with neither [gap=...] nor @{} edges: its rules
                   run past the text on both sides
     heading-text  frame opens with a bare \\textbf{...} line above its list
@@ -81,6 +83,7 @@ CHECKS: list[tuple[str, str, str]] = [
     ("overlay", WARNING, "Overlay specification whose closing > is missing, e.g. \\only<2-{...}."),
     ("optional-arg", WARNING, "\\item[ ... whose closing ] is missing on that line."),
     ("heading-text", WARNING, "A content frame that opens with a bare \\textbf{...} line directly above its list: the heading reads as a detached label -- make it the list's first \\item."),
+    ("macro-color", WARNING, "\\colorlet or \\definecolor of a name that is a SlideMage macro holding a color's name (\\SMTitleBoxColor, \\SMBulletColor ...): it defines a color nothing uses and the macro keeps its value. Write \\renewcommand{\\SMTitleBoxColor}{c_secondary_blue}."),
     ("table-edges", WARNING, "\\begin{SMTable}{...} with neither a [gap=...] option nor @{} at the edges of its column spec: the table rules run \\tabcolsep past the text on both sides. Write \\begin{SMTable}[gap=12pt]{lcc}."),
 ]
 _SEVERITY = {code: sev for code, sev, _ in CHECKS}
@@ -589,10 +592,24 @@ def _external(ctx: ProjectContext, text: str) -> list[LintIssue]:
 # Public API
 # --------------------------------------------------------------------------
 
+_COLOUR_DEFINITION_RE = re.compile(r"\\(colorlet|definecolor|providecolor)\s*\{(SM[A-Za-z]+)\}")
+
+
+def _macro_colours(text: str) -> list[LintIssue]:
+    """A colour defined under the name of a macro that holds a colour's name: the macro stays as it was."""
+    from . import theme_fields
+
+    masked = masked_same_length(text)
+    return [LintIssue("macro-color", f"\\{m.group(1)}{{{m.group(2)}}} defines a color nothing uses: \\{m.group(2)} is a "
+                      f"macro, set it with \\renewcommand{{\\{m.group(2)}}}{{...}}", masked.count("\n", 0, m.start()) + 1)
+            for m in _COLOUR_DEFINITION_RE.finditer(masked) if m.group(2) in theme_fields.MACRO_COLOURS]
+
+
 def lint_text(ctx: ProjectContext, text: str, source: str = "buffer", path: Optional[Path] = None) -> list[LintIssue]:
     """All issues in one piece of LaTeX source (the editor buffer, a file...)."""
     found = [i.with_source(source, path) for i in _lex(text)]
     found += [i.with_source(source, path) for i in _external(ctx, text)]
+    found += [i.with_source(source, path) for i in _macro_colours(text)]
     found.sort(key=lambda x: (x.line, x.code))
     return found
 

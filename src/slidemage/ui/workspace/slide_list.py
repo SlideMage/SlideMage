@@ -26,6 +26,7 @@ import weakref
 from PySide6.QtCore import QItemSelectionModel, QModelIndex, QPoint, Qt, QTimer, Signal
 from PySide6.QtGui import QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
+    QAbstractItemDelegate,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -51,7 +52,7 @@ from ..kit.theme import ThemeManager
 from ..kit.widgets import Button, IconButton, PopoverMenu, Toast
 from .menus import VIEW_LABELS, add_commands
 from .slide_tree import SlideTree, tooltip_text
-from .state import VIEWS, WorkspaceState
+from .state import VIEWS, DeckWork, WorkspaceState
 
 UNDO_LIMIT = 20
 
@@ -99,6 +100,7 @@ class SlideList(QWidget):
         self._outline: list[SectionRow] = []
         self._resolved: Optional[deck_outline.Outline] = None   # what `_outline` was resolved from (state.outline)
         self._deck_path: Optional[Path] = None
+        self._returning: Optional[DeckWork] = None     # show_deck(): the deck's work the next rebuild restores
         self._undo: dict[Path, list[str]] = {}
         self.setMinimumWidth(MIN_WIDTH)
         self.setMaximumWidth(MAX_WIDTH)
@@ -463,6 +465,44 @@ class SlideList(QWidget):
             if self.state.outline is not None:
                 self.state.outline = self._resolved
 
+    def work(self) -> Optional[DeckWork]:
+        """The deck on show as the user has it: the state's snapshot with this list's scroll, closed sections and Find
+        text (tab-contexts.md section 2). None without a deck."""
+        work = self.state.snapshot()
+        if work is None:
+            return None
+        return replace(work, list_scroll=self.tree.verticalScrollBar().value(),
+                       collapsed=tuple(sorted(self.tree.collapsed)), list_filter=self.find.text())
+
+    def show_deck(self, deck: Deck, work: Optional[DeckWork] = None) -> bool:
+        """Open `deck`; with `work` (what `work()` gave when it was left) it comes back as it was: focus, selection, view,
+        language, scroll, closed sections and Find text, the resolved outline used while it is still valid. Whether it
+        was a switch."""
+        self._returning = work
+        try:
+            return self.state.set_deck(deck, work)
+        finally:
+            self._returning = None
+
+    def apply_work(self, work: DeckWork) -> None:
+        """Put the deck on show back as `work` says (restore at start): closed sections and Find text, the focused slide when
+        it is still a row, and the scroll."""
+        self.tree.collapsed.clear()
+        self.tree.collapsed.update(work.collapsed)
+        self.find.blockSignals(True)
+        self.find.setText(work.list_filter)
+        self.find.blockSignals(False)
+        self.rebuild(preserve_focus=True)
+        if work.focused_slide is not None and any(self.tree.data_of(i).matches(work.focused_slide) for i in self.tree.slide_items()):
+            self.state.set_focused_slide(work.focused_slide, occurrence_key=work.focused_occurrence)
+        self.tree.verticalScrollBar().setValue(work.list_scroll)
+
+    def commit_editors(self) -> None:
+        """Finish an inline edit under way (a section's name) now, so it is made in the deck it was typed in."""
+        for editor in self.tree.viewport().findChildren(QLineEdit):
+            self.tree.commitData(editor)
+            self.tree.closeEditor(editor, QAbstractItemDelegate.EndEditHint.NoHint)
+
     def rebuild(self, *, preserve_focus: bool = False) -> None:
         """Redraw from the deck as it is now; keeps the selection and the focus
         (by what a call is, so an edit elsewhere leaves them), and the scroll position."""
@@ -488,12 +528,20 @@ class SlideList(QWidget):
         current_index = next((i for i, item in enumerate(self.tree.slide_items())
                               if item is self.tree.currentItem()), 0)
         scroll = self.tree.verticalScrollBar().value()
+        returning = (self._returning or self.state.restoring) if not same_deck and deck else None
         if not same_deck:
             self.tree.collapsed.clear()
+            if returning is not None:
+                self.tree.collapsed.update(returning.collapsed)
+                self.find.blockSignals(True)
+                self.find.setText(returning.list_filter)
+                self.find.blockSignals(False)
         self._deck_path = path
+        reused = self.state.current_outline() if returning is not None else None
         with timing.span("slide_list.resolve_outline"):
-            self._resolved = (deck_outline.resolve_outline(self.app.project, deck, self.state.view, self.state.language)
-                              if deck else None)
+            self._resolved = reused if reused is not None else (
+                deck_outline.resolve_outline(self.app.project, deck, self.state.view, self.state.language)
+                if deck else None)
         self.state.outline = self._resolved
         self._outline = self._resolved.sections if self._resolved else []
         # Keep the images on show while the background pass revalidates them.
@@ -522,8 +570,12 @@ class SlideList(QWidget):
         focus = next((i for i in items if self.tree.data_of(i).key == current_key), None)
         if focus is None and current_key is not None and items:
             focus = items[min(current_index, len(items) - 1)]
-        if focus is None and not same_deck and items:      # a deck just opened: its first slide is the focus
-            focus = items[0]
+        if returning is not None:              # the deck as it was left: its focused slide and selection are the rows
+            wanted = self.state.selection
+            for item in items:
+                item.setSelected(self.tree.data_of(item).call.id in wanted)
+            focus = self._item_of(self.state.focused_slide) or focus
+            scroll = returning.list_scroll
         if focus is not None:
             self.tree.setCurrentItem(focus, 0, QItemSelectionModel.SelectionFlag.NoUpdate)
         self.tree.blockSignals(False)
@@ -576,6 +628,17 @@ class SlideList(QWidget):
         """The row of the focused slide `slide_id` (its focused occurrence, when it is in the deck twice)."""
         return next((i for i in self.tree.slide_items() if self.tree.data_of(i).matches(slide_id)
                      and (self.state.focused_occurrence is None or self.tree.data_of(i).key == self.state.focused_occurrence)), None)
+
+    def focus_first_slide(self) -> None:
+        """A deck the user just opened (the deck menu, the deck the window starts with): its first slide is the
+        focus, unless the deck came back with a focus of its own (a deck returned to). Not part of rebuild(): a
+        rebuild also follows a tab that shows another deck behind the scenes, and focusing a slide there would move
+        the centre off that tab (2026-11-16)."""
+        if self.state.focused_slide is not None:
+            return
+        items = self.tree.slide_items()
+        if items:
+            self.tree.setCurrentItem(items[0], 0, QItemSelectionModel.SelectionFlag.NoUpdate)
 
     def _on_current_changed(self, item: Optional[QTreeWidgetItem], _previous) -> None:
         row = self.tree.data_of(item)
@@ -763,6 +826,7 @@ class SlideList(QWidget):
                               enabled=editable, icon="check" if (call.macro, call.version) == (macro, version) else "")
         menu.add_separator()
         add_commands(menu, self.app, [f"slide:visible:{view}" for view in VIEWS])
+        self._add_review_items(menu, [row])
         menu.add_separator()
         add_commands(menu, self.app, ["slide:before", "slide:after", "slide:duplicate", "slide:translate",
                                   "slide:section_before"])
@@ -776,10 +840,20 @@ class SlideList(QWidget):
         menu = self._new_menu(260)
         menu.add_header(f"{len(rows)} slides selected")
         add_commands(menu, self.app, [f"slide:visible:{view}" for view in VIEWS])
+        self._add_review_items(menu, rows)
         self._add_move_items(menu, all(r.call.editable for r in rows))
         menu.add_separator()
         add_commands(menu, self.app, ["slide:update_versions", "slide:reviewed", "compile:slides", "slide:clear", "slide:remove"])
         return menu
+
+    def _add_review_items(self, menu: PopoverMenu, rows: list[SlideRow]) -> None:
+        """The deck's own "under review" mark (\\SMReview{...}): a watermark on the previews, not in the PDF."""
+        editable = all(r.deck_call.editable for r in rows)
+        marked = all(r.review for r in rows)
+        menu.add_separator()
+        menu.add_item("review:toggle", "Clear review mark" if marked else "Mark for review in this deck",
+                      meta="\\SMReview", enabled=editable, icon="check" if marked else "")
+        menu.add_item("review:note", "Review note…", enabled=editable)
 
     def _add_move_items(self, menu: PopoverMenu, enabled: bool) -> None:
         menu.add_separator()
@@ -852,6 +926,10 @@ class SlideList(QWidget):
             self._change_variant(target, macro, version or None)
         elif name == "visible":
             self._set_visibility(targets, arg, not all(r.call.included_in(arg) for r in targets))
+        elif name == "review" and arg == "note":
+            self._ask_review_note(targets)
+        elif name == "review":
+            self._set_review(targets, not all(r.review for r in targets))
         elif name == "before":
             self._open_add(target.call.line_start, target.call.indent, f"before {target.call.id_slug}",
                            target.call.id_slug)
@@ -1010,6 +1088,24 @@ class SlideList(QWidget):
             f"{'Showed' if visible else 'Hid'} {what} in {VIEW_LABELS[view]} of {self.deck.name}",
             lambda path, text: deck_editor.set_calls_visibility(path, text, calls, view, visible),
             cleanup=self._flag_cleanup([c.id_slug for c in calls]))
+
+    def _set_review(self, rows: list[SlideRow], review: bool, note: Optional[str] = None) -> None:
+        """Mark the slides of `rows` as under review in this deck, or clear the mark. Only the deck file changes."""
+        calls = list({c.call_start: c for r in rows for c in (r.deck_call, *r.folded_calls)}.values())
+        what = ", ".join(dict.fromkeys(c.id_slug for c in calls))
+        self.edit(
+            "Change failed",
+            f"{'Marked' if review else 'Cleared the review mark of'} {what}{' for review' if review else ''} "
+            f"in {self.deck.name}",
+            lambda path, text: deck_editor.set_calls_review(path, text, calls, review, note))
+
+    def _ask_review_note(self, rows: list[SlideRow]) -> None:
+        note, accepted = QInputDialog.getText(
+            self, "Review note",
+            "Note shown under the watermark on the preview (empty for none):",
+            text=rows[0].review_note)
+        if accepted:
+            self._set_review(rows, True, note)
 
     def _bulk_toggle_visibility(self) -> None:
         rows = self.tree.selected_rows()

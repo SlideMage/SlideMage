@@ -313,12 +313,12 @@ class TopBar(QWidget):
 
     def _update_compile_label(self) -> None:
         deck = self._state.deck
-        label = "Compile PDF"
+        label = "Compile deck PDF"
         if deck is not None and deck.supports_version:
             label += " · " + VIEW_LABELS[self._state.view].replace(" course", "")
         self._compile.set_text(label if self._density == "full" else "Compile")
         versioned = deck is not None and deck.supports_version
-        self._compile.setToolTip("Compile PDF" + (" · " + VIEW_LABELS[self._state.view] if versioned else ""))
+        self._compile.setToolTip("Compile deck PDF" + (" · " + VIEW_LABELS[self._state.view] if versioned else ""))
         self._compile.setEnabled(deck is not None)
 
     def refresh_compile_menu(self) -> None:
@@ -342,5 +342,8 @@ class TopBar(QWidget):
     def _on_deck_picked(self, key: str) -> None:
         for deck in self._decks:
             if deck_key(deck) == key:
-                self._state.set_deck(deck)
+                if self._state.set_deck(deck):
+                    slide_list = getattr(self._window, "slide_list", None)
+                    if slide_list is not None:
+                        slide_list.focus_first_slide()
                 return

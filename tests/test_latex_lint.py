@@ -310,3 +310,12 @@ def _issue(code, line, message=None):
 def test_lex_golden(text, expected):
     # Includes ordering and duplicates, plus the default source/path on each cached issue.
     assert _lex(text) == tuple(expected)
+
+
+def test_a_colour_under_a_colour_name_macros_name_is_warned_about(ctx):
+    text = ("\\colorlet{SMTitleBoxColor}{c_secondary_blue}\n% \\colorlet{SMBulletColor}{red}\n"
+            "\\definecolor{SMBulletColor}{HTML}{112233}\n\\colorlet{SMCodeKeywordColor}{c_secondary_blue}\n"
+            "\\renewcommand{\\SMTitleBoxColor}{c_secondary_blue}\n")
+    issues = [i for i in latex_lint.lint_text(ctx, text) if i.code == "macro-color"]
+    assert [(i.line, i.severity) for i in issues] == [(1, "warning"), (3, "warning")]
+    assert "\\renewcommand{\\SMTitleBoxColor}" in issues[0].message

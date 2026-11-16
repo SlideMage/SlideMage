@@ -310,3 +310,45 @@ def test_the_form_reads_every_catalog_kind_from_the_stress_template():
     wanted = [name for name, entry in catalog.items() if entry.kind in ("length", "macro", "colour", "optional_colour")]
     missing = [name for name in wanted if edited.find(name) is None]
     assert not missing, missing
+
+
+# --- macros that hold a colour's name (v0.16.45: the form wrote a \colorlet for them) -------------------------------
+
+def bare(lines: str = "") -> str:
+    return "\\input{SlideMage_setup}\n" + BLOCK_BEGIN + "\n" + lines + BLOCK_END + "\n\\input{SlideMage_base}\n"
+
+
+@pytest.mark.parametrize("key", sorted(theme_fields.MACRO_COLOURS))
+def test_a_colour_name_macro_is_set_with_renewcommand(key):
+    theme = ThemeFile(bare())
+    theme.set(key, " c_secondary_blue ")
+    assert f"\\renewcommand{{\\{key}}}{{c_secondary_blue}}\n" in theme.text and "\\colorlet" not in theme.text
+    assert theme.value(key) == "c_secondary_blue"
+    theme.set(key, "c_primary_dark!50")
+    assert theme.text.count(key) == 1 and theme.value(key) == "c_primary_dark!50"
+    theme.remove(key)
+    assert key not in theme.text
+    with pytest.raises(ValueError):
+        ThemeFile(bare())._line_for(key, "#123456", "dark")
+
+
+def test_a_colorlet_of_a_macros_name_is_not_its_value_and_an_edit_puts_it_right():
+    stale = ("\\definecolor{SMTitleBoxColor}{HTML}{112233}\n\\colorlet{SMBulletColor}{c_primary_gray}\n"
+             "\\colorlet{SMTitleBoxColor}{c_secondary_blue} % the bar\n")
+    theme = ThemeFile(bare(stale))
+    assert theme.value("SMTitleBoxColor") is None           # TeX reads the macro, which these lines leave alone
+    assert "SMTitleBoxColor" not in theme.own_colours() and "SMBulletColor" not in theme.own_colours()
+    theme.set("SMTitleBoxColor", "c_secondary_blue")         # the last such line becomes the \renewcommand, in place
+    assert theme.text == bare("\\colorlet{SMBulletColor}{c_primary_gray}\n"
+                              "\\renewcommand{\\SMTitleBoxColor}{c_secondary_blue} % the bar\n")
+    assert theme.value("SMTitleBoxColor") == "c_secondary_blue"
+    theme.remove("SMBulletColor")                            # following the default again takes the stray line along
+    assert "SMBulletColor" not in theme.text
+    both = ThemeFile(bare("\\renewcommand{\\SMTitleBoxColor}{c_primary_gray}\n"
+                          "\\colorlet{SMTitleBoxColor}{c_secondary_blue}\n"))
+    assert both.value("SMTitleBoxColor") == "c_primary_gray"
+    both.set("SMTitleBoxColor", "c_secondary_red")
+    assert both.text == bare("\\renewcommand{\\SMTitleBoxColor}{c_secondary_red}\n")
+    palette = ThemeFile(bare())                               # a real colour of the catalog is still a colour
+    palette.set("SMCodeKeywordColor", "c_secondary_blue")
+    assert "\\colorlet{SMCodeKeywordColor}{c_secondary_blue}" in palette.text
