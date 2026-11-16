@@ -213,23 +213,26 @@ def skeleton(ctx: ProjectContext, deck: Deck, position: int, id_slug: str, view:
     begin = deck.preamble_end or 0
     end_match = re.search(r"\\end\{document\}", text[begin:])
     limit = begin + end_match.start() if end_match else len(text)
-    events: list[tuple[int, str]] = []
+    events: list[tuple[tuple[int, int], str]] = []
     for match in _SECTION_COMMAND_RE.finditer(text, begin, limit):
         if is_commented(text, match.start() + (len(match.group(0)) - len(match.group(0).lstrip()))):
             continue
         group = _group(text, match.end() - 1)
         if group is not None:
             command = text[match.start():group[1]].strip()
-            events.append((match.start(), command + "\n"))
+            events.append(((match.start(), -1), command + "\n"))
     fallback = titles or {}
+    chosen_key = (chosen.call_start, chosen.index if chosen.index is not None else -1)
     for slot in slots:
-        if slot.original.call_start == chosen.call_start:
+        if slot.original.identity == chosen.identity:
             continue
         if slot.call.included_in(view):
-            events.append((slot.original.call_start, _record(ctx, slot.call, fallback)))
+            call = slot.original
+            key = (call.call_start, call.index if call.index is not None else -1)
+            events.append((key, _record(ctx, slot.call, fallback)))
     events.sort(key=lambda event: event[0])
-    before = "".join(chunk for offset, chunk in events if offset < chosen.call_start)
-    after = "".join(chunk for offset, chunk in events if offset > chosen.call_start)
+    before = "".join(chunk for key, chunk in events if key < chosen_key)
+    after = "".join(chunk for key, chunk in events if key > chosen_key)
     return Skeleton(before, after + FLUSH_FRAME if after else "")
 
 

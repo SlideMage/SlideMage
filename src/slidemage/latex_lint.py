@@ -31,6 +31,7 @@ listing shown in the GUI and in README.md):
     image         \\includegraphics/\\chapterlogo file that does not exist
     code-file     \\SMCodeFile{path} whose file does not exist
     slide-file    a \\slide{}-family call whose slides/*.tex file is missing
+    block-content anything other than slide calls, blank lines and comments in a topic block
 
   warnings (very likely a mistake, but the compile may still succeed)
     underscore    _ in running text outside math / macro arguments
@@ -55,10 +56,10 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Iterable, Optional
 
-from . import bibliography, deck_editor
+from . import bibliography, deck_editor, deck_language, topic_blocks
 from .deck_scan import Chapter, Deck
 from .project import ProjectContext
-from .tex_source import INPUT_RE, blanked_verbatim, comment_start, masked_same_length
+from .tex_source import blanked_verbatim, comment_start, masked_same_length
 
 ERROR = "error"
 WARNING = "warning"
@@ -77,6 +78,7 @@ CHECKS: list[tuple[str, str, str]] = [
     ("image", ERROR, "\\includegraphics, \\chapterlogo, \\fullbleedframe or sideimageframe pointing at a file that does not exist (the extension may be omitted)."),
     ("code-file", ERROR, "\\SMCodeFile{path} pointing at a file that does not exist (the path is relative to the project root, extension included)."),
     ("slide-file", ERROR, "A deck's \\slide/\\slidefinal/\\slidestep/\\conditionalslide/\\slideversion/... call whose slides/<id>-current.tex (or -vX-Y-Z.tex) file does not exist."),
+    ("block-content", ERROR, "A topic block may contain only slide calls, blank lines and comments; no sections or nested blocks."),
     ("underscore", WARNING, "_ in running text outside math and outside macro arguments that take names/paths (\"Missing $ inserted\")."),
     ("caret", WARNING, "^ in running text outside math (\"10^6\" typed without $...$) -- \"Missing $ inserted\"."),
     ("percent", WARNING, "A % directly after a digit and followed by more text (\"5% growth\"): the % starts a comment and silently drops the rest of the line."),
@@ -128,7 +130,7 @@ _MATH_ENVS = {"equation", "equation*", "align", "align*", "alignat", "alignat*",
 # Macros whose argument is a name/path/key, never typeset text: an _ there is fine.
 _NON_TYPESET_OWNERS = {
     "textcolor", "color", "colorbox", "fcolorbox", "definecolor", "colorlet", "pagecolor",
-    "includegraphics", "input", "include", "InputIfFileExists", "graphicspath",
+    "includegraphics", "input", "include", "slideblock", "InputIfFileExists", "graphicspath",
     *deck_editor.ALL_MACROS, "setSlideID", "setSlideVersion", "chapterlogo",
     "fullbleedframe", "label", "ref", "pageref", "eqref", "hyperlink", "hypertarget",
     "href", "url", "nolinkurl", "begin", "end", "cite", "fullcite", "parencite", "textcite",
@@ -610,6 +612,12 @@ def lint_text(ctx: ProjectContext, text: str, source: str = "buffer", path: Opti
     found = [i.with_source(source, path) for i in _lex(text)]
     found += [i.with_source(source, path) for i in _external(ctx, text)]
     found += [i.with_source(source, path) for i in _macro_colours(text)]
+    if path is not None and path.parent == ctx.blocks_dir:
+        masked = deck_language.masked(text)
+        if deck_language.calls_in(masked, []) or re.search(r"\\slideblock\b", masked):
+            found += [LintIssue("block-content", "topic blocks allow only slide calls, blank lines and comments; "
+                                f"found {line.strip()!r}", number, source, path)
+                      for number, line in topic_blocks.stray_lines(text)]
     found.sort(key=lambda x: (x.line, x.code))
     return found
 
@@ -680,12 +688,11 @@ def check_deck_job(ctx: ProjectContext, deck: Deck, version: Optional[str] = Non
         if keep is None or keep(issue.line):
             result.issues.append(issue)
 
-    from . import deck_language
     from .deck_settings import read_settings
     language = (language or read_settings(deck.text).language).upper()
-    resolved_deck, inline_inputs = deck_language.compile_deck(ctx, deck, language)
-    calls = [s.call for s in deck_language.deck_slots(ctx, resolved_deck, language)]
-    for path in inline_inputs:
+    resolution = deck_language.resolve(deck)
+    calls = [s.call for s in deck_language.slots(ctx, resolution.calls, language)]
+    for path in resolution.dependencies:
         if path.parent != ctx.slides_dir:
             check_file(path)
     for call in calls:
@@ -695,35 +702,12 @@ def check_deck_job(ctx: ProjectContext, deck: Deck, version: Optional[str] = Non
             continue
         path = ctx.slides_dir / call.source_filename
         if not path.is_file():
-            line = text.count("\n", 0, call.call_start) + 1
             result.issues.append(LintIssue(
                 "slide-file", f"{path.name} does not exist (called as \\{call.macro}{{{call.id_slug}}})",
-                line, deck.path.name, deck.path))
+                call.source_line, call.source.name, call.source))
             continue
         check_file(path)
 
-    # \input{fragment} decks (test-slides.tex): their slide calls count too
-    if deck.preamble_end is not None and resolved_deck.text == text:
-        body = masked_same_length(text)[deck.preamble_end:]
-        for m in INPUT_RE.finditer(body):
-            name = m.group(1).strip()
-            frag = ctx.decks_dir / (name if name.endswith(".tex") else name + ".tex")
-            if frag.is_file() and frag not in seen:
-                frag_text = read_source(frag) or ""
-                seen.add(frag)
-                result.files_checked += 1
-                result.issues.extend(lint_text(ctx, frag_text, frag.name, frag))
-                for slot in deck_language.slots(ctx, deck_language.calls_in(frag_text, []), language):
-                    call = slot.call
-                    if not call.included_in(version):
-                        continue
-                    path = ctx.slides_dir / call.source_filename
-                    if not path.is_file():
-                        result.issues.append(LintIssue(
-                            "slide-file", f"{path.name} does not exist (called as \\{call.macro}{{{call.id_slug}}})",
-                            frag_text.count("\n", 0, call.call_start) + 1, frag.name, frag))
-                    else:
-                        check_file(path)
     result.seconds += time.perf_counter() - started
     return result
 

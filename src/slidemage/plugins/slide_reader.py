@@ -63,6 +63,7 @@ def deck_slides(ctx: ProjectContext, deck: plugin_api.Deck, view: str, language:
             language_read=language,
             title_text=alt_blocks.plain_title(title),
             section=alt_blocks.plain_title(chapter.title) if chapter else "",
+            block=call.block,
         ))
     return refs
 

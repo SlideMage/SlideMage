@@ -2214,6 +2214,7 @@
     },
     "SlideRef": {
       "attributes": [
+        "block",
         "hidden",
         "id",
         "id_slug",
@@ -2286,6 +2287,11 @@
           },
           {
             "name": "section",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "block",
             "kind": "POSITIONAL_OR_KEYWORD",
             "required": false
           }

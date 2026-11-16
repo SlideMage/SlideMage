@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Callable
 
 from . import alt_blocks, alt_draft, alt_images, media_render, slide_source, slide_versioning, tikz_render
-from .deck_editor import parse_slide_calls
+from .deck_language import active_calls
 from .deck_scan import Deck
 from .project import ProjectContext
 
@@ -103,7 +103,7 @@ def scan_views(ctx: ProjectContext, entries: dict[str, alt_images.ImageEntry]) -
 
 def sort_order(deck: Deck) -> dict[str, int]:
     """Slide id -> position in `deck`."""
-    return {call.id: position for position, call in enumerate(parse_slide_calls(deck))}
+    return {call.id: position for position, call in enumerate(active_calls(deck))}
 
 
 def visible_views(views: list[SlideView], entries: Entries, filter_index: int, *,

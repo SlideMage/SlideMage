@@ -6,13 +6,15 @@ from __future__ import annotations
 import time
 from dataclasses import replace
 
-from . import preview_target, render_evidence, render_lookup, timing
+from . import deck_language, preview_target, render_evidence, render_lookup, timing
 from .preview_requests import PreviewRequest, SourceRevision
 
 
 def for_outline(ctx, deck, outline, view, language, *, resolver, read_source=None, paths=None,
-                validation=None, revision_sink=None):
+                validation=None, revision_sink=None, resolution=None):
     validation = validation or render_evidence.ValidationPass()
+    if resolver is not None and resolution is None:
+        resolution = deck_language.resolve(deck)
     revisions = {}
     states = dict(current=0, previous=0, reference=0, missing=0)
     spent = dict(capture=0.0, select=0.0)
@@ -26,7 +28,8 @@ def for_outline(ctx, deck, outline, view, language, *, resolver, read_source=Non
         try:
             if resolver is None:
                 return replace(row, thumbnail=None, thumbnail_verified=False, stale_preview=False)
-            target = preview_target.for_call(ctx, deck, row.call, row.position, frame_number=row.frame_number, hidden=row.hidden)
+            target = preview_target.for_call(ctx, deck, row.call, row.position, frame_number=row.frame_number, hidden=row.hidden,
+                                             resolution=resolution)
             source = path.resolve()
             if source not in revisions:
                 began = time.perf_counter()

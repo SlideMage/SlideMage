@@ -111,6 +111,25 @@ Wrap a slide call in `\SMReview{...}` to mark the slide as under review in this 
 
 The wrapper and the call stay on one line. SlideMage draws a watermark (`REVIEW`, with the optional note under it) over the slide's preview and its thumbnail in the slide list while this deck is open. The compiled PDF is the same with and without the wrapper, and the slide file is not changed. In the slide list: right-click, "Mark for review in this deck" or "Review note…". `\SMReviewText{TO CHECK}` in the preamble sets another watermark text for the deck.
 
+### Reusing a Run of Slides: Topic Blocks
+
+A topic block is a named list of slide calls in `blocks/<key>.tex` that several decks share. A deck uses it with `\slideblock{key}`, usually right under its own `\section`:
+
+```latex
+\section{Literaturrecherche}
+\slideblock{Literaturrecherche}
+```
+
+```latex
+%% SlideMage block: Literaturrecherche
+%% Topics: Literature search, Academic writing
+\slide{3zo-DE-Inhalt-Literaturrecherche}
+\slideversion{c5f-DE-Schritt-1-Suchbegriffe}{1-2-0}
+\conditionalslide[instructor]{pa6-DE-Demonstration-Literaturrecherche}
+```
+
+The block is linked: a change to it reaches every deck that uses it. A block file holds slide calls, blank lines and comments only (all seven slide commands are allowed), no `\section` and no nested `\slideblock`; the syntax check reports anything else. The `%%` lines are optional; the title defaults to the key. In SlideMage, block slides show in the slide list under the block's row and can be edited there; *Unlink* in the block's menu replaces `\slideblock` with a copy of the calls, for a deck that needs its own variant. The key is the file name: letters, digits, `_` and `-`. An older SlideMage that does not know `\slideblock` stops with "Undefined control sequence".
+
 ### Compiling Different Versions
 
 Compile each deck version separately:

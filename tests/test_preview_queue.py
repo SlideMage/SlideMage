@@ -12,6 +12,7 @@ import pymupdf
 import pytest
 from PySide6.QtTest import QTest
 
+from slidemage.deck_scan import Deck
 from slidemage import preview_target, slide_snapshot
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.workspace import preview_view
@@ -574,7 +575,7 @@ def test_composite_show_focuses_slide_and_displays_returned_image_in_student_vie
     path = tmp_path / "slides" / f"bbb-{language}-New-current.tex"
     path.write_text("BODY")
     target = preview_target.for_path(state.project, path)
-    deck = SimpleNamespace(path=tmp_path / "decks" / "open.tex", text=f"\\slide{{bbb-{language}-New}}\n", chapters=[])
+    deck = Deck("open", tmp_path / "decks" / "open.tex", False, f"\\slide{{bbb-{language}-New}}\n", False, False, None, [], {})
     state.deck = deck
     state.focused_slide_changed.connect(lambda _: view.show_slide(target, None, "New", ""))
     window = SimpleNamespace(project=state.project, state=state, centre=SimpleNamespace(preview=view, show_slide_tab=lambda: None))

@@ -218,7 +218,7 @@ def translation_call(deck: Deck, source_id_slug: str) -> Optional[deck_editor.Sl
     original, so a call per repeat would only add folded duplicates. The first call also keeps EN and DE
     neighbours where the slide first appears."""
     source_id = slide_language.bare_id(source_id_slug)
-    return next((call for call in deck_editor.parse_slide_calls(deck) if call.id == source_id), None)
+    return next((call for call in deck_language.active_calls(deck) if call.id == source_id), None)
 
 
 def translation_spec(source_call: deck_editor.SlideCall) -> CallSpec:

@@ -50,9 +50,9 @@ FILE_SUFFIXES = TEXT_SUFFIXES | {".pdf", ".png", ".jpg", ".jpeg", ".svg", ".eps"
 TOKEN_RE = re.compile(r"(?<![\w/.:@\\-])\w[\w.+-]*(?:/\w[\w.+-]*)*")
 # Commands whose argument is a file name, possibly without its suffix; the first group is what a missing file is reported for.
 NAMED_FILE_RE = re.compile(
-    r"\\(?P<command>input|include|includegraphics|SMCodeFile|lstinputlisting|usepackage|RequirePackage|documentclass)"
+    r"\\(?P<command>input|include|slideblock|includegraphics|SMCodeFile|lstinputlisting|usepackage|RequirePackage|documentclass)"
     r"\s*(?:\[[^\]]*\])?\s*\{(?P<names>[^{}\\#%]+)\}")
-REPORTED_COMMANDS = {"input", "include", "includegraphics", "SMCodeFile", "lstinputlisting"}
+REPORTED_COMMANDS = {"input", "include", "slideblock", "includegraphics", "SMCodeFile", "lstinputlisting"}
 # These typeset a file's text as code; what is in it is not part of the build.
 LISTING_COMMANDS = {"SMCodeFile", "lstinputlisting"}
 IMPLIED_SUFFIXES = ("", ".tex", ".sty", ".cls")
@@ -161,15 +161,17 @@ class _Collector:
         text = COMMENT_RE.sub("", source.read_text(encoding="utf-8", errors="replace"))
         if own:
             self._texts.append(text)
-            if source.parent == self.ctx.decks_dir or source == self.deck.path:
+            if source.parent in (self.ctx.decks_dir, self.ctx.blocks_dir) or source == self.deck.path:
                 self._scan_slides(text)
             if DEFAULT_BIBLIOGRAPHY_RE.search(text):
                 self.reference("SlideMage.bib", ("",), own, True)
         for match in NAMED_FILE_RE.finditer(text):
             command = match.group("command")
-            suffixes = IMPLIED_SUFFIXES if command in {"input", "include", "usepackage", "RequirePackage",
+            suffixes = IMPLIED_SUFFIXES if command in {"input", "include", "slideblock", "usepackage", "RequirePackage",
                                                        "documentclass"} else ("",)
             for name in (n.strip() for n in match.group("names").split(",")):
+                if command == "slideblock":
+                    name = f"blocks/{name}"
                 self.reference(name, suffixes, own, command in REPORTED_COMMANDS, command in LISTING_COMMANDS)
         for match in THEME_RE.finditer(text):
             for name in (n.strip() for n in match.group("names").split(",")):

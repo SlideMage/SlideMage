@@ -146,10 +146,15 @@ class SlideVersions(SidePanel):
 
     def _set_pin(self, id_slug: str, version: Optional[str]) -> None:
         calls = self._pinnable()
+        sources = {c.source or self.state.deck.path for c in calls}
+        if len(sources) != 1:
+            QMessageBox.information(self, "Choose one source",
+                                    "These calls span several source files. Change each call in the slide list.")
+            return
         self.actions.edit_deck(
             "Change failed",
             f"{id_slug} in {self.state.deck.name} " + (f"now uses {slide_versioning.version_label(version)}" if version else "follows the current version"),
-            lambda path, deck_text: slide_usage.set_pin(path, deck_text, calls, version))
+            lambda path, deck_text: slide_usage.set_pin(path, deck_text, calls, version), source=sources.pop())
 
     # -- freezing ------------------------------------------------------------------------
 
