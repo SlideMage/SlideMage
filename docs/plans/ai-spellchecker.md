@@ -1,7 +1,7 @@
 # Plan: a spellchecker that only touches regular text
 
-Status: **design, revision 3 (2026-11-16). The user decided S1 to S7 (section 8). Nothing is built; step 1 waits for
-the user's go.** Handover task `ai-spellchecker`.
+Status: **design, revision 3 (2026-11-16). The user decided S1 to S7 (section 8). Step 1 is built in v0.18.12
+(`prose_spans.py`, its tests, the PROOFREAD guard); steps 2 to 5 are open.** Handover task `ai-spellchecker`.
 
 History of the request:
 * **2026-11-14:** the user asked for an AI-driven spellchecker, scoped carefully so that it only checks or touches
@@ -90,10 +90,14 @@ class Span:
     kind: str                # "title" | "body" | "item" | "cell" | "footnote" | "note" | "caption" | "arg"
     language: str            # the file's language, or the key of a \multilingualtext argument
 
-def prose_spans(text: str, codes: tuple[str, ...], file_language: str) -> list[Span]
-def words(text: str, spans: list[Span]) -> list[Word]      # Word: start, end, text, language
-def apply_span_edits(text: str, spans: list[Span], edits: list[SpanEdit]) -> tuple[str, list[str]]
+def prose_spans(text: str, language: str = "") -> list[Span]    # language: the file's own
+def words(text: str, spans: list[Span]) -> list[Word]           # Word: start, end, text, language
+def apply_span_edits(text: str, edits: list[SpanEdit], language: str = "") -> tuple[str, list[str]]
+def outside_prose(old: str, new: str) -> str | None             # the PROOFREAD guard (S7)
 ```
+
+As built (v0.18.12), `apply_span_edits` computes the spans of the current text itself. Each `SpanEdit` carries
+`before`, the text it expects at its offsets.
 
 **How `prose_spans` works:**
 
@@ -111,8 +115,18 @@ digits are dropped, and so are all-capital abbreviations of up to 5 letters.
 * the span still reads as it did when it was checked;
 * the replacement has no special character, URL or line break.
 
-**Developer view:** `slidemage spans <file>` prints the source with the spans marked, so the scope can be checked
-on real slides before any checker exists.
+**Developer view:** `python -m slidemage.prose_spans FILE...` prints the source with the spans marked between ⟦ and
+⟧, so the scope can be checked on real slides before any checker exists. It is a module entry point, not a
+`slidemage` subcommand, because the app's command line starts the window.
+
+**Learned while building step 1.** Besides the rules above, these are also never prose:
+* TeX definitions and boxes (`\def…{…}`, `\vbox to 0pt{…}`), up to their brace group;
+* `\let` lines;
+* register assignments (`\prevdepth=0pt`).
+
+An insertion at the very start of a span is refused when the character before it is a letter, so that "\ldots."
+cannot become `\ldotsx.`. Across the 198 slide files of `example/` and the fixtures there are 2371 spans and about
+13,900 words.
 
 ## 4. Checking and the editor
 
@@ -232,9 +246,10 @@ The user answered against the numbering of revision 2. Revision 3 keeps that num
 
 ## 9. Steps (each one a small PR with its version and CHANGELOG entry)
 
-1. **`prose_spans.py`** (spans, words, `apply_span_edits`), `PROSE_ARGS`/`NO_PROSE`, tests 1 to 4,
-   `slidemage spans <file>`, and the S7 guard in `ai/tasks.check()` for `PROOFREAD` and `PROOFREAD_SELECTION`. No
-   checker, no new UI.
+1. **Built in v0.18.12.** `prose_spans.py`: spans, words, `apply_span_edits` and `outside_prose`; the tables
+   `PROSE_COMMANDS`, `NO_PROSE`, `ENVIRONMENTS` and `SKIPPED_BODIES`. Also tests 1 to 4 (`tests/test_prose_spans.py`),
+   `python -m slidemage.prose_spans`, and the S7 guard (`Task.prose_only` on `PROOFREAD` and
+   `PROOFREAD_SELECTION`). No checker, no new UI.
 2. **The dictionary checker** (`spelling/`: `Checker`, pyspellchecker and spylls, `dictionaries.json`, download,
    the German variant setting), the build change that leaves pyspellchecker's lists out, and test 5.
 3. **The editor:** underlines as you type, the suggestion menu, Ignore, the word list, the toolbar toggle, and
