@@ -4249,3 +4249,9 @@ v0.16.59 (2026-11-16, direct request: docs/plans/busy-indicators.md, step 6): Im
 
 NEW: Importing a PowerPoint or OpenDocument file no longer freezes SlideMage.
 - The import sheet shows a progress bar ("Importing slide (3 of 12)") and stays open until the import has finished.
+
+v0.16.60 (2026-11-16, direct request: docs/plans/busy-indicators.md, step 7): (1) on_check_for_updates fetches the releases in BusySheet.run ("Checking for updates…") instead of under a wait cursor; the plan, the boxes and offer_update run in done. (2) download_and_install_update downloads and installs in one worker behind a BusySheet with a determinate bar ("Downloading SlideMage vX… (n of m MB)", then an indeterminate "Installing…") and a Cancel that ends the download (updater.download's on_progress returns False; logged, no error box); the install ignores Cancel. The TemporaryDirectory lives in the worker; the restart question moved to restart_after_update, called from done. QProgressDialog and processEvents are gone, so the kit_qss rule "QProgressDialog QProgressBar" and its test test_progress_dialog_percent_is_readable_over_fill_and_track are deleted. Tests: tests/test_update_busy_gui.py (the check fetches off the GUI thread; Cancel stops the download without an error box).
+
+NEW: Checking for and installing SlideMage updates no longer freezes SlideMage.
+- Checking for updates shows a small sheet while it asks GitHub.
+- The download shows a progress bar with the size so far and a Cancel button; the installation that follows cannot be cancelled.

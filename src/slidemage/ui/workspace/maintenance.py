@@ -28,13 +28,14 @@ from functools import partial
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtWidgets import QApplication, QMessageBox, QProgressDialog
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from ... import alt_images, app_settings, bundled_copies, compat, housekeeping, open_path, project, project_access
 from ... import slide_preview, slide_rename, updater
 from ... import citation_sources, diagnostics, slide_templates, theme_sources, view_themes
 from ... import version as version_mod
+from ...progress import Progress
 from ...plugins import catalogue as plugin_catalogue
 from ...plugins import session as plugin_session
 from ...plugins import updates as plugin_updates
@@ -244,30 +245,27 @@ def on_open_version_history(window) -> None:
 
 
 def on_check_for_updates(window) -> None:
-    QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-    try:
-        releases = updater.fetch_releases()
-    except updater.UpdateError as exc:
-        QMessageBox.warning(window, "Check for updates", str(exc))
-        return
-    finally:
-        QApplication.restoreOverrideCursor()
+    def done(releases, error) -> None:
+        if error is not None:
+            QMessageBox.warning(window, "Check for updates", str(error))
+            return
+        current = version_mod.VERSION_NUMBER
+        plan = updater.plan_update(releases, current, need_asset=updater.can_self_update())
+        if plan.latest is None:
+            QMessageBox.information(
+                window, "Check for updates", f"SlideMage {current} is up to date.")
+            return
+        if not updater.can_self_update():
+            QMessageBox.information(
+                window, "Update available",
+                f"SlideMage {plan.latest.tag} is available (you have {current}).\n\n"
+                "This copy runs from source, so it can't replace itself -- "
+                f"update it with git pull, or download the release from:\n{plan.latest.page_url}",
+            )
+            return
+        offer_update(window, plan, updater.get_update_mode(), manual=True)
 
-    current = version_mod.VERSION_NUMBER
-    plan = updater.plan_update(releases, current, need_asset=updater.can_self_update())
-    if plan.latest is None:
-        QMessageBox.information(
-            window, "Check for updates", f"SlideMage {current} is up to date.")
-        return
-    if not updater.can_self_update():
-        QMessageBox.information(
-            window, "Update available",
-            f"SlideMage {plan.latest.tag} is available (you have {current}).\n\n"
-            "This copy runs from source, so it can't replace itself -- "
-            f"update it with git pull, or download the release from:\n{plan.latest.page_url}",
-        )
-        return
-    offer_update(window, plan, updater.get_update_mode(), manual=True)
+    BusySheet.run(window, "Checking for updates…", lambda _report: updater.fetch_releases(), done)
 
 
 def schedule_bundled_copies_check(window) -> None:
@@ -539,41 +537,46 @@ def confirm_safe_update(window, release: updater.Release) -> bool:
 
 
 def download_and_install_update(window, release: updater.Release) -> None:
+    """Downloads and installs on a worker behind a BusySheet; Cancel ends the download, not the install."""
     executable = Path(sys.executable)
     binary_name = updater.asset_names()[1]
     folder_build = updater.install_flavour() == updater.FOLDER
-    staging: Optional[Path] = None
-    progress = QProgressDialog(
-        f"Downloading SlideMage {release.tag}…", "Cancel", 0, 0, window)
-    progress.setWindowTitle("Updating SlideMage")
-    progress.setWindowModality(Qt.WindowModality.WindowModal)
-    progress.setMinimumDuration(0)
-    progress.show()
+    cancel = threading.Event()
+    canceled = object()                  # work's result when Cancel ended the download (None: installed, no staging)
 
-    def on_progress(done: int, total: int) -> bool:
-        if total:
-            progress.setMaximum(total)
-            progress.setValue(done)
-        QApplication.processEvents()
-        return not progress.wasCanceled()
+    def work(report):
+        def on_progress(done: int, total: int) -> bool:
+            sizes = f" ({done / 1e6:.1f} of {total / 1e6:.1f} MB)" if total else ""
+            report(Progress(f"Downloading SlideMage {release.tag}…{sizes}", done / total if total else None))
+            return not cancel.is_set()
 
-    with tempfile.TemporaryDirectory(prefix="slidemage-update-") as tmp:
-        zip_path = Path(tmp) / "update.zip"
-        try:
-            updater.download(release, zip_path, on_progress)
-            progress.setLabelText("Installing…")
-            progress.setCancelButton(None)
-            QApplication.processEvents()
+        with tempfile.TemporaryDirectory(prefix="slidemage-update-") as tmp:
+            zip_path = Path(tmp) / "update.zip"
+            try:
+                updater.download(release, zip_path, on_progress)
+            except updater.UpdateError:
+                if cancel.is_set():
+                    return canceled
+                raise
+            report(Progress("Installing…"))
             if folder_build:
-                staging = updater.stage_folder_update(zip_path, executable.parent, binary_name)
-            else:
-                updater.install_zip(zip_path, executable, binary_name)
-        except updater.UpdateError as exc:
-            progress.close()
-            QMessageBox.warning(window, "Update failed", str(exc))
-            return
-    progress.close()
+                return updater.stage_folder_update(zip_path, executable.parent, binary_name)
+            updater.install_zip(zip_path, executable, binary_name)
 
+    def done(staging, error) -> None:
+        if error is not None:
+            QMessageBox.warning(window, "Update failed", str(error))
+            return
+        if staging is canceled:
+            window.log(f"Update to {release.tag} canceled.")
+            return
+        restart_after_update(window, release, executable, binary_name, folder_build, staging)
+
+    BusySheet.run(window, "Updating SlideMage", work, done, cancel=cancel)
+
+
+def restart_after_update(window, release: updater.Release, executable: Path, binary_name: str,
+                         folder_build: bool, staging: Optional[Path]) -> None:
     reply = QMessageBox.question(
         window, "Update installed",
         f"SlideMage {release.tag} is {'ready to be installed in' if folder_build else 'installed in'} "
