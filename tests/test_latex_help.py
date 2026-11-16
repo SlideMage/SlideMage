@@ -133,7 +133,7 @@ def test_in_a_comment():
 
 
 def test_unknown_commands_and_plain_text():
-    text = "\\textbf{bold} plain \\unknowncommand[width=3cm]"
+    text = "\\mycmd{bold} plain \\unknowncommand[width=3cm]"
     assert help_at(text, 2) is None
     assert help_at(text, text.index("plain")) is None
     assert help_at(text, text.index("width")) is None
@@ -151,7 +151,7 @@ def test_environment_name_in_begin_and_end():
         assert help_at(text, offset).help.name == "besidefigure"
     hit = help_at(text, text.index("gap"))
     assert hit.help.name == "besidefigure" and hit.key == "gap"
-    assert help_at("\\begin{itemize}", 3) is None
+    assert help_at("\\begin{myenv}", 3) is None
 
 
 def test_options_over_several_lines_and_with_braced_values():
@@ -220,3 +220,104 @@ def test_help_html_escapes():
 
 def test_setting_key():
     assert latex_help.HOVER_HELP_SETTING_KEY == "latex_hover_help"
+
+
+# -- standard LaTeX/beamer/math help and a theme's help.toml ----------------------------------------------------
+
+from slidemage import latex_help_standard, themes  # noqa: E402
+from slidemage.latex_help import HelpFileError, parse_help  # noqa: E402
+
+
+def test_the_standard_catalogue_is_complete_and_apart_from_slidemages():
+    standard = [*latex_help_standard.COMMANDS.values(), *latex_help_standard.ENVIRONMENTS.values()]
+    assert len(latex_help_standard.COMMANDS) >= 50 and len(latex_help_standard.ENVIRONMENTS) >= 15
+    for help_ in standard:
+        assert help_.signature and help_.summary and help_.example, help_.name
+        assert len({key.name for key in help_.keys}) == len(help_.keys), help_.name
+    assert not set(latex_help_standard.COMMANDS) & set(COMMANDS)
+    assert not set(latex_help_standard.ENVIRONMENTS) & set(ENVIRONMENTS)
+
+
+@pytest.mark.parametrize("text, word, name", [
+    (r"\includegraphics[width=3cm]{x}", "include", "includegraphics"),
+    (r"\pause", "pause", "pause"),
+    (r"\only<2>{x}", "only", "only"),
+    (r"x = \frac{a}{b}", "frac", "frac"),
+    (r"\begin{frame}[plain]", "frame", "frame"),
+    (r"\begin{pmatrix} 1 \end{pmatrix}", "pmatrix", "pmatrix"),
+])
+def test_standard_commands_show_on_hover(text, word, name):
+    hit = help_at(text, text.index(word) + 1)
+    assert hit is not None and hit.help.name == name and "<qt>" in help_html(hit)
+
+
+def test_keys_of_standard_commands():
+    text = r"\includegraphics[keepaspectratio, width=3cm]{x}"
+    hit = help_at(text, text.index("keepaspectratio"))
+    assert (hit.help.name, hit.key) == ("includegraphics", "keepaspectratio")
+    assert help_at(text, text.index("3cm")).key == "width"
+    text = r"\begin{frame}[fragile,t]{Title}"
+    assert help_at(text, text.index("fragile")).key == "fragile"
+
+
+THEME_HELP = r'''
+[[command]]
+name = "mytitle"
+signature = "\\mytitle[keys]{text}"
+summary = "The theme's big title."
+example = "\\mytitle[color=red]{Hi}"
+
+[[command.keys]]
+name = "color"
+values = "red | blue"
+text = "the title colour"
+
+[[environment]]
+name = "mybox"
+signature = "\\begin{mybox} ... \\end{mybox}"
+summary = "A theme box."
+
+[[command]]
+name = "cornerfigure"
+signature = "\\cornerfigure"
+summary = "A theme must not redefine this."
+'''
+
+
+def test_a_themes_help_shows_but_slidemages_entries_win():
+    extra = parse_help(THEME_HELP)
+    text = "\\mytitle[color=red]{x} \\cornerfigure{y}\n\\begin{mybox}"
+    assert help_at(text, 2) is None                              # without the theme: nothing
+    hit = help_at(text, 2, extra)
+    assert hit.help.summary == "The theme's big title."
+    assert help_at(text, text.index("color"), extra).key == "color"
+    assert help_at(text, text.index("mybox"), extra).help.environment
+    assert "Palan" not in help_html(hit)
+    assert help_at(text, text.index("cornerfigure") + 2, extra).help is COMMANDS["cornerfigure"]
+
+
+@pytest.mark.parametrize("broken", [
+    "[[command]]\nname = 'x'\nsummary = 's'\n",                      # no signature
+    "[[command]]\nname = '\\x'\nsignature = 's'\nsummary = 's'\n",   # a backslash in the name
+    "[[command]]\nname = 'x'\nsignature = 's'\nsummary = 's'\n[[command]]\nname = 'x'\nsignature = 's'\nsummary = 's'\n",
+    "[other]\na = 1\n",
+    "not toml [",
+])
+def test_a_broken_help_file_is_refused_strictly_and_skipped_leniently(broken):
+    with pytest.raises(HelpFileError):
+        parse_help(broken)
+    parse_help(broken, strict=False)         # does not raise
+
+
+def test_lenient_parsing_keeps_the_good_entries():
+    good = parse_help(THEME_HELP + "\n[[command]]\nname = 'bad'\n", strict=False)
+    assert set(good.commands) == {"mytitle", "cornerfigure"} and set(good.environments) == {"mybox"}
+
+
+def test_themes_help_of_and_check_folder(tmp_path):
+    folder = tmp_path / "t"
+    folder.mkdir()
+    assert themes.help_of(folder).commands == {}
+    (folder / "help.toml").write_text(THEME_HELP, encoding="utf-8")
+    assert "mytitle" in themes.help_of(folder).commands
+    assert "help.toml" in themes.OPTIONAL_FILES

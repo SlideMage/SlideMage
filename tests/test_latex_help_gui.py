@@ -112,3 +112,21 @@ def test_characters_outside_the_bmp_before_the_command(qapp):
     position = 2 + len(" \\fitfigure[")
     hit, _rect = editor.help_at_point(point_at(editor, position + 1))
     assert hit.help.name == "fitfigure" and hit.key == "top"
+
+
+def test_the_help_provider_adds_a_themes_commands_and_the_standard_ones_show():
+    from slidemage.latex_help import parse_help
+
+    extra = parse_help('[[command]]\nname = "mytitle"\nsignature = "\\\\mytitle{text}"\nsummary = "The theme title."\n')
+    text = r"\mytitle{A}" + chr(10) + r"\includegraphics[width=3cm]{x}"
+    editor = make_editor(text)
+    point = point_at(editor, 3)
+    assert tooltip(editor, point) is None or "theme title" not in QToolTip.text()    # no provider yet
+    editor.set_help_provider(lambda: extra)
+    tooltip(editor, point)
+    assert "The theme title." in QToolTip.text()
+    tooltip(editor, point_at(editor, text.index("includegraphics") + 2))
+    assert "includegraphics" in QToolTip.text()
+    editor.set_help_provider(lambda: 1 / 0)                  # a failing provider never breaks the tooltip
+    tooltip(editor, point_at(editor, text.index("includegraphics") + 2))
+    assert "includegraphics" in QToolTip.text()
