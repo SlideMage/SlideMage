@@ -4289,3 +4289,9 @@ v0.18.11 (2026-11-16, direct request: handover task latex-hover-help-more, the u
 NEW: Hover help for standard LaTeX and beamer commands, and for a theme's own commands.
 - Hovering \includegraphics, \pause, \only, \uncover, a frame's options, \frac and about 70 more standard commands and environments now explains them.
 - A theme package can ship a help.toml so its own commands get the same hover help.
+
+v0.18.12 (2026-11-16, direct request: the After-course PDF of the DoctoralSchool deck got the appendix with the slide previews, and unticking Generate appendix TOC did not remove it): \deckappendixtoc takes an optional list of views, \deckappendixtoc[instructor] or \deckappendixtoc[instructor,during-course]. deck_scan.DECKAPPENDIXTOC_RE reads the list; parse_appendix_toc_views() returns it (empty: no list, or one command without a list, so every view), Deck.appendix_views holds it and deck_scan.appendix_toc_for(deck, version) says whether the deck asks for the appendix in a view. compile_actions.compile_jobs and deck_snapshot.snapshot_jobs use it per job instead of Deck.appendix_toc; the checkbox still turns the appendix on for every view. SlideMage_base.tex: \newcommand{\deckappendixtoc}[1][]{}; the hover help entry names the argument. The deck settings dialog keeps its checkbox, and ticking it leaves a list that is already there. Tests in tests/test_navigation.py.
+
+NEW: A deck can limit its appendix with the slide previews to some views.
+- Write \deckappendixtoc[instructor] in the deck to get the appendix only in the instructor PDF; \deckappendixtoc without a list still adds it to every view.
+- The After-course PDF of such a deck no longer carries the appendix; the Generate appendix TOC checkbox still adds it everywhere when ticked.

@@ -108,3 +108,29 @@ def test_deckappendixtoc_is_read_from_the_live_preamble():
     assert deck_scan.parse_appendix_toc("\\deckappendixtoc\n\\begin{document}\n")
     assert not deck_scan.parse_appendix_toc("% \\deckappendixtoc\n\\begin{document}\n")
     assert not deck_scan.parse_appendix_toc("\\begin{document}\n\\deckappendixtoc\n")
+
+
+def test_deckappendixtoc_views_limit_the_appendix_to_those_views():
+    pre = "\\begin{document}\n"
+    assert deck_scan.parse_appendix_toc_views("\\deckappendixtoc[instructor]\n" + pre) == ("instructor",)
+    assert deck_scan.parse_appendix_toc_views(
+        "\\deckappendixtoc[Instructor, during-course]\n" + pre) == ("instructor", "during-course")
+    assert deck_scan.parse_appendix_toc_views("\\deckappendixtoc\n" + pre) == ()
+    assert deck_scan.parse_appendix_toc_views("% \\deckappendixtoc[instructor]\n" + pre) == ()
+    # one command without views means every view, whatever another one names
+    assert deck_scan.parse_appendix_toc_views("\\deckappendixtoc[instructor]\n\\deckappendixtoc\n" + pre) == ()
+    assert deck_scan.parse_appendix_toc("\\deckappendixtoc[instructor]\n" + pre)
+
+
+def test_appendix_toc_for_follows_the_views(tmp_path):
+    def deck_of(text):
+        path = tmp_path / "p-a.tex"
+        path.write_text(text + "\\begin{document}\n\\end{document}\n", encoding="utf-8")
+        return deck_scan.read_deck(path)
+    only = deck_of("\\deckappendixtoc[instructor]\n")
+    assert deck_scan.appendix_toc_for(only, "instructor")
+    assert not deck_scan.appendix_toc_for(only, "after-course")
+    assert not deck_scan.appendix_toc_for(only, "during-course")
+    every = deck_of("\\deckappendixtoc\n")
+    assert all(deck_scan.appendix_toc_for(every, v) for v in ("instructor", "during-course", "after-course"))
+    assert not deck_scan.appendix_toc_for(deck_of(""), "instructor")
