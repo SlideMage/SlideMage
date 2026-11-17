@@ -4307,3 +4307,8 @@ v0.17.15 (2026-11-17, direct request: handover task ai-spellchecker, step 2 of d
 NEW: Groundwork for the spellchecker: SlideMage can now check words against dictionaries.
 - Nothing is underlined yet; the editor part follows in the next step.
 - Dictionaries are downloaded once per computer the first time a language is checked; German is checked with the Austrian spelling by default; the choice of German or Swiss spelling comes with the editor part.
+
+v0.17.16 (2026-11-17, direct request: the slide jumped up and down when scrolling through a deck, as the reveal steps line under it came and went): The Preview's RevealBar keeps its room when it is hidden (a slide with one step, no slide on show), and so do its Deck steps only chip and expand button (QSizePolicy.retainSizeWhenHidden), so the page above it keeps one height. Expanded to every deck version, the rows keep their height while the next slide's steps are counted. Test: tests/test_reveal_bar_gui.py::test_the_bar_keeps_its_room_so_the_slide_above_it_does_not_move.
+
+NEW: The slide no longer jumps when scrolling through a deck.
+- The reveal steps line under the slide always keeps its room, also for slides without reveal steps.
