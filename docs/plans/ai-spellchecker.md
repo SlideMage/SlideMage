@@ -1,8 +1,9 @@
 # Plan: a spellchecker that only touches regular text
 
 Status: **design, revision 3 (2026-11-16). The user decided S1 to S7 (section 8). Step 1 is built in v0.17.14
-(`prose_spans.py`, its tests, the PROOFREAD guard), step 2 in v0.17.15 (`spelling/`, the dictionary checker);
-steps 3 to 5 are open.** Handover task `ai-spellchecker`.
+(`prose_spans.py`, its tests, the PROOFREAD guard), step 2 in v0.17.15 (`spelling/`, the dictionary checker),
+step 3 in v0.17.19 (underlines and the menu in the Source view); steps 4 and 5 are open.** Handover task
+`ai-spellchecker`.
 
 History of the request:
 * **2026-11-14:** the user asked for an AI-driven spellchecker, scoped carefully so that it only checks or touches
@@ -268,8 +269,17 @@ The user answered against the numbering of revision 2. Revision 3 keeps that num
    `dictionary_checker.py` (spylls for German, pyspellchecker for the rest), `settings.py` (the German variant,
    stored per user; its control comes with step 3). The build leaves pyspellchecker's lists out; test 5 is
    `tests/test_spelling.py`. Nothing imports `spelling/` yet.
-3. **The editor:** underlines as you type, the suggestion menu, Ignore, the word list, the toolbar toggle, and
-   test 6.
+3. **Built in v0.17.19.** `ui/workspace/spell_check.py` (one `SpellCheck` per open slide: the check 400 ms after
+   the last keystroke on a worker, the underlines, the menu rows, a correction as one undo step),
+   `spelling/session.py` (Qt-free: text to misspellings by language, word list and ignored words left out, a
+   correction through `apply_span_edits`), `spelling/word_list.py` (`spelling-words-<lang>.txt`, sorted, unique,
+   case ignored), the toolbar button (per user, on by default), Settings -> General's German spelling, and test 6
+   (`tests/test_spell_check_gui.py`). As built: suggestions are added to the open menu as they arrive
+   (`PopoverMenu.replace_item`); only slides are checked (not a deck's source or the .bib); the file's language is
+   its own, the project's main one without a code, and only `\multilingualtext`'s arguments in a multilingual
+   slide. Tests switch the check off in `conftest.py` (else every opened slide would download a dictionary).
+   Measured on the 103 example slides: 3.9 s, 97 underlines, mostly technical terms, but pyspellchecker's English
+   list also lacks "app", "admin", "checkbox", "colour" and "grayscale" (see section 5, "Found in step 2").
 4. **More places:** a deck-wide spelling list (every unknown word of a deck, grouped, with "Add to word list" for
    many at once), and alt texts in the Images panel (S3).
 5. **Optional:** the AI checker (section 7).
