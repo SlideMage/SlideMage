@@ -23,7 +23,7 @@ recorded file still has its hash, the wrapper and engine are the same, and
 the PDF is unchanged where it was published, that PDF is used as the
 snapshot's reference instead of compiling the version again.
 
-A file other than the deck that changed while the compile ran (v0.17.16, direct report: an 11-minute IA2
+A file other than the deck that changed while the compile ran (v0.17.17, direct report: an 11-minute IA2
 compile left every preview unrendered because one slide was saved during it) is recorded with no hash and
 `changed_during_compile`: its PDF pages may show the older or the newer content, so every check treats that
 file as changed (the record is stale for snapshots, the render store takes no pages of the slides that read

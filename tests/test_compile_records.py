@@ -85,7 +85,7 @@ def test_a_recorded_compile_is_fresh_until_something_changes(compiled):
 
 
 def test_a_slide_changed_during_the_compile_is_recorded_as_changed_not_dropping_the_record(compiled):
-    """v0.17.16 (direct report: an 11-minute IA2 compile gave no previews because one slide was saved during it): the
+    """v0.17.17 (direct report: an 11-minute IA2 compile gave no previews because one slide was saved during it): the
     record is kept, the slide has no hash, and every check sees it as changed."""
     c = compiled
     later = c["started"] + 5
