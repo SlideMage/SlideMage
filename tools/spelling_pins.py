@@ -9,7 +9,8 @@ catalogue.py.
 The commits:
 - pyspellchecker: the commit of the tag of the version pyproject.toml pins (its word lists are left out of the
   build and downloaded instead; they are byte-identical to the ones in the PyPI wheel).
-- LibreOffice dictionaries: any commit of https://github.com/LibreOffice/dictionaries; the German frami files.
+- LibreOffice dictionaries: any commit of https://github.com/LibreOffice/dictionaries; the German frami and the
+  English en_GB / en_US files.
 """
 from __future__ import annotations
 
@@ -22,13 +23,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from slidemage import tls_trust  # noqa: E402
 from slidemage.spelling.catalogue import (  # noqa: E402
-    LIBREOFFICE_COMMIT, PYSPELLCHECKER_COMMIT, PYSPELLCHECKER_LANGUAGES, file_url)
+    LIBREOFFICE_COMMIT, PYSPELLCHECKER_COMMIT, PYSPELLCHECKER_LANGUAGES, file_url, hunspell_files)
 
 
 def main() -> int:
     tls_trust.inject()
-    names = [f"{code}.json.gz" for code in PYSPELLCHECKER_LANGUAGES]
-    names += [f"de_{variant}_frami.{ext}" for variant in ("AT", "DE", "CH") for ext in ("aff", "dic")]
+    names = [f"{code}.json.gz" for code in PYSPELLCHECKER_LANGUAGES] + hunspell_files()
     print(f"# pyspellchecker {PYSPELLCHECKER_COMMIT}, LibreOffice dictionaries {LIBREOFFICE_COMMIT}")
     print("FILES: dict[str, tuple[int, str]] = {")
     for name in names:

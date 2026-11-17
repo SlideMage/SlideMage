@@ -2,15 +2,15 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The built-in checker: dictionaries, no AI. No Qt.
 
-German goes to spylls (a pure-Python Hunspell): it understands compounds ("Nachfrageüberhang") and word endings,
-which a word list cannot. Every other language with a pyspellchecker list goes to pyspellchecker, which looks
-words up in a frequency list, without regard to case. Both libraries are imported only when a language is
-prepared, so importing this module costs nothing.
+German and English go to spylls (a pure-Python Hunspell), in the variant the person chose: it understands
+compounds ("Nachfrageüberhang") and word endings, which a word list cannot. Every other language with a
+pyspellchecker list goes to pyspellchecker, which looks words up in a frequency list, without regard to case. Both
+libraries are imported only when a language is prepared, so importing this module costs nothing.
 
-Measured (2026-11-17, de-AT, this machine): loading the German dictionary takes about 1.6 s, once per session;
-a lookup well under 1 ms. A German suggestion usually comes within 1.5 s, but the n-gram stage that follows can
-take 10 s, so `suggest()` yields each suggestion as it is found. pyspellchecker loads a list in about 0.2 s and
-suggests in milliseconds.
+Measured (2026-11-17, this machine): loading the German dictionary takes about 1.6 s, en-GB 0.7 s and en-US 0.4 s,
+once per session; a lookup well under 1 ms. A German suggestion usually comes within 1.5 s, but the n-gram stage
+that follows can take 10 s, so `suggest()` yields each suggestion as it is found; an English one comes at once.
+pyspellchecker loads a list in about 0.2 s and suggests in milliseconds.
 
 Answers are cached per (dictionary, word) for the life of the checker, so a word is looked up once a session.
 """
@@ -35,12 +35,13 @@ class DictionaryChecker:
     name = "dictionary"
 
     def __init__(self, *, base: Optional[Path] = None,
-                 german_variant: Callable[[], str] = settings.german_variant,
+                 variant: Callable[[str], str] = settings.variant,
                  entries: Optional[dict[str, Dictionary]] = None):
-        """`base` is the dictionary folder (default: the per-user one), `german_variant` is read at every call so
-        a changed setting applies at once, `entries` replaces the catalogue (tests)."""
+        """`base` is the dictionary folder (default: the per-user one), `variant(language)` gives the variant a
+        language is checked in (read at every call, so a changed setting applies at once), `entries` replaces the
+        catalogue (tests)."""
         self._base = base
-        self._german_variant = german_variant
+        self._variant = variant
         self._entries = catalogue.CATALOGUE if entries is None else entries
         self._loaded: dict[str, Any] = {}
         self._known: dict[tuple[str, str], bool] = {}
@@ -52,9 +53,9 @@ class DictionaryChecker:
 
     def dictionary_for(self, language: str) -> Optional[Dictionary]:
         language = language.lower()
-        if language == "de":
-            return self._entries.get(f"de_{self._german_variant()}")
-        entry = self._entries.get(language)
+        entry = self._entries.get(catalogue.key_for(language, self._variant(language)))
+        if entry is None:
+            entry = self._entries.get(language)      # a catalogue without variants for it (tests)
         return entry if entry is not None and entry.language == language else None
 
     def needs_download(self, language: str) -> bool:
