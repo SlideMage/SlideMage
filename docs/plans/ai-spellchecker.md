@@ -1,7 +1,8 @@
 # Plan: a spellchecker that only touches regular text
 
 Status: **design, revision 3 (2026-11-16). The user decided S1 to S7 (section 8). Step 1 is built in v0.17.14
-(`prose_spans.py`, its tests, the PROOFREAD guard); steps 2 to 5 are open.** Handover task `ai-spellchecker`.
+(`prose_spans.py`, its tests, the PROOFREAD guard), step 2 in v0.17.15 (`spelling/`, the dictionary checker);
+steps 3 to 5 are open.** Handover task `ai-spellchecker`.
 
 History of the request:
 * **2026-11-14:** the user asked for an AI-driven spellchecker, scoped carefully so that it only checks or touches
@@ -134,10 +135,16 @@ cannot become `\ldotsx.`. Across the 198 slide files of `example/` and the fixtu
 class Checker(Protocol):                   # spelling/checker.py
     name: str
     def languages(self) -> set[str]: ...   # what it can check now or after a download
-    def prepare(self, language: str, report) -> bool: ...   # worker: download/load; False = not available
-    def unknown(self, language: str, words: list[str]) -> set[str]: ...    # worker, fast
-    def suggest(self, language: str, word: str) -> list[str]: ...          # worker, may be slow
+    def prepare(self, language: str, report) -> bool: ...   # worker: download/load; False = not supported,
+                                                            # SpellingUnavailable(message) = supported but failed
+    def unknown(self, language: str, words: Iterable[str]) -> set[str]: ...  # worker, fast
+    def suggest(self, language: str, word: str) -> Iterator[str]: ...        # worker; yields best first
 ```
+
+As built (v0.17.15): `suggest()` yields each suggestion as it is found, because spylls' first German suggestion
+usually comes within 1.5 s but its n-gram stage afterwards can take 10 s; the menu (step 3) shows suggestions as
+they arrive and stops reading when it has enough. `checkable()` decides which words are looked up at all: not
+single letters, not words in capitals (PDF), not words with a capital inside (SlideMage, iPhone).
 
 * **When it checks (S1 a):** as you type, after a pause of about 400 ms, on a worker. Only the unique words of the
   open file go to the checker, and results are cached per `(checker, language, word)` for the session. A slide of
@@ -168,23 +175,29 @@ class Checker(Protocol):                   # spelling/checker.py
   * **Every other language with a pyspellchecker list:** pyspellchecker. Its documentation lists en, es, fr, it,
     pt, nl, ru, ar, lv, eu and fa besides de; step 2 confirms this against 0.9.1. Its English list does not tell
     en-GB from en-US: both spellings pass.
-* **Downloads (S6 b): straight from upstream, pinned.** `spelling/dictionaries.json` lists, per language, the URL,
+* **Downloads (S6 b): straight from upstream, pinned.** `spelling/catalogue.py` (built as Python data rather than
+  `dictionaries.json`, so the build needs no extra data file) lists, per language, the URL,
   size and SHA-256 of each file:
   * the German Hunspell files (`de_AT_frami`, `de_DE_frami`, `de_CH_frami`) at a fixed commit of the LibreOffice
     dictionaries repository;
   * pyspellchecker's `resources/<lang>.json.gz` at the tag of the pinned version.
 
   A file is fetched with `tls_trust` and the installer's checks (size cap, hash checked before it is moved into
-  place, nothing left behind on failure) into `<user config>/dictionaries/<lang>/`: once per user, not per project.
+  place, nothing left behind on failure) into `<cache>/dictionaries/<key>/`: once per user, not per project. As
+  built, that is `project.cache_dir()` (this computer's folder for what can be fetched again), not the roaming
+  config folder, so 13 MB of German variants do not travel with a Windows roaming profile.
   If upstream ever moves a file, the hash or the URL fails, the status line says so, and a SlideMage release with a
   new pin fixes it. The frami files are under GPL-2.0, GPL-3.0 or OASIS terms; step 2 records the licence next to
   the pin.
-* **Speed:**
-  * Lookups are fast in both libraries.
-  * Suggestions in spylls are pure Python and can take up to about a second for a German word, so they are computed
-    only when an underlined word is opened.
-  * Loading the German dictionary takes a few seconds, once per session, on a worker. If step 2 measures it too
-    slow, the loaded dictionary is pickled next to the downloaded files.
+* **Speed (measured in step 2, de-AT):**
+  * Lookups are fast in both libraries (well under 1 ms).
+  * Suggestions in spylls are pure Python: the first, usually right one within about 1.5 s, the rest up to 10 s
+    later for a misspelt compound. So they are streamed, and computed only when an underlined word is opened.
+  * Loading the German dictionary takes 1.6 s, once per session, on a worker: no pickling needed.
+  * pyspellchecker loads a list in 0.2 s and suggests in milliseconds.
+* **Found in step 2:** pyspellchecker's English list is not neutral between British and American spelling, as
+  assumed above: it knows "color" but not "colour". Open for the user (see the handover): keep it, or check English
+  with Hunspell too (en_GB / en_US from the same LibreOffice repository, a variant setting like German's).
 
 ## 6. Tests
 
@@ -250,8 +263,11 @@ The user answered against the numbering of revision 2. Revision 3 keeps that num
    `PROSE_COMMANDS`, `NO_PROSE`, `ENVIRONMENTS` and `SKIPPED_BODIES`. Also tests 1 to 4 (`tests/test_prose_spans.py`),
    `python -m slidemage.prose_spans`, and the S7 guard (`Task.prose_only` on `PROOFREAD` and
    `PROOFREAD_SELECTION`). No checker, no new UI.
-2. **The dictionary checker** (`spelling/`: `Checker`, pyspellchecker and spylls, `dictionaries.json`, download,
-   the German variant setting), the build change that leaves pyspellchecker's lists out, and test 5.
+2. **Built in v0.17.15.** `spelling/`: `checker.py` (`Checker`, `checkable`, `SpellingUnavailable`), `catalogue.py`
+   (the pins; `tools/spelling_pins.py` regenerates them), `dictionaries.py` (folder and download),
+   `dictionary_checker.py` (spylls for German, pyspellchecker for the rest), `settings.py` (the German variant,
+   stored per user; its control comes with step 3). The build leaves pyspellchecker's lists out; test 5 is
+   `tests/test_spelling.py`. Nothing imports `spelling/` yet.
 3. **The editor:** underlines as you type, the suggestion menu, Ignore, the word list, the toolbar toggle, and
    test 6.
 4. **More places:** a deck-wide spelling list (every unknown word of a deck, grouped, with "Add to word list" for
