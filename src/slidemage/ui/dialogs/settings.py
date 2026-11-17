@@ -100,6 +100,20 @@ class GeneralTab(Page):
                                  "how to use it. Shift+F1 shows the same for the command at the text cursor, also "
                                  "when this is off."))
 
+        from ...spelling import settings as spelling_settings
+        self.german_spelling_combo = QComboBox()
+        for variant, name in (("AT", "Austria (Jänner, Straße)"), ("DE", "Germany (Januar, Straße)"),
+                              ("CH", "Switzerland (Januar, Strasse)")):
+            self.german_spelling_combo.addItem(name, variant)
+        self.german_spelling_combo.setCurrentIndex(
+            max(0, self.german_spelling_combo.findData(spelling_settings.german_variant())))
+        self.german_spelling_combo.currentIndexChanged.connect(
+            lambda _i: app.set_german_spelling(self.german_spelling_combo.currentData()))
+        layout.addWidget(Field("German spelling", self.german_spelling_combo))
+        layout.addWidget(caption("The dictionary German slide text is checked against; the spell check is switched "
+                                 "on and off in the Source view's toolbar. Each dictionary is downloaded the first "
+                                 "time it is used (about 4 MB)."))
+
         self.autosave_check = QCheckBox("Save edits as you type (AutoSave)")
         self.autosave_check.setChecked(autosave_on())
         self.autosave_check.toggled.connect(app.set_autosave)

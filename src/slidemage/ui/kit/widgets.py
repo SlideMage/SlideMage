@@ -1130,6 +1130,24 @@ class PopoverMenu(Popover):
         """A caption at the right end of the footer."""
         self._entries.append(("note", text))
 
+    def has_item(self, key: str) -> bool:
+        return any(e[0] == "item" and e[1] == key for e in self._entries)
+
+    def replace_item(self, key: str, items: list[tuple[str, str, bool]]) -> None:
+        """Put `items` ((key, text, enabled) rows) where the item `key` is; [] removes it. Works while the menu is
+        open, for rows found after it opened (spelling suggestions, which take seconds): the rows are rebuilt and
+        the row that was current stays current."""
+        index = next((i for i, e in enumerate(self._entries) if e[0] == "item" and e[1] == key), None)
+        if index is None:
+            return
+        self._entries[index:index + 1] = [("item", k, text, "", "", "", enabled, "", "")
+                                          for k, text, enabled in items]
+        if self.isVisible():
+            current = self._rows[self._current].key if 0 <= self._current < len(self._rows) else ""
+            self._build()
+            self._set_current(next((i for i, row in enumerate(self._rows) if row.key == current), -1))
+            self.adjustSize()
+
     def _build(self) -> None:
         clear_layout(self._layout)
         self._rows.clear()

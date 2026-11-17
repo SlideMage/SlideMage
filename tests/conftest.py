@@ -187,6 +187,10 @@ def _isolated_layout_settings(monkeypatch, tmp_path_factory):
 
     store = tmp_path_factory.mktemp("layout") / "layout.json"
     monkeypatch.setattr(layout_settings, "STORE_PATH", store)
+    # The spell check is off in tests: on, every slide opened in the Source view would download a dictionary
+    # (tests/test_spell_check_gui.py switches it on, with a checker that needs none). The key is
+    # spell_check.SPELL_CHECK_KEY, written out so that this does not load Qt for every test.
+    layout_settings.set("spell_check", False)
 
 
 @pytest.fixture(autouse=True)

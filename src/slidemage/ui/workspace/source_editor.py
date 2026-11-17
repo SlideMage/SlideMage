@@ -200,10 +200,15 @@ class LatexPlainTextEdit(QPlainTextEdit):
     modified_changed = Signal(bool)
     text_changed = Signal()
     escape_pressed = Signal()
+    # Ctrl+. : the spelling menu for the word at the text cursor (character offset, global position for it).
+    spelling_menu_requested = Signal(int, QPoint)
 
     def __init__(self, theme: ThemeManager, tab_width: int = DEFAULT_TAB_WIDTH_CHARS,
                  hover_help: bool = True) -> None:
         super().__init__()
+        self._brace_selections: list[QTextEdit.ExtraSelection] = []
+        self._spell_selections: list[QTextEdit.ExtraSelection] = []
+        self._spelling_marks: list[tuple[int, int]] = []
         self.setObjectName(q.SOURCE)
         self._theme = theme
         self._hover_help = hover_help
@@ -519,7 +524,53 @@ class LatexPlainTextEdit(QPlainTextEdit):
 
     def refresh_colors(self) -> None:
         self.highlighter.refresh_colors()
+        self.set_spelling_marks(self._spelling_marks)
         self.viewport().update()
+
+    # -- spelling marks (spell_check.py decides which words) -----------------------------
+
+    def char_offset(self, position: int) -> int:
+        """The character offset into text() of a Qt position (which counts UTF-16 code units)."""
+        units = utf16_units(self.toPlainText())
+        return position - sum("\ud800" <= unit <= "\udbff" for unit in units[:position])
+
+    def offset_at(self, pos: QPoint) -> int:
+        """The character offset under `pos` (viewport coordinates), on the character the pointer is over."""
+        cursor = self.cursorForPosition(pos)
+        position = cursor.position()
+        if self.cursorRect(cursor).x() > pos.x() and cursor.positionInBlock() > 0:
+            position -= 1
+        return self.char_offset(position)
+
+    def spelling_marks(self) -> list[tuple[int, int]]:
+        return list(self._spelling_marks)
+
+    def set_spelling_marks(self, marks: list[tuple[int, int]]) -> None:
+        """Underline the character ranges `marks` (offsets into text()) with a red wavy line; [] clears them."""
+        self._spelling_marks = list(marks)
+        text = self.toPlainText()
+        fmt = QTextCharFormat()
+        fmt.setUnderlineStyle(QTextCharFormat.UnderlineStyle.SpellCheckUnderline)
+        fmt.setUnderlineColor(QColor(self._theme.tokens.error))
+        selections, done, position = [], 0, 0
+        for start, end in sorted(self._spelling_marks):
+            if not done <= start < end <= len(text):
+                continue
+            position += utf16_len(text[done:start])
+            length = utf16_len(text[start:end])
+            selection = QTextEdit.ExtraSelection()
+            selection.format = fmt
+            selection.cursor = QTextCursor(self.document())
+            selection.cursor.setPosition(position)
+            selection.cursor.setPosition(position + length, QTextCursor.MoveMode.KeepAnchor)
+            selections.append(selection)
+            position += length
+            done = end
+        self._spell_selections = selections
+        self._apply_extra_selections()
+
+    def _apply_extra_selections(self) -> None:
+        self.setExtraSelections(self._spell_selections + self._brace_selections)
 
     # -- line numbers ------------------------------------------------------------------
 
@@ -573,6 +624,11 @@ class LatexPlainTextEdit(QPlainTextEdit):
     def keyPressEvent(self, event) -> None:
         if event.key() == Qt.Key.Key_F1 and event.modifiers() == Qt.KeyboardModifier.ShiftModifier:
             self.show_help_at_cursor()
+            return
+        if event.key() == Qt.Key.Key_Period and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            caret = self.cursorRect()
+            self.spelling_menu_requested.emit(self.char_offset(self.textCursor().position()),
+                                              self.viewport().mapToGlobal(caret.bottomLeft()))
             return
         if event.key() == Qt.Key.Key_Escape:
             self.escape_pressed.emit()
@@ -653,7 +709,8 @@ class LatexPlainTextEdit(QPlainTextEdit):
                 selection.cursor.setPosition(pos)
                 selection.cursor.setPosition(pos + 1, QTextCursor.MoveMode.KeepAnchor)
                 selections.append(selection)
-        self.setExtraSelections(selections)
+        self._brace_selections = selections
+        self._apply_extra_selections()
 
 
 class FindBar(QWidget):

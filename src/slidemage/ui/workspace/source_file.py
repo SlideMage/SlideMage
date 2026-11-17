@@ -124,6 +124,7 @@ class SourceFile(Surface):
         self.is_deck = (not self.is_slide and path.suffix.lower() == ".tex"
                         and path.parent in self.app.project.deck_folders and not is_generated_wrapper(path.name))
         self.lint: Optional[latex_lint.CheckResult] = None     # of the buffer; None for a .bib
+        self.spell_check = None      # a slide's SpellCheck (spell_check.py), from attach_spell_check()
 
         self.text, self.eol = slide_source.read_slide_source(path)
         tab_width = app_settings.get(app.project, latex_edit.TAB_WIDTH_SETTING_KEY, latex_edit.DEFAULT_TAB_WIDTH_CHARS)
@@ -232,6 +233,11 @@ class SourceFile(Surface):
         self.lint_chip = Chip("", "muted")
         self.lint_chip.clicked.connect(self._show_issues)
         row.addWidget(self.lint_chip)
+        # The spell check's news: a dictionary being downloaded, or why some text is not checked (click: again).
+        self.spelling_chip = Chip("", "muted")
+        self.spelling_chip.clicked.connect(lambda: self.spell_check is not None and self.spell_check.check_now())
+        self.spelling_chip.hide()
+        row.addWidget(self.spelling_chip)
         row.addStretch(1)
         self.ask_ai_button = Button("Ask AI to fix", "ghost", compact=True)
         self.ask_ai_button.setToolTip(
@@ -242,6 +248,26 @@ class SourceFile(Surface):
         if self.is_bib:
             line.hide()     # never setVisible(True) here: the line has no parent yet, so it would open as a window
         return line
+
+    def attach_spell_check(self, session, enabled: bool) -> None:
+        """Check a slide's spelling as you type, with the window's SpellingSession (`session()` gives it). Only
+        slides: a deck's source and SlideMage.bib have next to no regular text."""
+        if not self.is_slide or self.spell_check is not None:
+            return
+        from .spell_check import SpellCheck, file_language
+        self.spell_check = SpellCheck(self.editor, session, lambda: file_language(self.app.project, self.id_slug),
+                                      enabled)
+        self.spell_check.status_changed.connect(self._show_spelling_status)
+        if enabled:
+            self.spell_check.check_now()
+
+    def _show_spelling_status(self) -> None:
+        status = self.spell_check.status if self.spell_check is not None else ""
+        busy = status.startswith(("Downloading", "Loading"))
+        self.spelling_chip.set_text(status if len(status) <= 60 else status[:57] + "…")
+        self.spelling_chip.setToolTip(status if busy else f"{status}\nClick to check again.")
+        self.spelling_chip.set_tone("muted" if busy else "warning")
+        self.spelling_chip.setVisible(bool(status))
 
     def _build_conflict_bar(self) -> Surface:
         """The notice for a file that changed on disk while the buffer has unsaved edits."""
