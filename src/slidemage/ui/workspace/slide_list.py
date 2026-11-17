@@ -115,6 +115,7 @@ class SlideList(QWidget):
         self.find = QLineEdit()
         self.find.setObjectName(q.SLIDES_FIND)
         self.find.setPlaceholderText("Find slide by id or title")
+        self.find.setClearButtonEnabled(True)     # the "x" on the right that empties the box
         self.find.textChanged.connect(self._apply_filter)
         self.find.returnPressed.connect(self._go_to_first_match)
         escape = QShortcut(QKeySequence(Qt.Key.Key_Escape), self.find)
@@ -124,7 +125,8 @@ class SlideList(QWidget):
 
         self.review_filter = Button("Not reviewed", "secondary", compact=True)
         self.review_filter.setCheckable(True)
-        self.review_filter.setToolTip("Show only slides changed by Claude that still need your review")
+        self.review_filter.setToolTip("Show only slides changed by Claude that still need your review "
+                                      "(highlighted while on; click again to show every slide)")
         self.review_filter.toggled.connect(self._apply_filter)
         layout.addWidget(self.review_filter)
 
