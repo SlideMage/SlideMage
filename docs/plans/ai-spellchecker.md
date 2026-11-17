@@ -2,8 +2,8 @@
 
 Status: **design, revision 3 (2026-11-16). The user decided S1 to S7 (section 8). Step 1 is built in v0.17.14
 (`prose_spans.py`, its tests, the PROOFREAD guard), step 2 in v0.17.15 (`spelling/`, the dictionary checker),
-step 3 in v0.17.19 (underlines and the menu in the Source view), English with Hunspell in v0.17.20; steps 4 and
-5 are open.** Handover task `ai-spellchecker`.
+step 3 in v0.17.19 (underlines and the menu in the Source view), English with Hunspell in v0.17.20, step 4 in
+v0.17.21 (the deck's spelling list, image descriptions); step 5 (AI) is on hold.** Handover task `ai-spellchecker`.
 
 History of the request:
 * **2026-11-14:** the user asked for an AI-driven spellchecker, scoped carefully so that it only checks or touches
@@ -283,6 +283,14 @@ The user answered against the numbering of revision 2. Revision 3 keeps that num
    slide. Tests switch the check off in `conftest.py` (else every opened slide would download a dictionary).
    Measured on the 103 example slides: 3.9 s, 97 underlines, mostly technical terms, but pyspellchecker's English
    list also lacks "app", "admin", "checkbox", "colour" and "grayscale" (see section 5, "Found in step 2").
-4. **More places:** a deck-wide spelling list (every unknown word of a deck, grouped, with "Add to word list" for
-   many at once), and alt texts in the Images panel (S3).
+4. **Built in v0.17.21.** Deck -> Check spelling of this deck… (`spelling/deck_check.py`, Qt-free:
+   `deck_files()` is every slide file the deck shows, its topic blocks included, in every project language;
+   `check_files()` groups the unknown words by language and word with where they occur;
+   `ui/dialogs/deck_spelling.py`: a sheet that is not modal, tick boxes, Add to word list and Ignore for the ticked
+   words, double-click opens the slide at the line). Image descriptions (S3 a): the short, long and takeaway
+   fields of the Images page, in each language, are checked as plain text as you type (`SpellCheck(plain=True)`
+   through `PlainTextTarget`, `prose_spans.plain_spans()`, `SpellingSession.check_plain`/`correct_plain`), with
+   the spelling rows in their right-click menu; the source (citation) fields are not checked. Measured on the
+   example manual deck: 96 files in both languages, 2.3 s. Not done: the side panel's Image descriptions (it has
+   its own fields), a deck's own source and the .bib.
 5. **Optional:** the AI checker (section 7). The user, 2026-11-17: keep it in the handover, do not build it yet.

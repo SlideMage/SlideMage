@@ -841,6 +841,11 @@ class WorkspaceWindow(QMainWindow):
         spelling_settings.set_variant(language, variant)
         self.centre.source.recheck_spelling()
 
+    def spelling_session(self):
+        """The window's SpellingSession (the Source view's): one set of dictionaries, word lists and ignored words
+        for the editor, the deck's spelling list and the Images page."""
+        return self.centre.source.spelling_session()
+
     def after_deck_edit(
         self, deck_path: Path, summary: str, previous_text: Optional[str] = None
     ) -> None:

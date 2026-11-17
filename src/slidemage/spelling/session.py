@@ -51,8 +51,15 @@ class SpellingSession:
     def check(self, text: str, language: str, report: Optional[Report] = None) -> CheckResult:
         """The misspelt words of `text` (a slide's source; `language` is the file's own, the arguments of
         \\multilingualtext carry theirs). Text in a language without a dictionary is left alone and reported."""
+        return self._check_words(prose_spans.words(text, prose_spans.prose_spans(text, language)), report)
+
+    def check_plain(self, text: str, language: str, report: Optional[Report] = None) -> CheckResult:
+        """The misspelt words of plain text in `language` (an image's description): no LaTeX, so every word is
+        prose except addresses and file names."""
+        return self._check_words(prose_spans.words(text, prose_spans.plain_spans(text, language)), report)
+
+    def _check_words(self, found: list[prose_spans.Word], report: Optional[Report]) -> CheckResult:
         result = CheckResult()
-        found = prose_spans.words(text, prose_spans.prose_spans(text, language))
         by_language: dict[str, list[prose_spans.Word]] = {}
         for word in found:
             if word.language and checkable(word.text):
@@ -94,6 +101,16 @@ class SpellingSession:
         return word_list.add(self.root, language, word)
 
     @staticmethod
+    def correct_plain(text: str, misspelling: Misspelling, replacement: str) -> str:
+        """`text` (plain, not LaTeX) with the misspelt word replaced. Raises ValueError when the text changed there
+        since the check, or the replacement holds a line break."""
+        if text[misspelling.start:misspelling.end] != misspelling.word:
+            raise ValueError(f"the text at {misspelling.start} no longer reads {misspelling.word!r}")
+        if "\n" in replacement or "\r" in replacement:
+            raise ValueError(f"the replacement {replacement!r} contains a line break")
+        return text[:misspelling.start] + replacement + text[misspelling.end:]
+
+    @staticmethod
     def correct(text: str, misspelling: Misspelling, replacement: str, file_language: str) -> str:
         """`text` with the misspelt word replaced, through prose_spans.apply_span_edits. Raises ValueError when the
         text changed there since the check, or the replacement may not go into regular text."""
@@ -106,3 +123,17 @@ class SpellingSession:
 
 def _key(word: str) -> str:
     return normalized(word).casefold()
+
+
+def slide_language(project, id_slug: str) -> str:
+    """The language a slide's text is checked in: its own (the code in its file name), the project's main language
+    for a slide without one, and "" for a multilingual slide (only \\multilingualtext's arguments, which carry
+    their own)."""
+    from .. import languages
+    from .. import slide_language as slide_languages
+
+    project_languages = languages.project_languages(project)
+    own = slide_languages.own_language(id_slug, project_languages.codes)
+    if own == slide_languages.MULT:
+        return ""
+    return (own or project_languages.main).lower()

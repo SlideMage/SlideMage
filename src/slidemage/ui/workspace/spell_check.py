@@ -25,7 +25,7 @@ from typing import Callable, Optional
 from PySide6.QtCore import QObject, QTimer, Signal
 
 from ... import languages
-from ...spelling.session import CheckResult, Misspelling, SpellingSession
+from ...spelling.session import CheckResult, Misspelling, SpellingSession, slide_language
 from .. import layout_settings
 from ..background import run_in_background_with_progress
 
@@ -48,16 +48,8 @@ def set_spell_check_on(on: bool) -> None:
 
 
 def file_language(project, id_slug: str) -> str:
-    """The language a slide's text is checked in: its own (the code in its file name), the project's main language
-    for a slide without one, and "" for a multilingual slide (only \\multilingualtext's arguments, which carry
-    their own)."""
-    from ... import slide_language
-
-    project_languages = languages.project_languages(project)
-    own = slide_language.own_language(id_slug, project_languages.codes)
-    if own == slide_language.MULT:
-        return ""
-    return (own or project_languages.main).lower()
+    """The language a slide's text is checked in (spelling.session.slide_language)."""
+    return slide_language(project, id_slug)
 
 
 class SpellCheck(QObject):
@@ -67,14 +59,16 @@ class SpellCheck(QObject):
     word_list_changed = Signal()     # Ignore or Add to word list: the other open files check again
 
     def __init__(self, editor, session: Callable[[], Optional[SpellingSession]],
-                 language: str | Callable[[], str], enabled: bool = True) -> None:
+                 language: str | Callable[[], str], enabled: bool = True, *, plain: bool = False) -> None:
         """`language` is the file's language, or a function giving it, asked once, at the first check (it reads
-        the project's languages: nothing to do while the check is off)."""
+        the project's languages: nothing to do while the check is off). `plain`: the text is plain, not LaTeX (an
+        image's description, through PlainTextTarget): every word but addresses and file names is checked."""
         super().__init__(editor)
         self.editor = editor
         self._session = session
         self._language = language
         self.enabled = enabled
+        self.plain = plain
         self.status = ""                 # for the status line: a download, or why a language is not checked
         self.result: Optional[CheckResult] = None
         self._checked_text: Optional[str] = None
@@ -120,8 +114,9 @@ class SpellCheck(QObject):
             self._pending = True        # the running check is for an older text: check again when it ends
             return
         text, language = self.editor.text(), self.language
+        check = session.check_plain if self.plain else session.check
         self._handle = run_in_background_with_progress(
-            lambda report: session.check(text, language, lambda done, total, message: report(
+            lambda report: check(text, language, lambda done, total, message: report(
                 (done, total, message))),
             self._on_progress, lambda result, error: self._on_done(text, result, error), parent=self, logger=log)
 
@@ -237,7 +232,8 @@ class SpellCheck(QObject):
         if self.editor.is_read_only() or text != self._checked_text:
             return False
         try:
-            new = SpellingSession.correct(text, word, replacement, self.language)
+            new = (SpellingSession.correct_plain(text, word, replacement) if self.plain
+                   else SpellingSession.correct(text, word, replacement, self.language))
         except ValueError as e:
             log.warning("spelling: %r not replaced by %r: %s", word.word, replacement, e)
             return False
@@ -266,3 +262,99 @@ def _status_of(result: CheckResult) -> str:
         names = ", ".join(sorted(languages.name(code) for code in result.unsupported))
         parts.append(f"No dictionary for {names}: that text is not checked.")
     return " ".join(parts)
+
+
+# -- plain text fields (an image's description: the Images page, step 4, decision S3 a) -------------------------------
+
+class PlainTextTarget(QObject):
+    """A QPlainTextEdit as SpellCheck sees an editor: its text, its edits, underlines, one-step corrections."""
+
+    text_changed = Signal()
+
+    def __init__(self, edit, color: str) -> None:
+        super().__init__(edit)
+        self.edit = edit
+        self._color = color
+        self._marks: list[tuple[int, int]] = []
+        edit.textChanged.connect(self.text_changed)
+
+    def text(self) -> str:
+        return self.edit.toPlainText()
+
+    def is_read_only(self) -> bool:
+        return self.edit.isReadOnly()
+
+    def spelling_marks(self) -> list[tuple[int, int]]:
+        return list(self._marks)
+
+    def set_spelling_marks(self, marks: list[tuple[int, int]]) -> None:
+        from .source_editor import spelling_selections
+
+        self._marks = list(marks)
+        self.edit.setExtraSelections(spelling_selections(self.edit, self._marks, self._color))
+
+    def patch_text(self, text: str) -> None:
+        """Change the text to `text` by replacing only what differs, as one undo step."""
+        from PySide6.QtGui import QTextCursor
+
+        from ...latex_edit import minimal_replacement, utf16_len
+
+        old = self.text()
+        start, end, replacement = minimal_replacement(old, text)
+        cursor = QTextCursor(self.edit.document())
+        cursor.beginEditBlock()
+        cursor.setPosition(utf16_len(old[:start]))
+        cursor.setPosition(utf16_len(old[:end]), QTextCursor.MoveMode.KeepAnchor)
+        cursor.insertText(replacement)
+        cursor.endEditBlock()
+
+
+def attach_plain(edit, app, language: str) -> Optional[SpellCheck]:
+    """Check the plain text of `edit` (a description field of `language`) as you type, with the window's
+    SpellingSession, and give it the spelling rows in its right-click menu. None when the window has no session
+    to give (a test's stand-in) or the spell check is switched off."""
+    if not spell_check_on() or not hasattr(app, "spelling_session"):
+        return None
+    target = PlainTextTarget(edit, app.theme.tokens.error)
+    spell = SpellCheck(target, app.spelling_session, language, True, plain=True)
+    spell.word_list_changed.connect(lambda: _recheck_window(app))
+    from PySide6.QtCore import Qt
+
+    edit.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+    edit.customContextMenuRequested.connect(lambda pos: _plain_menu(edit, spell, pos))
+    edit.spell_check = spell            # kept with the field (tests read it)
+    spell.check_now()
+    return spell
+
+
+def _recheck_window(app) -> None:
+    source = getattr(getattr(app, "centre", None), "source", None)
+    if source is not None:
+        source.recheck_spelling()
+
+
+_EDIT_ROWS = (("undo", "Undo", "Ctrl+Z"), ("redo", "Redo", "Ctrl+Y"), (None, None, None),
+              ("cut", "Cut", "Ctrl+X"), ("copy", "Copy", "Ctrl+C"), ("paste", "Paste", "Ctrl+V"),
+              ("selectAll", "Select all", "Ctrl+A"))
+
+
+def _plain_menu(edit, spell: SpellCheck, pos) -> None:
+    """The field's right-click menu: the spelling rows of an underlined word, then the usual edit commands."""
+    from ..kit.widgets import PopoverMenu
+    from .source_editor import char_offset_at
+
+    viewport_pos = edit.viewport().mapFrom(edit, pos)
+    menu = PopoverMenu(edit, min_width=220)
+    selected, writable = edit.textCursor().hasSelection(), not edit.isReadOnly()
+    if not selected:
+        spell.add_menu_rows(menu, char_offset_at(edit, viewport_pos))
+    for key, label, keys in _EDIT_ROWS:
+        if key is None:
+            menu.add_separator()
+            continue
+        enabled = {"undo": writable, "redo": writable, "cut": selected and writable, "copy": selected,
+                   "paste": writable}.get(key, True)
+        menu.add_item(key, label, meta=keys, enabled=enabled)
+    menu.triggered.connect(lambda key: spell.handle_choice(key) or getattr(edit, key)())
+    menu.closed.connect(menu.deleteLater)
+    menu.popup_at(edit.mapToGlobal(pos))

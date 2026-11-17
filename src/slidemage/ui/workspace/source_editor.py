@@ -110,6 +110,41 @@ class SourceEditor(Protocol):
     def refresh_colors(self) -> None: ...
 
 
+def spelling_selections(edit: QPlainTextEdit, marks: list[tuple[int, int]], color: str) -> list:
+    """Red wavy underlines (ExtraSelections) of `edit` on the character ranges `marks` (offsets into its plain text;
+    Qt counts UTF-16 code units, so a character outside the BMP counts twice there)."""
+    text = edit.toPlainText()
+    fmt = QTextCharFormat()
+    fmt.setUnderlineStyle(QTextCharFormat.UnderlineStyle.SpellCheckUnderline)
+    fmt.setUnderlineColor(QColor(color))
+    selections, done, position = [], 0, 0
+    for start, end in sorted(marks):
+        if not done <= start < end <= len(text):
+            continue
+        position += utf16_len(text[done:start])
+        length = utf16_len(text[start:end])
+        selection = QTextEdit.ExtraSelection()
+        selection.format = fmt
+        selection.cursor = QTextCursor(edit.document())
+        selection.cursor.setPosition(position)
+        selection.cursor.setPosition(position + length, QTextCursor.MoveMode.KeepAnchor)
+        selections.append(selection)
+        position += length
+        done = end
+    return selections
+
+
+def char_offset_at(edit: QPlainTextEdit, pos: QPoint) -> int:
+    """The character offset into `edit`'s plain text under `pos` (viewport coordinates), on the character the
+    pointer is over."""
+    cursor = edit.cursorForPosition(pos)
+    position = cursor.position()
+    if edit.cursorRect(cursor).x() > pos.x() and cursor.positionInBlock() > 0:
+        position -= 1
+    units = utf16_units(edit.toPlainText())
+    return position - sum("\ud800" <= unit <= "\udbff" for unit in units[:position])
+
+
 def source_font() -> QFont:
     font = QFont(FONT_MONO)
     font.setPixelSize(FONT_PX)
@@ -536,11 +571,7 @@ class LatexPlainTextEdit(QPlainTextEdit):
 
     def offset_at(self, pos: QPoint) -> int:
         """The character offset under `pos` (viewport coordinates), on the character the pointer is over."""
-        cursor = self.cursorForPosition(pos)
-        position = cursor.position()
-        if self.cursorRect(cursor).x() > pos.x() and cursor.positionInBlock() > 0:
-            position -= 1
-        return self.char_offset(position)
+        return char_offset_at(self, pos)
 
     def spelling_marks(self) -> list[tuple[int, int]]:
         return list(self._spelling_marks)
@@ -548,25 +579,7 @@ class LatexPlainTextEdit(QPlainTextEdit):
     def set_spelling_marks(self, marks: list[tuple[int, int]]) -> None:
         """Underline the character ranges `marks` (offsets into text()) with a red wavy line; [] clears them."""
         self._spelling_marks = list(marks)
-        text = self.toPlainText()
-        fmt = QTextCharFormat()
-        fmt.setUnderlineStyle(QTextCharFormat.UnderlineStyle.SpellCheckUnderline)
-        fmt.setUnderlineColor(QColor(self._theme.tokens.error))
-        selections, done, position = [], 0, 0
-        for start, end in sorted(self._spelling_marks):
-            if not done <= start < end <= len(text):
-                continue
-            position += utf16_len(text[done:start])
-            length = utf16_len(text[start:end])
-            selection = QTextEdit.ExtraSelection()
-            selection.format = fmt
-            selection.cursor = QTextCursor(self.document())
-            selection.cursor.setPosition(position)
-            selection.cursor.setPosition(position + length, QTextCursor.MoveMode.KeepAnchor)
-            selections.append(selection)
-            position += length
-            done = end
-        self._spell_selections = selections
+        self._spell_selections = spelling_selections(self, self._spelling_marks, self._theme.tokens.error)
         self._apply_extra_selections()
 
     def _apply_extra_selections(self) -> None:
