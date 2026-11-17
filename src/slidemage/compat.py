@@ -84,6 +84,20 @@ def _detect_omitslide(root: Path) -> list[Finding]:
     return findings
 
 
+def _detect_blocks_and_appendix_views(root: Path) -> list[Finding]:
+    """v0.17.20: the decks that use topic blocks (\\slideblock) or name views in \\deckappendixtoc[...], which
+    SlideMage v0.16 and older cannot compile."""
+    findings = []
+    for path in compat_bibliography.decks(root):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for match in re.finditer(r"\\slideblock\s*\{|\\deckappendixtoc\s*\[", text):
+            if not is_commented(text, match.start()):
+                what = "a topic block" if "slideblock" in match.group() else "an appendix limited to some views"
+                findings.append(Finding(path.relative_to(root).as_posix(), text.count("\n", 0, match.start()) + 1,
+                                        f"Uses {what}: SlideMage v0.16 or older cannot compile this deck."))
+    return findings
+
+
 def _detect_converted_image_descriptions(root: Path) -> list[Finding]:
     """v0.13.30: media/alt-text.json in format 3 next to the older file alt_images.convert_store kept."""
     media = root / "media"
@@ -395,7 +409,19 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
     detect=lambda root: [Finding(".slidemage/project.json", 0, "Flat slide snapshots removed.")]
         if project.read_project_json(root).get("flat_snapshots_removed") else [],
     automatic=True,
-), compat_color_roles.CHANGE, compat_color_cut.CHANGE]
+), compat_color_roles.CHANGE, compat_color_cut.CHANGE, Change(
+    id="topic-blocks-and-appendix-views",
+    since="v0.17.20",
+    severity=BREAKS,
+    title="Decks with topic blocks or an appendix for some views need SlideMage v0.17",
+    description=(
+        "Topic blocks (\\slideblock, v0.17.0) and an appendix limited to some views (\\deckappendixtoc[instructor], "
+        "v0.17.13) are not known to SlideMage v0.16 or older: a deck that uses them does not compile there. "
+        "Nothing changes in this SlideMage."),
+    fix="Nothing to change in the project. Update SlideMage on every computer that opens it.",
+    detect=_detect_blocks_and_appendix_views,
+    automatic=True,
+)]
 
 # Releases from this one on need a registry entry for every "BREAKING:"
 # paragraph of their version.py history (tests/test_compat.py).
