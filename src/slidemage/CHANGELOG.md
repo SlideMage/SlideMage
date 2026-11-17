@@ -4337,3 +4337,5 @@ v0.17.20 (2026-11-17, direct request: "Yes, switch", on the finding that pyspell
 NEW: Better English spell checking.
 - English is now checked with a full dictionary that knows everyday words such as "app", "admin" and "checkbox".
 - Choose American (the default) or British spelling in Settings -> General; the English dictionary is downloaded once (under 1 MB).
+
+BREAKING: Decks that use topic blocks (\slideblock, v0.17.0) or limit their appendix to some views (\deckappendixtoc[instructor], v0.17.13) do not compile with SlideMage v0.16 or older. Update SlideMage on every computer that opens such a project.
