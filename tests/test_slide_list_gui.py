@@ -323,6 +323,13 @@ def test_the_find_box_filters_by_id_or_title_and_enter_goes_to_the_first_match(m
     assert all(not i.isHidden() for i in slide_list.tree.slide_items())
 
 
+def test_the_find_box_has_an_x_and_the_not_reviewed_filter_looks_pressed_while_on(make_list):
+    slide_list, _, _ = make_list(FRONT_AND_SECTIONS)
+    assert slide_list.find.isClearButtonEnabled()
+    assert slide_list.review_filter.isCheckable()
+    assert 'QPushButton[kind="secondary"]:checked' in ThemeManager()._build_qss()
+
+
 def test_a_slide_focused_from_elsewhere_is_shown_though_the_filter_hides_it_or_its_section_is_closed(make_list):
     slide_list, window, _path = make_list(FRONT_AND_SECTIONS)
     slide_list.find.setText("bbb")                          # the filter hides ddd

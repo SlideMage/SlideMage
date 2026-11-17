@@ -4339,3 +4339,9 @@ NEW: Better English spell checking.
 - Choose American (the default) or British spelling in Settings -> General; the English dictionary is downloaded once (under 1 MB).
 
 BREAKING: Decks that use topic blocks (\slideblock, v0.17.0) or limit their appendix to some views (\deckappendixtoc[instructor], v0.17.13) do not compile with SlideMage v0.16 or older. Update SlideMage on every computer that opens such a project.
+
+v0.17.21 (2026-11-17, direct request: the slide list's find box and Not reviewed filter): The slide list's find box has the clear "x" on the right (QLineEdit.setClearButtonEnabled), and the Not reviewed filter button looks pressed while it is on: a checkable secondary Button takes the inverse fill (kit_qss.py, QPushButton[kind="secondary"]:checked), so nobody wonders later why the list is empty; its tooltip says so. The same style applies to the other checkable secondary buttons (compare_rendered's diff button, the Similar page's sequence toggle). Test: tests/test_slide_list_gui.py (the x is on, the checked style is in the stylesheet).
+
+NEW: Clearer slide list filters.
+- The find box above the slide list has an "x" that empties it.
+- The "Not reviewed" button stays highlighted while the filter is on.
