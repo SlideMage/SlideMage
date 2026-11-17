@@ -64,6 +64,13 @@ def main(argv):
     args = [a for a in argv if not a.startswith("--")]
     if len(args) != 1:
         raise SystemExit(__doc__)
+    try:        # finished tasks and sections go to handover-archive.md first (docs/handover_archive.py)
+        import handover_archive
+        moved = handover_archive.archive(handover)
+        if not moved.startswith("nothing"):
+            print("archived:", moved)
+    except Exception as e:      # the page must still build
+        print("archiving skipped:", e)
     text = handover.read_text(encoding="utf-8")
     tasks = read_tasks(text)
     if "--all" not in argv:

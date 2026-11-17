@@ -6080,8 +6080,11 @@
 %   and the logo link are unchanged.
 % \deckappendixtoc -- in the deck preamble, inert for LaTeX (like
 %   \decktags): SlideMage then generates the appendix for this deck on every
-%   whole-deck compile, whatever the toolbar checkbox says.
-\newcommand{\deckappendixtoc}{}
+%   whole-deck compile, whatever the toolbar checkbox says. The optional
+%   argument names the views that get it (instructor, during-course,
+%   after-course, comma separated): \deckappendixtoc[instructor]. Without it,
+%   every view does.
+\newcommand{\deckappendixtoc}[1][]{}
 \newlength{\SMChapterAgendaMaxHeight}
 \newcommand{\SMNavigationLead}{Navigation:}
 \newcommand{\SMNavigationLabelDeck}{Contents}

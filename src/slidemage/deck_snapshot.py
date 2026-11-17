@@ -66,7 +66,7 @@ from .compile_records import (
     sha256 as _sha256,
 )
 from .deck_editor import VIEWS
-from .deck_scan import Deck
+from .deck_scan import Deck, appendix_toc_for
 from .fileio import replace_with_retry
 from .processes import command_output
 
@@ -367,13 +367,15 @@ def ensure_gitignored(root: Path) -> bool:
 def snapshot_jobs(deck: Deck, options: SnapshotOptions) -> list[CompileJob]:
     """The compiles a snapshot captures: every version of the deck (or the one
     version-less compile) and, by default, the presenter PDF."""
-    appendix = deck.appendix_toc if options.appendix_toc is None else options.appendix_toc
+    def appendix(version):
+        return appendix_toc_for(deck, version) if options.appendix_toc is None else options.appendix_toc
     versions = list(VIEWS) if deck.supports_version else [None]
     jobs = [CompileJob(deck, v, None,
-                       appendix_toc=appendix) for v in versions]
+                       appendix_toc=appendix(v)) for v in versions]
     if options.presenter:
         jobs.append(CompileJob(deck, "instructor" if deck.supports_version else None, None,
-                               presenter=True, appendix_toc=appendix))
+                               presenter=True,
+                               appendix_toc=appendix("instructor" if deck.supports_version else None)))
     return jobs
 
 
