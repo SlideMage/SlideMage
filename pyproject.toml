@@ -26,6 +26,11 @@ dependencies = [
     # The operating system's certificate store for HTTPS (tls_trust.py): pure Python, MIT. Python's own context only
     # reads the roots Windows already holds, so github.com failed with CERTIFICATE_VERIFY_FAILED until Windows fetched one.
     "truststore>=0.10",
+    # The spellchecker (spelling/): pure Python, no dependencies of their own. Pinned exactly: spelling/catalogue.py
+    # pins pyspellchecker's word lists (downloaded, not bundled) to this version's tag. pyspellchecker is MIT,
+    # spylls (Hunspell, for German) MPL-2.0.
+    "pyspellchecker==0.9.1",
+    "spylls==0.1.7",
 ]
 
 [project.optional-dependencies]
