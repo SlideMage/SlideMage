@@ -599,7 +599,7 @@ def test_a_compile_with_an_input_changed_during_it_imports_nothing(project, stor
     external.write_text("@book{y}\n", encoding="utf-8")
     os.utime(external, ns=(before.st_atime_ns, before.st_mtime_ns))
     assert r.ingest_compile(job, pdf, record) == 0 and store.count() == 0
-    # Written again now, the changed file is in the record without a hash (v0.17.15): still nothing is taken, since
+    # Written again now, the changed file is in the record without a hash (v0.17.16): still nothing is taken, since
     # every slide reads the bibliography.
     assert compile_records.write_record(project, job.jobname, project.build_dir / f"{job.jobname}-test",
                                         deck.path, "", pdf, record["started"], record["inventory"], record["configuration"])
@@ -609,7 +609,7 @@ def test_a_compile_with_an_input_changed_during_it_imports_nothing(project, stor
 
 
 def test_a_slide_saved_during_the_compile_keeps_only_its_own_pages_out(project, store, raster, tmp_path, caplog):
-    """v0.17.15, direct report: an 11-minute IA2 instructor compile stored no previews at all, because one slide
+    """v0.17.16, direct report: an 11-minute IA2 instructor compile stored no previews at all, because one slide
     (eaq) was saved while it ran. Now only that slide is left to the sweep."""
     r = make(project, store, raster)
     deck = deck_named(r, "slidemage-manual")
