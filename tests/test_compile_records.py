@@ -84,6 +84,38 @@ def test_a_recorded_compile_is_fresh_until_something_changes(compiled):
     assert fresh is None and why == "1aa-EN-One-current.tex changed"
 
 
+def test_a_slide_changed_during_the_compile_is_recorded_as_changed_not_dropping_the_record(compiled):
+    """v0.17.15 (direct report: an 11-minute IA2 compile gave no previews because one slide was saved during it): the
+    record is kept, the slide has no hash, and every check sees it as changed."""
+    c = compiled
+    later = c["started"] + 5
+    os.utime(c["slide"], (later, later))
+    lines = []
+    assert write_record(ProjectContext(c["root"], c["build"]), "t-Deck-instructor", c["inv"], c["wrapper"], WRAPPER,
+                        c["pdf"], c["started"], c["inventory"], c["configuration"], lines.append) is not None
+    data = compile_records.read_record(c["build"], "t-Deck-instructor")
+    entries = {Path(e["path"]).name: e for e in data["inputs"]}
+    assert entries["1aa-EN-One-current.tex"] == {"path": entries["1aa-EN-One-current.tex"]["path"], "sha256": None,
+                                                 "changed_during_compile": True}
+    assert entries["a.png"]["sha256"] == compile_records.sha256(c["image"])         # the others keep their hashes
+    assert any("changed during the compile: 1aa-EN-One-current.tex" in line for line in lines)
+    fresh, why = fresh_output(c["build"], "t-Deck-instructor", WRAPPER)
+    assert fresh is None and why == "1aa-EN-One-current.tex changed"                # never reused for a snapshot
+
+
+def test_the_deck_file_changed_during_the_compile_still_drops_the_record(compiled):
+    c = compiled
+    record(c)
+    later = c["started"] + 5
+    os.utime(c["deck"], (later, later))
+    lines = []
+    assert write_record(ProjectContext(c["root"], c["build"]), "t-Deck-instructor", c["inv"], c["wrapper"], WRAPPER,
+                        c["pdf"], c["started"], c["inventory"], c["configuration"], lines.append,
+                        deck_path=c["deck"]) is None
+    assert compile_records.read_record(c["build"], "t-Deck-instructor") is None     # the old record goes too
+    assert any("t-Deck.tex changed during it" in line for line in lines)
+
+
 def test_stale_when_settings_or_engine_change(compiled, monkeypatch):
     record(compiled)
     other = WRAPPER.replace("instructor", "instructor}\\def\\SMPresenterModeOverride{1")

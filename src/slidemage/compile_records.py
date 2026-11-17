@@ -23,9 +23,13 @@ recorded file still has its hash, the wrapper and engine are the same, and
 the PDF is unchanged where it was published, that PDF is used as the
 snapshot's reference instead of compiling the version again.
 
-Not recorded (the record is simply not written): a compile during which one
-of the files it read changed (its PDF may show the older or the newer
-content), and one whose bibliography wasn't built. luaotfload's font caches
+A file other than the deck that changed while the compile ran (v0.17.15, direct report: an 11-minute IA2
+compile left every preview unrendered because one slide was saved during it) is recorded with no hash and
+`changed_during_compile`: its PDF pages may show the older or the newer content, so every check treats that
+file as changed (the record is stale for snapshots, the render store takes no pages of the slides that read
+it), while the slides that did not read it keep their pages. Not recorded (the record is simply not written):
+a compile during which the deck file or one of its fragments changed (a page compile locates the deck's
+changes against the copy kept here, which would already hold them), and one whose bibliography wasn't built. luaotfload's font caches
 are left out of the hashes: they are derived files, rewritten by other
 compiles. A file a compile looked for but didn't find is not in the .fls;
 if it appears later, the record doesn't notice -- the snapshot then freezes
@@ -39,6 +43,7 @@ from __future__ import annotations
 
 import functools
 import json
+import logging
 import os
 import re
 import shutil
@@ -51,6 +56,8 @@ from . import languages
 from .fileio import sha256_file as sha256, text_sha256, write_json
 from .processes import command_output
 from .project import ProjectContext
+
+_log = logging.getLogger("slidemage.compile")
 
 RECORD_FORMAT = 2
 RECORDS_DIRNAME = "compile-records"
@@ -234,6 +241,8 @@ def write_record(
         log_file = invocation_dir / f"{jobname}.log"
         log_text = log_file.read_text(encoding="utf-8", errors="replace")
         if not fls.is_file() or BIBER_NEEDED_RE.search(log_text):
+            _log.info("compile record %s not written: %s", jobname,
+                      "no .fls file" if not fls.is_file() else "the bibliography was not built (biber)")
             target.unlink(missing_ok=True)
             return None
         bib_sources = parse_blg_sources(invocation_dir / f"{jobname}.blg",
@@ -243,7 +252,9 @@ def write_record(
         aux.mkdir(parents=True)
         entries = []
         seen: set[str] = set()
+        changed_during: list[str] = []
         inline_inputs = [deck_path] if deck_path is not None else []
+        deck_sources = list(inline_inputs)      # the deck and its fragments, not the slides they call
         expanded_hash = None
         if deck_path is not None and deck_path.is_file():
             from . import deck_groups, deck_language, deck_scan
@@ -252,6 +263,7 @@ def write_record(
                 expanded, fragments = deck_language.expand_fragments(deck)
                 expanded_hash = text_sha256(expanded.text)
                 inline_inputs.extend(fragments)
+                deck_sources.extend(fragments)
                 # Include dependencies in every language: the wrapper can inline
                 # a shared slide list instead of having TeX open its original file.
                 for language in languages.project_languages(ctx).codes:
@@ -275,10 +287,17 @@ def write_record(
                 continue
             info = path.stat()
             if max(info.st_mtime, info.st_ctime) >= started:
-                log(f"    (compile not recorded for snapshots: {path.name} changed during it)")
-                shutil.rmtree(aux, ignore_errors=True)
-                target.unlink(missing_ok=True)
-                return None
+                if key in {norm(source) for source in deck_sources}:     # the deck or a fragment: see the module docstring
+                    log(f"    (compile not recorded for snapshots: {path.name} changed during it)")
+                    _log.info("compile record %s not written: the deck file %s changed during the compile",
+                              jobname, path.name)
+                    shutil.rmtree(aux, ignore_errors=True)
+                    target.unlink(missing_ok=True)
+                    return None
+                # Which version TeX read is unknown: no hash, so every check sees the file as changed.
+                entries.append({"path": str(path), "sha256": None, "changed_during_compile": True})
+                changed_during.append(path.name)
+                continue
             entry = {"path": str(path), "sha256": sha256(path)}
             if path == deck_path and expanded_hash is not None:
                 entry["text_sha256"] = expanded_hash
@@ -312,9 +331,15 @@ def write_record(
         if deck_path is not None and deck_path.is_file():
             shutil.copy2(deck_path, aux / DECK_COPY_NAME)
         write_json(target, record, indent=1, sort_keys=False, ensure_ascii=True)
+        if changed_during:
+            names = ", ".join(changed_during[:5]) + (f" and {len(changed_during) - 5} more" if len(changed_during) > 5 else "")
+            log(f"    (changed during the compile: {names}; the slides that read "
+                f"{'it' if len(changed_during) == 1 else 'them'} get no preview from this PDF)")
+            _log.info("compile record %s: %d file(s) changed during the compile: %s", jobname, len(changed_during), names)
         return target
     except (OSError, ValueError) as exc:
         log(f"    (compile not recorded for snapshots: {exc})")
+        _log.info("compile record %s not written: %s", jobname, exc)
         try:
             target.unlink(missing_ok=True)
         except OSError:

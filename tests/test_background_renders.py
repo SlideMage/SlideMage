@@ -599,9 +599,46 @@ def test_a_compile_with_an_input_changed_during_it_imports_nothing(project, stor
     external.write_text("@book{y}\n", encoding="utf-8")
     os.utime(external, ns=(before.st_atime_ns, before.st_mtime_ns))
     assert r.ingest_compile(job, pdf, record) == 0 and store.count() == 0
+    # Written again now, the changed file is in the record without a hash (v0.17.15): still nothing is taken, since
+    # every slide reads the bibliography.
     assert compile_records.write_record(project, job.jobname, project.build_dir / f"{job.jobname}-test",
-                                        deck.path, "", pdf, record["started"], record["inventory"], record["configuration"]) is None
-    assert compile_records.read_record(project.build_dir, job.jobname) is None
+                                        deck.path, "", pdf, record["started"], record["inventory"], record["configuration"])
+    again = compile_records.read_record(project.build_dir, job.jobname)
+    assert next(e for e in again["inputs"] if Path(e["path"]).name == "references.bib")["sha256"] is None
+    assert r.ingest_compile(job, pdf, again) == 0 and store.count() == 0
+
+
+def test_a_slide_saved_during_the_compile_keeps_only_its_own_pages_out(project, store, raster, tmp_path, caplog):
+    """v0.17.15, direct report: an 11-minute IA2 instructor compile stored no previews at all, because one slide
+    (eaq) was saved while it ran. Now only that slide is left to the sweep."""
+    r = make(project, store, raster)
+    deck = deck_named(r, "slidemage-manual")
+    units = background_renders.deck_units(project, deck, "instructor", "EN")[:3]
+    edited, *others = units
+    job = compiler.CompileJob(deck, "instructor", None)
+    pdf = _compiled_pdf(tmp_path, units)
+    invocation = project.build_dir / f"{job.jobname}-test"
+    invocation.mkdir(parents=True, exist_ok=True)
+    (invocation / f"{job.jobname}.fls").write_text(
+        "".join(f"INPUT {path}\n" for path in [deck.path, *[u.source_path for u in units]]), encoding="utf-8")
+    (invocation / f"{job.jobname}.log").write_text("ok\n", encoding="utf-8")
+    env = compiler.build_env(project)
+    inventory = render_evidence.search_inventory(project.root, env)
+    configuration = render_evidence.digest(render_evidence.configuration_state(project.root, env))
+    started = time.time()
+    time.sleep(0.05)
+    edited.source_path.write_text(edited.source_path.read_text(encoding="utf-8") + "\n% saved during the compile\n",
+                                  encoding="utf-8")
+    assert compile_records.write_record(project, job.jobname, invocation, deck.path, "", pdf, started, inventory,
+                                        configuration, deck_path=deck.path)
+    record = compile_records.read_record(project.build_dir, job.jobname)
+    with caplog.at_level(logging.INFO, logger="slidemage.background"):
+        assert r.ingest_compile(job, pdf, record) == len(others)
+    # the debug log says what was taken and why the rest was not
+    assert (f"deck compile {job.jobname}: {len(others)} of " in caplog.text
+            and "1 its file changed during or since the compile" in caplog.text)
+    assert store.latest_for_unit(edited.label) is None
+    assert all(r.resolver.lookup(unit).final for unit in others)
 
 
 def test_a_deck_compile_imports_other_slides_but_skips_a_frozen_plus_slide(project, store, raster, tmp_path):
