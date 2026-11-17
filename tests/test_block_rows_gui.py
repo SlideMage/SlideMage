@@ -8,6 +8,7 @@ import pytest
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
 
+from conftest import write_test_file
 from slidemage import deck_scan
 from slidemage.fileio import read_text_exact as read
 from slidemage.ui.workspace.slide_list import ABOVE_ITEM, BELOW_ITEM
@@ -24,7 +25,7 @@ def block_list(make_list, ctx):
     deck = path.rename(ctx.decks_dir / path.name)
     ctx.blocks_dir.mkdir(exist_ok=True)
     block = ctx.blocks_dir / "topic.tex"
-    block.write_text("%% SlideMage block: Shared topic\n\\slide{aaa-First}\n\\slide{bbb-Second}\n")
+    write_test_file(block, "%% SlideMage block: Shared topic\n\\slide{aaa-First}\n\\slide{bbb-Second}\n")
     window.state.set_deck(deck_scan.read_deck(deck))
     yield slide_list, window, deck, block
 
@@ -116,14 +117,14 @@ def test_stale_repeated_rows_refuse_edits(block_list, make_list, source):  # noq
     original = "\\slideversion{aaa-First}{1-0-0}\n\\slideversion{aaa-First}{2-0-0}\n"
     if source == "deck":
         original = "\\begin{document}\n" + original + "\\end{document}\n"
-    path.write_text(original)
+    write_test_file(path, original)
     window.state.set_deck(deck_scan.read_deck(deck))
     listing.rebuild()
     rows = [r.deck_call for r in listing.rows() if r.call.id == "aaa"]
     physical = deck_language.source_calls(deck_scan.read_deck(path), rows)
     assert [c.version for c in physical] == ["1-0-0", "2-0-0"]
     changed = "% Nextcloud insertion\n" + original
-    path.write_text(changed)
+    write_test_file(path, changed)
     assert not listing.edit_calls("Remove failed", "Removed", [rows[1]], deck_editor.remove_slide_calls)
     assert read(path) == changed
     assert ("Refresh the slide list" if source == "block" else "reload the deck") in make_list.errors[-1]
