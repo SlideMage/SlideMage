@@ -2,7 +2,7 @@
 
 Status: **design, revision 3 (2026-11-16). The user decided S1 to S7 (section 8). Step 1 is built in v0.17.14
 (`prose_spans.py`, its tests, the PROOFREAD guard), step 2 in v0.17.15 (`spelling/`, the dictionary checker),
-step 3 in v0.17.16 (underlines and the menu in the Source view); steps 4 and 5 are open.** Handover task
+step 3 in v0.17.19 (underlines and the menu in the Source view); steps 4 and 5 are open.** Handover task
 `ai-spellchecker`.
 
 History of the request:
@@ -269,7 +269,7 @@ The user answered against the numbering of revision 2. Revision 3 keeps that num
    `dictionary_checker.py` (spylls for German, pyspellchecker for the rest), `settings.py` (the German variant,
    stored per user; its control comes with step 3). The build leaves pyspellchecker's lists out; test 5 is
    `tests/test_spelling.py`. Nothing imports `spelling/` yet.
-3. **Built in v0.17.16.** `ui/workspace/spell_check.py` (one `SpellCheck` per open slide: the check 400 ms after
+3. **Built in v0.17.19.** `ui/workspace/spell_check.py` (one `SpellCheck` per open slide: the check 400 ms after
    the last keystroke on a worker, the underlines, the menu rows, a correction as one undo step),
    `spelling/session.py` (Qt-free: text to misspellings by language, word list and ignored words left out, a
    correction through `apply_span_edits`), `spelling/word_list.py` (`spelling-words-<lang>.txt`, sorted, unique,

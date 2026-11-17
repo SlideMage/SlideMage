@@ -3,6 +3,7 @@
 """A section becomes a block; another deck links to those exact calls."""
 import pytest
 
+from conftest import write_test_file
 from slidemage import deck_scan, fileio, topic_blocks
 from slidemage.project import ProjectContext
 from slidemage.fileio import read_text_exact as read
@@ -64,7 +65,7 @@ def test_section_becomes_a_block_and_another_deck_reuses_it(make_list, ctx, monk
     assert read(deck_path) == expected
 
     second = ctx.decks_dir / "second.tex"
-    second.write_text("\\begin{document}\n\\section{Another title}\n% Different notes\n"
+    write_test_file(second, "\\begin{document}\n\\section{Another title}\n% Different notes\n"
                       + "\n\n".join(calls) + "\n\\end{document}\n")
     deck = deck_scan.read_deck(second)
     assert topic_blocks.make_block(ctx, deck, deck.chapters[0], "Another title") == block
@@ -96,6 +97,8 @@ def test_block_commit_rolls_back_and_refuses_case_collisions(tmp_path, monkeypat
     (ctx.blocks_dir / "research.tex").write_text(r"\slide{bbb-Other}")
     with pytest.raises(fileio.StaleFileError, match="collides"):
         topic_blocks.commit_block(ctx, target, text)
+    if target.exists():     # a case-insensitive file system (Windows, macOS): the two names cannot both exist
+        return
     target.write_text(text)
     with pytest.raises(ValueError, match="collide ignoring case"):
         topic_blocks.read_blocks(ctx)

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+import logging
 import os
 import sys
 from weakref import WeakSet
@@ -31,6 +32,8 @@ from ...plugins import session
 from ...plugins.host import plugin_render_priority
 from ..kit.widgets import Chip
 from ..kit.tokens import LIGHT, Tokens
+
+_log = logging.getLogger("slidemage.background")
 
 NO_BACKGROUND_ENV = "SLIDEMAGE_NO_BACKGROUND_PREVIEWS"     # set by the tests: nothing renders by itself
 REFRESH_MS = 1000
@@ -474,6 +477,8 @@ class BackgroundPreviews(QObject):
         if renderer is None or self.store is None or ctx.root != self.project.root:
             return
         record = compile_records.read_record(ctx.build_dir, job.jobname)
+        if record is None:
+            _log.info("deck compile %s: no compile record, so no pages go to the store", job.jobname)
         if record is not None and renderer.ingest_compile(job, pdf, record):
             self.changed.emit()
             self.ingested.emit()

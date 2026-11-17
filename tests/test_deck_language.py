@@ -7,7 +7,7 @@ import pytest
 
 from slidemage import compile_progress, compiler, deck_language, deck_outline, deck_scan, latex_lint, preview_target, slide_language
 from slidemage.project import ProjectContext
-from conftest import EXAMPLE_PROJECT
+from conftest import EXAMPLE_PROJECT, write_test_file
 
 
 @pytest.fixture
@@ -30,7 +30,7 @@ def project(tmp_path, monkeypatch):
 
 def deck(root, body, language="en"):
     path = root / "decks" / "course.tex"
-    path.write_text("\\documentclass{beamer}\n" + f"\\decklanguage[{language}]\n"
+    write_test_file(path, "\\documentclass{beamer}\n" + f"\\decklanguage[{language}]\n"
                     + "\\begin{document}\n" + body + "\\end{document}\n")
     return next(d for d in deck_scan.scan_dir(path.parent, False) if d.path == path)
 
@@ -373,11 +373,11 @@ def test_slideblock_expands_to_the_same_calls_as_inline(project, folder):
         "\\slidestep{ccc-mult-Three}[during-course]{1,2}"
     )
     block = ctx.blocks_dir / "topic.tex"
-    block.write_text(calls + "% trailing comment")
+    write_test_file(block, calls + "% trailing comment")
     inline = deck(project, "\\section{Topic}\n" + calls + "\n")
     path = project / folder / "linked.tex"
     path.parent.mkdir(exist_ok=True)
-    path.write_text(inline.text.replace(calls, r"\slideblock{topic}"))
+    write_test_file(path, inline.text.replace(calls, r"\slideblock{topic}"))
     linked = deck_scan.read_deck(path)
     before = path.read_bytes(), block.read_bytes()
 

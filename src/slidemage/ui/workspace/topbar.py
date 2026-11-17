@@ -36,7 +36,7 @@ LOGO_SIZE = 32
 # wide enough in the full bar for names like "t-Uni-Masterdeck-Publishing" (1920 x 1080 shows the full bar;
 # at 125 % scaling, 1536 px, the narrow one), and for "slidemage-manual" down to the tight bar; the tiny one
 # (1024 px) keeps the room for the other controls.
-DECK_MAX_WIDTHS = {"full": 280, "narrow": 220, "tight": 200, "tiny": 170}
+DECK_MAX_WIDTHS = {"full": 280, "narrow": 220, "tight": 200, "tiny": 150}
 DECK_MAX_WIDTH = max(DECK_MAX_WIDTHS.values())
 # The narrowest bar each density is for, when its content fits: below 1400 px the labels shorten, and tighter
 # below 1100 px. (Until v8.61.0 the AI switch was in the bar too, which then needed 1500 and 1320 px.)

@@ -725,16 +725,20 @@ class BackgroundRenderer:
         the sweep. The dependencies are the compile record's (compile_records.py): every file the compile read, with
         its SHA-256, except the other slides, and media or snippets this slide does not mention. Returns how many
         slides were stored. Run off the GUI thread."""
+        def taken_none(why: str) -> int:
+            _trace_log.info("deck compile %s: no pages taken into the store: %s", job.jobname, why)
+            return 0
+
         if "inventory" not in record or "started" not in record or "configuration" not in record:
-            return 0
+            return taken_none("its record has no inventory, start time or configuration")
         if job.chapter is not None or getattr(job, "pages", None) or job.presenter:
-            return 0
+            return taken_none("a chapter, page or presenter compile")
         if compile_records.sha256(pdf) != record.get("pdf_sha256"):
-            return 0                                    # not the PDF the record describes
+            return taken_none(f"{pdf.name} is not the PDF its record describes")
         validation = render_evidence.ValidationPass()
         configuration = validation.configuration(self.ctx.root, validation.build_env(self.ctx))
         if render_evidence.digest(configuration) != record["configuration"]:
-            return 0
+            return taken_none("the TeX configuration changed since it ran")
         view = job.version or VIEW_INSTRUCTOR
         language = (getattr(job, "language", None) or deck_language_code(self.ctx, job.deck)).upper()
         recorded = {norm(entry["path"]): entry
@@ -743,8 +747,8 @@ class BackgroundRenderer:
         import pymupdf
         try:
             doc = pymupdf.open(pdf)
-        except Exception:  # noqa: BLE001
-            return 0
+        except Exception as exc:  # noqa: BLE001
+            return taken_none(f"{pdf.name} cannot be opened ({exc})")
         try:
             runs: dict[str, list[int]] = {}
             for slide_id, pages in slide_snapshot.slide_runs([slide_snapshot.slide_id_of(page) for page in doc]):
@@ -752,32 +756,43 @@ class BackgroundRenderer:
         finally:
             doc.close()
         raster, stored = self._raster or self._shared_raster(), 0
+        skipped: Counter = Counter()        # why a slide's pages were not taken, for the debug log
         units = deck_units(self.ctx, job.deck, view, language, context_ready=lambda: True)
         counts = Counter(slide_language.bare_id(unit.id_slug) for unit in units)
         for unit in units:
             slide_id = slide_language.bare_id(unit.id_slug)
             if counts[slide_id] != 1:
-                continue                                # footers cannot distinguish repeated calls or versions
+                skipped["called more than once"] += 1  # footers cannot distinguish repeated calls or versions
+                continue
             pages = runs.get(slide_id)
             known = recorded.get(norm(unit.source_path))
-            if unit.macro in ("slidestep", "slidefinal") or not pages or known is None:
+            if unit.macro in ("slidestep", "slidefinal"):
+                skipped["\\slidestep or \\slidefinal"] += 1
+                continue
+            if not pages or known is None:
+                skipped["not found in the PDF or the record"] += 1
                 continue
             text = unit.source_path.read_text(encoding="utf-8", errors="replace")
             if known.get("text_sha256") != text_sha256(text):
+                skipped["its file changed during or since the compile"] += 1
                 continue                                # a frozen file or metadata-only read cannot vouch for this text
             key = self.resolver.fast_key(unit, text, validation=validation)
             found = self.resolver.lookup(unit, key, validation=validation)
             if found.state is render_key.Freshness.FRESH:
+                skipped["already current"] += 1
                 continue                                # already current, including its page number
             paths = render_key.unit_inputs(self.ctx, inputs, unit.source_path, {unit.source_path: text})
             try:
                 if any(compile_records.sha256(path) != recorded[norm(path)]["sha256"] for path in paths):
+                    skipped["a file it reads changed during or since the compile"] += 1
                     continue
             except OSError:
+                skipped["a file it reads cannot be read"] += 1
                 continue
             manifest = self.resolver.build_manifest([str(path) for path in paths])
             response = raster.read_document(pdf, "pdf_images", pages[0] + 1, len(pages), width=STORE_WIDTH)
             if len(response["images"]) != len(pages):
+                skipped["its pages could not be rasterised"] += 1
                 continue
             evidence = dict(started=record["started"], inventory=record["inventory"], key=key)
             with tempfile.TemporaryDirectory(prefix="slidemage_compile_") as folder:
@@ -785,6 +800,8 @@ class BackgroundRenderer:
                 raster.read_document(pdf, "extract_pages", pages[0] + 1, len(pages), out=own)
                 if self.store_render(unit, own, response["images"], manifest, evidence) is not None:
                     stored += 1
+        _trace_log.info("deck compile %s: %d of %d slides taken into the store%s", job.jobname, stored, len(units),
+                        "; not taken: " + ", ".join(f"{n} {why}" for why, n in skipped.most_common()) if skipped else "")
         return stored
 
     def deck_archived(self, deck: Deck) -> None:
