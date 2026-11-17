@@ -699,6 +699,13 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             background-color: {t.hover};
             color: {t.text};
         }}
+        /* A switched-on toggle (a checkable secondary button, such as the slide list's "Not reviewed" filter) takes the
+           inverse fill, so it is plain that it is on. */
+        QPushButton[kind="secondary"]:checked, QPushButton[kind="secondary"]:checked:hover {{
+            background-color: {t.inverse};
+            color: {t.on_inverse};
+            border: 1px solid {t.inverse};
+        }}
         QPushButton[kind="ghost"] {{
             background-color: transparent;
             color: {t.text};
