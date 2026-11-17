@@ -171,7 +171,8 @@ def commit_block(ctx, target: Path, block_text: str, edits=None) -> Path:
     _calls(block_text)
     with build_lock(ctx.settings_dir / "blocks.lock"):
         paths = _block_paths(ctx)
-        if any(p.stem.casefold() == target.stem.casefold() and p != target for p in paths):
+        # By name: Windows paths compare ignoring case, so research.tex would pass for Research.tex there.
+        if any(p.stem.casefold() == target.stem.casefold() and p.name != target.name for p in paths):
             raise StaleFileError(f"{target.name} now collides with another block -- reload and retry.")
         before = read_text_exact(target) if target.exists() else None
         if before is not None and before != block_text:

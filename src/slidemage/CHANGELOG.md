@@ -4301,3 +4301,9 @@ v0.17.14 (2026-11-17, direct request: handover task ai-spellchecker, step 1 of d
 NEW: The AI proofread only changes the slide's text.
 - A proofread fix inside a LaTeX command, a URL, a label, a citation key, math or code is now refused, and the model is asked again.
 - Groundwork for the coming spellchecker: SlideMage now knows exactly which parts of a slide are regular text.
+
+v0.17.15 (2026-11-17, direct request: 15 tests failed on a clean develop on Windows): Two app fixes and test fixes. topic_blocks.commit_block compares a block's file name with the target's by name, not as paths: Windows paths compare ignoring case, so an existing research.tex passed as the target Research.tex and the commit refused with "changed on disk" instead of "collides with another block". The top bar's tiny density elides the deck name at 150 px (was 170), so the bar fits in 850 px again with the Library button that v0.17.0 added (863 px before, on Windows). Tests: fixture files that the tests compare with LF text are written with LF (conftest.write_test_file) instead of Path.write_text, which writes CRLF on Windows (tests/test_block_rows_gui.py, test_deck_language.py, test_expanded_readers.py, test_topic_blocks.py); the case-collision check in read_blocks is tested only on a case-sensitive file system, where two such names can exist; test_plugin_ui's no-deck case removes the decks and rescans, because since tab contexts (v0.16.43) set_deck(None) with another deck's working tab open shows that deck again; test_open_project_gui's import check passes the tested slidemage's folder as PYTHONPATH to its child process.
+
+NEW: Small fixes for Windows.
+- Fixed: making a block whose name differs from an existing block's only in upper and lower case now says that the names collide.
+- Fixed: in a very narrow window the top bar shortens a long deck name a little more, so that all its buttons fit.

@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from conftest import make_project
+from conftest import make_project, write_test_file
 from slidemage import (
     batch_render, compile_progress, deck_context, deck_language,
     deck_outline, deck_scan, image_review, latex_lint, slide_add, transcript,
@@ -23,7 +23,7 @@ def linked(request, tmp_path, monkeypatch):
     block = ctx.blocks_dir / "topic.tex"
     calls = ("% topic\n\\slide{abc-EN-Hello}\n\\omitslide{abd-EN-Second}\n"
              "\\slidestep{abc-EN-Hello}[instructor]{2}\n")
-    block.write_text(calls)
+    write_test_file(block, calls)
     repeat = 2 if request.param == "twice" else 1
     body = "\\section{Topic}\n" + "\\slideblock{topic}\n" * repeat
     body += "\\section{End}\n\\slide{abd-EN-Second}\n"
@@ -31,7 +31,7 @@ def linked(request, tmp_path, monkeypatch):
     directory = ctx.archive_dir if request.param == "archive" else ctx.decks_dir
     directory.mkdir(exist_ok=True)
     path = directory / "linked.tex"
-    path.write_text(text)
+    write_test_file(path, text)
     deck = deck_scan.read_deck(path)
     inline = deck_scan.deck_from_text(directory / "inline.tex", text.replace("\\slideblock{topic}", calls))
     return ctx, deck, inline, repeat
@@ -78,7 +78,7 @@ def test_outline_and_frames(linked):
 
 def test_transcript(linked):
     ctx, deck, inline, _ = linked
-    inline.path.write_text(inline.text)
+    write_test_file(inline.path, inline.text)
     for view in ("instructor", "during-course", "after-course"):
         assert transcript.resolve_deck(ctx, deck.path, view) == transcript.resolve_deck(ctx, inline.path, view)
 

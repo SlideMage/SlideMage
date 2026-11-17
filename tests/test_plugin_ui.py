@@ -107,7 +107,12 @@ def test_the_deck_menu_ends_with_a_section_named_after_the_plugin(window):
 def test_enabled_follows_the_open_deck(window):
     command = window.commands["uiplugin.run"]
     assert command.enabled(window)
-    window.state.set_deck(None)
+    # No deck is open once the project has none: with tab contexts (v0.16.43) set_deck(None) alone does not get
+    # there while another deck's working tab is open, as showing that tab brings its deck back.
+    for deck in window.decks:
+        deck.path.unlink()
+    window.reload_decks()
+    assert window.state.deck is None
     assert not command.enabled(window)
 
 

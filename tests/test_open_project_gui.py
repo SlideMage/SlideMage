@@ -162,6 +162,7 @@ def test_the_start_up_guard_for_a_newer_format_follows_the_sheet(tmp_path, monke
 
 def test_importing_the_app_selects_no_project(tmp_path):
     """Modules read no project when they are imported: the entry point chooses it, once."""
+    import os
     import subprocess
     import sys
 
@@ -169,7 +170,10 @@ def test_importing_the_app_selects_no_project(tmp_path):
             "slidemage.ui.dialogs.open_project as o, slidemage.ui.workspace.window; "
             "from slidemage.ui.kit.theme import ThemeManager; ThemeManager(dark=True); "
             "from slidemage import project; sys.exit(int(hasattr(project, 'transitional_context') or hasattr(project, 'use')))")
-    assert subprocess.run([sys.executable, "-c", code], capture_output=True, cwd=tmp_path).returncode == 0
+    # The child imports the slidemage under test, wherever that is (a relative PYTHONPATH would not hold in tmp_path).
+    env = {**os.environ, "PYTHONPATH": str(Path(project.__file__).resolve().parents[1])}
+    done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=tmp_path, env=env)
+    assert done.returncode == 0, done.stderr
 
 
 # -- the start screen ------------------------------------------------------------------------
