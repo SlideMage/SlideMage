@@ -476,6 +476,18 @@ def prose_spans(text: str, language: str = "") -> list[Span]:
     return spans
 
 
+def plain_spans(text: str, language: str = "") -> list[Span]:
+    """The prose of plain text (an image's description, not LaTeX): everything but addresses and file names, cut
+    at those, as "body" spans in `language`."""
+    cuts = sorted((m.start(), m.end()) for pattern in (_URL_RE, _FILE_RE) for m in pattern.finditer(text))
+    spans, pos = [], 0
+    for start, end in [*cuts, (len(text), len(text))]:
+        if start > pos and any(char.isalpha() for char in text[pos:start]):
+            spans.append(Span(pos, start, "body", language.lower()))
+        pos = max(pos, end)
+    return spans
+
+
 def words(text: str, spans: list[Span]) -> list[Word]:
     """The words of `spans` in `text`: letters (with an inner apostrophe), split at hyphens and other punctuation.
     Tokens with a digit or an underscore, and abbreviations in capitals of up to five letters, are left out."""

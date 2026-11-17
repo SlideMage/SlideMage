@@ -75,6 +75,11 @@ def _has_deck(w) -> bool:
     return w.state.deck is not None
 
 
+def _deck_spelling(w) -> None:
+    from ..dialogs import deck_spelling
+    deck_spelling.open_for(w, w.state.deck)
+
+
 def _active_deck(w) -> bool:
     """A deck that is not archived: archived decks only compile and get settings."""
     deck = w.state.deck
@@ -368,6 +373,8 @@ def build_registry(mac: bool = sys.platform == "darwin") -> CommandRegistry:
         lambda w: w.centre.update_deck_versions(), enabled=_has_deck)
     add("deck:readability", "Check readability of this deck", DECK,
         lambda w: w.assistant.check_readability(DECK_SCOPE), icon="visibility", meta="no AI", enabled=_has_deck)
+    add("deck:spelling", "Check spelling of this deck…", DECK, _deck_spelling, icon="spellcheck", meta="no AI",
+        enabled=_has_deck)
     add("add_slide", "Add slide…", DECK, lambda w: w.slide_list.add_slide(), enabled=_has_deck)
     add("import_presentation", "Import PPTX/ODP…", DECK, _window("_on_import_presentation"))
     add("refresh_decks", "Refresh decks", DECK, _window("_on_refresh_decks_clicked"))

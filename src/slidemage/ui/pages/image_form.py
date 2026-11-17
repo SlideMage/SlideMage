@@ -261,6 +261,9 @@ class ImageForm(Surface):
             edit.textChanged.connect(self.edited)   # connected after the text is set: showing is no edit
             column.addWidget(field)
             self.fields[key] = edit
+            if key not in SOURCE_KEYS:      # a citation is mostly names: not spell checked
+                from ..workspace.spell_check import attach_plain
+                attach_plain(edit, self.app, language)
             if key in SOURCE_KEYS:
                 status = SourceStatus()
                 status.review_clicked.connect(self._mark_source_reviewed)

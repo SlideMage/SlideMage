@@ -151,7 +151,7 @@ MENU_BAR = (
                ("", ("deck_settings", "deck_tags", "deck_source")),
                ("", ("add_slide", "duplicate_deck", Submenu("Export", ("export_pptx", "export_latex")),
                      "create_snapshot")),
-               ("", ("update_deck_versions", "rerender_deck_previews", "deck:readability")),
+               ("", ("update_deck_versions", "rerender_deck_previews", "deck:readability", "deck:spelling")),
                ("", ("archive_deck",)))),
     ("&Slide", (("", ("slide:open", "slide:preview", "slide:open_tab", "slide:images")),
                 ("", ("slide:before", "slide:after", "slide:section_before", "slide:duplicate", "slide:translate")),

@@ -75,7 +75,7 @@ def test_the_deck_menu_in_order_with_its_separators(qapp):
         "submenu:switch deck", "refresh_decks", "|", "present", "present_here", "open_pdf", "|",
         "deck_settings", "deck_tags", "deck_source", "|",
         "add_slide", "duplicate_deck", "submenu:export", "create_snapshot", "|",
-        "update_deck_versions", "rerender_deck_previews", "deck:readability", "|", "archive_deck"]
+        "update_deck_versions", "rerender_deck_previews", "deck:readability", "deck:spelling", "|", "archive_deck"]
 
 
 def test_the_file_edit_housekeeping_and_help_menus(qapp):
