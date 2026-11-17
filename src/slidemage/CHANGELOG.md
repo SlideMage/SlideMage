@@ -4345,3 +4345,7 @@ v0.17.21 (2026-11-17, direct request: the slide list's find box and Not reviewed
 NEW: Clearer slide list filters.
 - The find box above the slide list has an "x" that empties it.
 - The "Not reviewed" button stays highlighted while the filter is on.
+
+v0.17.22 (2026-11-17, a test found it: tests/test_compat.py fails a release with a BREAKING: paragraph but no entry in compat.CHANGES, and v0.17.20 got its BREAKING: paragraph in #241 without one): compat.CHANGES has "topic-blocks-and-appendix-views" (since v0.17.20, BREAKS, automatic). Its detector lists the decks' live \slideblock{...} and \deckappendixtoc[...] calls (commented ones not), so a project that uses them gets the one-time notice that SlideMage v0.16 or older cannot compile those decks and that every computer needs v0.17; a project without them hears nothing. Nothing in a project changes. Test in tests/test_compat.py.
+
+NEW: A project whose decks use topic blocks or an appendix for some views now says once that every computer needs SlideMage v0.17.
