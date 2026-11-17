@@ -2,8 +2,8 @@
 
 Status: **design, revision 3 (2026-11-16). The user decided S1 to S7 (section 8). Step 1 is built in v0.17.14
 (`prose_spans.py`, its tests, the PROOFREAD guard), step 2 in v0.17.15 (`spelling/`, the dictionary checker),
-step 3 in v0.17.19 (underlines and the menu in the Source view); steps 4 and 5 are open.** Handover task
-`ai-spellchecker`.
+step 3 in v0.17.19 (underlines and the menu in the Source view), English with Hunspell in v0.17.20; steps 4 and
+5 are open.** Handover task `ai-spellchecker`.
 
 History of the request:
 * **2026-11-14:** the user asked for an AI-driven spellchecker, scoped carefully so that it only checks or touches
@@ -173,9 +173,11 @@ single letters, not words in capitals (PDF), not words with a capital inside (Sl
   * **German:** spylls with a Hunspell dictionary. Hunspell handles compounds and word endings, which a word list
     cannot.
     * **Variant (S5 a):** a setting with de-AT, de-DE or de-CH, **default de-AT**.
-  * **Every other language with a pyspellchecker list:** pyspellchecker. Its documentation lists en, es, fr, it,
-    pt, nl, ru, ar, lv, eu and fa besides de; step 2 confirms this against 0.9.1. Its English list does not tell
-    en-GB from en-US: both spellings pass.
+  * **English (since v0.17.20, the user's decision of 2026-11-17):** spylls with en-US or en-GB from the same
+    LibreOffice repository, a setting like German's, **default en-US** (SlideMage's own texts are American; on the
+    example project en-GB underlined 133 words, among them "color", "catalog" and "plugin", en-US 89).
+  * **Every other language with a pyspellchecker list:** pyspellchecker: ar, es, eu, fa, fr, it, lv, nl, pt, ru
+    (confirmed against 0.9.1).
 * **Downloads (S6 b): straight from upstream, pinned.** `spelling/catalogue.py` (built as Python data rather than
   `dictionaries.json`, so the build needs no extra data file) lists, per language, the URL,
   size and SHA-256 of each file:
@@ -197,8 +199,9 @@ single letters, not words in capitals (PDF), not words with a capital inside (Sl
   * Loading the German dictionary takes 1.6 s, once per session, on a worker: no pickling needed.
   * pyspellchecker loads a list in 0.2 s and suggests in milliseconds.
 * **Found in step 2:** pyspellchecker's English list is not neutral between British and American spelling, as
-  assumed above: it knows "color" but not "colour". Open for the user (see the handover): keep it, or check English
-  with Hunspell too (en_GB / en_US from the same LibreOffice repository, a variant setting like German's).
+  first assumed: it knows "color" but not "colour", and lacks "app", "admin", "checkbox" and "grayscale". **Done
+  in v0.17.20:** English is checked with Hunspell (en-US / en-GB, licences: SCOWL's BSD-style terms and LGPL).
+  en-GB loads in 0.7 s, en-US in 0.4 s; English suggestions come at once.
 
 ## 6. Tests
 
@@ -282,4 +285,4 @@ The user answered against the numbering of revision 2. Revision 3 keeps that num
    list also lacks "app", "admin", "checkbox", "colour" and "grayscale" (see section 5, "Found in step 2").
 4. **More places:** a deck-wide spelling list (every unknown word of a deck, grouped, with "Add to word list" for
    many at once), and alt texts in the Images panel (S3).
-5. **Optional:** the AI checker (section 7).
+5. **Optional:** the AI checker (section 7). The user, 2026-11-17: keep it in the handover, do not build it yet.

@@ -834,11 +834,11 @@ class WorkspaceWindow(QMainWindow):
         app_settings.set(self.project, latex_help.HOVER_HELP_SETTING_KEY, bool(on))
         self.centre.set_hover_help(bool(on))
 
-    def set_german_spelling(self, variant: str) -> None:
-        """Settings -> General's "German spelling" (spelling/settings.py, per user): every open slide checks again
-        against that dictionary."""
+    def set_spelling_variant(self, language: str, variant: str) -> None:
+        """Settings -> General's "English spelling" and "German spelling" (spelling/settings.py, per user): every
+        open slide checks again against that dictionary."""
         from ...spelling import settings as spelling_settings
-        spelling_settings.set_german_variant(variant)
+        spelling_settings.set_variant(language, variant)
         self.centre.source.recheck_spelling()
 
     def after_deck_edit(

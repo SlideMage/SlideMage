@@ -101,18 +101,25 @@ class GeneralTab(Page):
                                  "when this is off."))
 
         from ...spelling import settings as spelling_settings
-        self.german_spelling_combo = QComboBox()
-        for variant, name in (("AT", "Austria (Jänner, Straße)"), ("DE", "Germany (Januar, Straße)"),
-                              ("CH", "Switzerland (Januar, Strasse)")):
-            self.german_spelling_combo.addItem(name, variant)
-        self.german_spelling_combo.setCurrentIndex(
-            max(0, self.german_spelling_combo.findData(spelling_settings.german_variant())))
-        self.german_spelling_combo.currentIndexChanged.connect(
-            lambda _i: app.set_german_spelling(self.german_spelling_combo.currentData()))
-        layout.addWidget(Field("German spelling", self.german_spelling_combo))
-        layout.addWidget(caption("The dictionary German slide text is checked against; the spell check is switched "
-                                 "on and off in the Source view's toolbar. Each dictionary is downloaded the first "
-                                 "time it is used (about 4 MB)."))
+
+        def spelling_combo(language: str, choices) -> QComboBox:
+            combo = QComboBox()
+            for value, name in choices:
+                combo.addItem(name, value)
+            combo.setCurrentIndex(max(0, combo.findData(spelling_settings.variant(language))))
+            combo.currentIndexChanged.connect(lambda _i: app.set_spelling_variant(language, combo.currentData()))
+            return combo
+
+        self.english_spelling_combo = spelling_combo("en", (("US", "American (color, analyze)"),
+                                                            ("GB", "British (colour, analyse)")))
+        self.german_spelling_combo = spelling_combo("de", (("AT", "Austria (Jänner, Straße)"),
+                                                           ("DE", "Germany (Januar, Straße)"),
+                                                           ("CH", "Switzerland (Januar, Strasse)")))
+        layout.addWidget(columns(Field("English spelling", self.english_spelling_combo),
+                                 Field("German spelling", self.german_spelling_combo)))
+        layout.addWidget(caption("The dictionaries slide text is checked against; the spell check is switched on and "
+                                 "off in the Source view's toolbar. Each dictionary is downloaded the first time it "
+                                 "is used (English about 1 MB, German about 4 MB)."))
 
         self.autosave_check = QCheckBox("Save edits as you type (AutoSave)")
         self.autosave_check.setChecked(autosave_on())

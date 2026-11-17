@@ -32,6 +32,11 @@ def _sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _AT(language: str) -> str:
+    """German in de-AT; the test catalogue's English is a word list without variants."""
+    return {"de": "AT"}.get(language, "")
+
+
 class _Server:
     """Serves `files` (path -> bytes). A path in `truncate` sends its full Content-Length but only half the body."""
 
@@ -104,7 +109,7 @@ def _entries(server: _Server) -> dict[str, Dictionary]:
 
 @pytest.fixture
 def checker(server, tmp_path):
-    c = DictionaryChecker(base=tmp_path / "dicts", german_variant=lambda: "AT", entries=_entries(server))
+    c = DictionaryChecker(base=tmp_path / "dicts", variant=_AT, entries=_entries(server))
     assert c.prepare("de") and c.prepare("en")
     return c
 
@@ -167,7 +172,7 @@ def test_answers_are_cached(checker, monkeypatch):
 
 
 def test_unsupported_language_and_not_prepared(server, tmp_path):
-    c = DictionaryChecker(base=tmp_path, german_variant=lambda: "AT", entries=_entries(server))
+    c = DictionaryChecker(base=tmp_path, variant=_AT, entries=_entries(server))
     assert c.languages() == {"de", "en"}
     assert c.prepare("xx") is False and c.dictionary_for("xx") is None
     with pytest.raises(SpellingUnavailable):
@@ -177,30 +182,50 @@ def test_unsupported_language_and_not_prepared(server, tmp_path):
 
 # -- the German variant -------------------------------------------------------------------------------------------
 
-def test_german_variant_setting_defaults_to_austria_and_persists():
-    assert settings.german_variant() == "AT"
+def test_variant_settings_default_to_austria_and_america_and_persist():
+    assert settings.german_variant() == "AT" and settings.english_variant() == "US"
+    assert settings.variant("fr") == ""
     assert settings.store_path().parent == project.config_dir()
     settings.set_german_variant("CH")
-    assert settings.german_variant() == "CH"
+    settings.set_english_variant("GB")
+    assert settings.german_variant() == "CH" and settings.variant("EN") == "GB"
     with pytest.raises(ValueError):
         settings.set_german_variant("BE")
-    settings.store_path().write_text('{"german_variant": "XX"}', encoding="utf-8")
-    assert settings.german_variant() == "AT"
+    with pytest.raises(ValueError):
+        settings.set_variant("fr", "FR")
+    settings.store_path().write_text('{"de_variant": "XX", "en_variant": "AU"}', encoding="utf-8")
+    assert settings.german_variant() == "AT" and settings.english_variant() == "US"
+
+
+def test_the_german_variant_stored_before_v0_17_20_is_still_read():
+    settings.store_path().parent.mkdir(parents=True, exist_ok=True)
+    settings.store_path().write_text('{"german_variant": "DE"}', encoding="utf-8")
+    assert settings.german_variant() == "DE"
+    settings.set_german_variant("CH")
+    assert json.loads(settings.store_path().read_text(encoding="utf-8")) == {"de_variant": "CH"}
 
 
 def test_the_variant_picks_the_dictionary_at_each_call(tmp_path):
-    variant = ["AT"]
-    c = DictionaryChecker(base=tmp_path, german_variant=lambda: variant[0])
-    assert c.dictionary_for("de").key == "de_AT"
-    variant[0] = "DE"
+    chosen = {"de": "AT", "en": "GB"}
+    c = DictionaryChecker(base=tmp_path, variant=lambda language: chosen.get(language, ""))
+    assert c.dictionary_for("de").key == "de_AT" and c.dictionary_for("en").key == "en_GB"
+    chosen.update(de="DE", en="US")
     assert c.dictionary_for("DE").key == "de_DE"
     assert c.dictionary_for("de").files[1].name == "de_DE_frami.dic"
+    assert [f.name for f in c.dictionary_for("en").files] == ["en_US.aff", "en_US.dic"]
+    assert c.dictionary_for("en").engine == "hunspell" and c.dictionary_for("fr").engine == "wordlist"
+
+
+def test_the_checker_reads_the_settings_by_default(tmp_path):
+    assert DictionaryChecker(base=tmp_path).dictionary_for("en").key == "en_US"
+    settings.set_english_variant("GB")
+    assert DictionaryChecker(base=tmp_path).dictionary_for("en").key == "en_GB"
 
 
 # -- the catalogue -------------------------------------------------------------------------------------------------
 
 def test_catalogue_is_pinned():
-    assert set(catalogue.supported_languages()) == {"de", *catalogue.PYSPELLCHECKER_LANGUAGES}
+    assert set(catalogue.supported_languages()) == {"de", "en", *catalogue.PYSPELLCHECKER_LANGUAGES}
     used = {f.name for entry in catalogue.CATALOGUE.values() for f in entry.files}
     assert used == set(catalogue.FILES)
     for entry in catalogue.CATALOGUE.values():
@@ -209,8 +234,13 @@ def test_catalogue_is_pinned():
             assert f.url.startswith("https://raw.githubusercontent.com/")
             commit = catalogue.LIBREOFFICE_COMMIT if entry.engine == "hunspell" else catalogue.PYSPELLCHECKER_COMMIT
             assert f"/{commit}/" in f.url
-    assert catalogue.dictionary_for("de", "CH").key == "de_CH" and catalogue.dictionary_for("EN").key == "en"
-    assert catalogue.dictionary_for("de", "XX") is None and catalogue.dictionary_for("xx") is None
+    assert catalogue.dictionary_for("de", "CH").key == "de_CH" and catalogue.dictionary_for("EN").key == "en_US"
+    assert catalogue.dictionary_for("en", "US").label == "the English (United States) dictionary"
+    assert catalogue.dictionary_for("de", "XX").key == "de_AT"          # an unknown variant: the default
+    assert catalogue.dictionary_for("xx") is None and catalogue.dictionary_for("fr").key == "fr"
+    english = catalogue.dictionary_for("en", "GB").files[1]
+    assert english.url.endswith(f"/{catalogue.LIBREOFFICE_COMMIT}/en/en_GB.dic")
+    assert sorted(catalogue.hunspell_files()) == sorted(name for name in catalogue.FILES if "json" not in name)
 
 
 def test_the_pinned_word_lists_are_those_of_the_pinned_pyspellchecker():
@@ -299,7 +329,7 @@ def test_no_server_gives_a_message(tmp_path):
 
 
 def test_prepare_downloads_once_and_says_so(server, tmp_path):
-    c = DictionaryChecker(base=tmp_path, german_variant=lambda: "AT", entries=_entries(server))
+    c = DictionaryChecker(base=tmp_path, variant=_AT, entries=_entries(server))
     assert c.needs_download("en") and not c.needs_download("xx")
     messages = []
     assert c.prepare("en", lambda done, total, message: messages.append(message))
@@ -310,8 +340,8 @@ def test_prepare_downloads_once_and_says_so(server, tmp_path):
 
 
 def test_the_default_folder_is_this_machines_cache():
-    entry = catalogue.CATALOGUE["en"]
-    assert dictionaries.folder(entry) == project.cache_dir() / "dictionaries" / "en"
+    assert dictionaries.folder(catalogue.CATALOGUE["fr"]) == project.cache_dir() / "dictionaries" / "fr"
+    assert dictionaries.folder(catalogue.CATALOGUE["en_GB"]) == project.cache_dir() / "dictionaries" / "en_GB"
 
 
 def test_a_file_that_does_not_load_is_reported(server, tmp_path):
@@ -320,21 +350,21 @@ def test_a_file_that_does_not_load_is_reported(server, tmp_path):
     server.files["/en.json.gz"] = bad
     entries["en"] = Dictionary("en", "en", "wordlist", "the English dictionary",
                                (DictFile("en.json.gz", f"{server.url}/en.json.gz", len(bad), _sha(bad)),))
-    c = DictionaryChecker(base=tmp_path, german_variant=lambda: "AT", entries=entries)
+    c = DictionaryChecker(base=tmp_path, variant=_AT, entries=entries)
     with pytest.raises(SpellingUnavailable, match="^The English dictionary could not be loaded"):
         c.prepare("en")
     assert not c.is_ready("en")
 
 
 def test_real_files_when_the_pinned_lists_are_installed(tmp_path):
-    """The real English list from the installed pyspellchecker, checked like a download (no network)."""
+    """The real French list from the installed pyspellchecker, checked like a download (no network)."""
     import spellchecker
 
-    source = Path(spellchecker.__file__).parent / "resources" / "en.json.gz"
-    entry = catalogue.CATALOGUE["en"]
-    (tmp_path / "en").mkdir()
-    shutil.copy(source, tmp_path / "en" / "en.json.gz")
+    source = Path(spellchecker.__file__).parent / "resources" / "fr.json.gz"
+    entry = catalogue.CATALOGUE["fr"]
+    (tmp_path / "fr").mkdir()
+    shutil.copy(source, tmp_path / "fr" / "fr.json.gz")
     c = DictionaryChecker(base=tmp_path)
-    assert not c.needs_download("en") and c.prepare("en")
-    assert c.unknown("en", ["The", "slides", "teh", "recieve"]) == {"teh", "recieve"}
+    assert not c.needs_download("fr") and c.prepare("fr")
+    assert c.unknown("fr", ["Le", "renard", "diapositive", "renrad"]) == {"renrad"}
     assert entry.size == source.stat().st_size
