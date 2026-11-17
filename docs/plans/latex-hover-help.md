@@ -1,10 +1,13 @@
 # Plan: help tooltips on LaTeX commands in the source editor
 
-Status: **built in v0.16.51 (2026-11-16), steps 1 to 3.** The user chose H1 (a), H2 SlideMage's own commands,
+Status: **built, all steps: 1 to 3 in v0.16.51 (2026-11-16, PR #222), step 4 in v0.17.12 (PR #229).** The user chose H1 (a), H2 SlideMage's own commands,
 H3 the whole help with the hovered key in bold, H4 a switch in Settings -> General (on by default). F1 already opens
 the manual, so the keyboard path is **Shift+F1**. "Public" in the sync test (2.3) is what the manual's Quick
 Reference slides (1uw, 1d7) name: SlideMage_base.tex defines about 180 commands, most of them internal. Step 4
-(standard LaTeX/beamer commands, help from theme packages) is not built.
+(the user chose the core set plus math, and a `help.toml` in the theme package) is built in v0.17.12:
+`src/slidemage/latex_help_standard.py` (standard LaTeX, beamer and math commands and environments), a theme's own
+`help.toml` (docs/THEME_PACKAGE.md), and `latex_help.lookup()`, which asks SlideMage's catalogue first, then the
+theme's, then the standard one.
 
 Request (user, 2026-11-16): hovering over LaTeX code in the editor shows a tooltip. Hovering over `\cornerfigure`,
 for example, explains how to use it and what its options are.
