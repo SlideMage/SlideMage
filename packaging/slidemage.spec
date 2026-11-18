@@ -187,6 +187,7 @@ if BUILD != "onefile":
         name="SlideMage",
         console=False,
         icon=icon,
+        manifest=str(ROOT / "packaging" / "slidemage.manifest") if sys.platform == "win32" else None,
     )
     folder = COLLECT(
         folder_exe,
@@ -207,4 +208,5 @@ if BUILD != "folder":
         name="SlideMage",
         console=False,
         icon=icon,
+        manifest=str(ROOT / "packaging" / "slidemage.manifest") if sys.platform == "win32" else None,
     )
