@@ -5,6 +5,8 @@ diff cards (a proposed, applied or rejected edit) and notices. Plain widgets: th
 signals and the chat (view.py) decides what they mean."""
 from __future__ import annotations
 
+import re
+
 from PySide6.QtCore import QRect, Qt, QTimer, Signal
 from PySide6.QtGui import QMouseEvent, QPixmap
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVBoxLayout
@@ -19,6 +21,7 @@ BUBBLE_WIDTH = 270       # the user's bubble wraps here
 RESULT_CHARS = 1500      # of a tool's result shown when its card is opened
 THUMB_WIDTH = 250
 DIFF_ROWS = 24           # diff rows shown before "Show all"
+BREAK_AFTER = re.compile(r"([/\\_.])(?=\S)")   # where a long file name may break (a zero-width space)
 
 
 def text_label(text: str, name: str, *, markdown: bool = False) -> QLabel:
@@ -42,10 +45,14 @@ class UserBubble(Surface):
         bubble.setMaximumWidth(BUBBLE_WIDTH)
         inner = QVBoxLayout(bubble)
         inner.setContentsMargins(SPACE.xl, SPACE.md, SPACE.xl, SPACE.md)
+        # A word wider than the bubble (an attached file's path) would widen the label past it and cut every
+        # line: such names may break after / \ _ and ., and the label never grows past the bubble.
+        text = BREAK_AFTER.sub("\\1\u200b", text)
         label = text_label(text, q.CHAT_USER)
         label.ensurePolished()
-        wrapped = label.fontMetrics().boundingRect(QRect(0, 0, BUBBLE_WIDTH - 24, 100000), Qt.TextFlag.TextWordWrap, text)
-        label.setFixedWidth(wrapped.width() + 2)      # as wide as the text, up to the bubble
+        limit = BUBBLE_WIDTH - 2 * SPACE.xl
+        wrapped = label.fontMetrics().boundingRect(QRect(0, 0, limit, 100000), Qt.TextFlag.TextWordWrap, text)
+        label.setFixedWidth(min(wrapped.width() + 2, limit))     # as wide as the text, up to the bubble
         inner.addWidget(label)
         row.addWidget(bubble)
 
