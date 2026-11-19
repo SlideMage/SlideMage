@@ -156,6 +156,10 @@ class SpellCheck(QObject):
             return None
         return next((m for m in self.result.misspellings if m.start <= offset <= m.end), None)
 
+    def _marked_at(self, offset: int) -> bool:
+        """Whether the editor draws an underline at character `offset` (on it or right after it)."""
+        return any(start <= offset <= end for start, end in self.editor.spelling_marks())
+
     # -- the menu --------------------------------------------------------------------------------------------
     def add_menu_rows(self, menu, offset: int) -> bool:
         """Add the spelling rows for the word at `offset` to `menu` (a PopoverMenu not shown yet; call this before
@@ -163,6 +167,13 @@ class SpellCheck(QObject):
         no underlined word is there."""
         word = self.misspelling_at(offset)
         session = self._session()
+        if word is None and session is not None and self._marked_at(offset):
+            # An underlined word, but the text changed since it was checked (or a new check is running), so the
+            # word is not known for certain: say so instead of showing a menu without any spelling rows.
+            menu.add_header("Spelling")
+            menu.add_item(_WAIT, "Spelling is being checked again; try again in a moment", enabled=False)
+            menu.add_separator()
+            return True
         if word is None or session is None:
             return False
         self._stop_suggestions()
@@ -346,8 +357,7 @@ def _plain_menu(edit, spell: SpellCheck, pos) -> None:
     viewport_pos = edit.viewport().mapFrom(edit, pos)
     menu = PopoverMenu(edit, min_width=220)
     selected, writable = edit.textCursor().hasSelection(), not edit.isReadOnly()
-    if not selected:
-        spell.add_menu_rows(menu, char_offset_at(edit, viewport_pos))
+    spell.add_menu_rows(menu, char_offset_at(edit, viewport_pos))   # also with a selection (a double-clicked word)
     for key, label, keys in _EDIT_ROWS:
         if key is None:
             menu.add_separator()

@@ -4395,3 +4395,9 @@ v0.17.30 (2026-11-19, issue #251 step 5 of docs/plans/package-install-rerender.m
 NEW: Installing a package no longer rebuilds the preamble of every deck, and a preview that could not be sped up for want of a layout profile or citation format recovers when you install it.
 - Installing or removing a theme or citation package no longer makes every deck rebuild its preamble, so previews stay quick.
 - A deck whose preview preamble failed because a layout profile or other file was missing is sped up again as soon as that file is installed.
+
+v0.17.31 (2026-11-19, direct request: the spell check's underline was easy to overlook, and right-clicking some underlined words showed no spelling rows): source_editor.spelling_selections draws a wavy underline (was the platform's hairline SpellCheckUnderline) with a faint tint of the error colour behind the word. The Source view's and the image description field's right-click menus (source_view._on_context_menu, spell_check._plain_menu) offer the spelling rows also while text is selected (a double-clicked word is), and SpellCheck.add_menu_rows says "Spelling is being checked again; try again in a moment" for an underlined word whose check is out of date, instead of showing no spelling rows. Test in tests/test_spell_check_gui.py.
+
+NEW:
+- Misspelled words are easier to see: a clearer wavy underline and a faint red tint behind the word.
+- Right-clicking an underlined word always shows the spelling rows, also when the word is selected; while the text is being checked again the menu says so.

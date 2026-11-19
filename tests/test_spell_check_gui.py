@@ -276,3 +276,12 @@ def test_session_check_skips_ignored_and_listed_words(tmp_path, checker):
     assert SpellingSession.correct(text, Misspelling(4, 8, "brwn", "en"), "brown", "en") == "Teh brown fox\n"
     with pytest.raises(ValueError):
         SpellingSession.correct(text, Misspelling(4, 8, "brwx", "en"), "brown", "en")
+
+
+def test_an_underlined_word_whose_check_is_stale_says_so_in_the_menu(pane, ctx):
+    file = _open(pane, ctx)
+    word = file.spell_check.result.misspellings[1]
+    file.spell_check._checked_text = "something else"        # the text changed since it was checked
+    menu = PopoverMenu()
+    assert file.spell_check.add_menu_rows(menu, word.end)
+    assert any(e[0] == "item" and "checked again" in e[2] for e in menu._entries)

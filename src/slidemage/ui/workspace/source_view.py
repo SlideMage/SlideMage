@@ -758,7 +758,7 @@ class SourcePane(Surface):
         editor = self._current.editor
         selected, writable = editor.textCursor().hasSelection(), not editor.is_read_only()
         menu = PopoverMenu(self, min_width=240)
-        if self._current.spell_check is not None and not selected:
+        if self._current.spell_check is not None:    # also with a selection: a double-clicked word is selected
             self._current.spell_check.add_menu_rows(menu, editor.offset_at(editor.viewport().mapFrom(editor, pos)))
         menu.add_item("undo", "Undo", meta="Ctrl+Z", enabled=writable)
         menu.add_item("redo", "Redo", meta="Ctrl+Y", enabled=writable)
