@@ -39,7 +39,7 @@ from PySide6.QtWidgets import (
 )
 
 from ... import timing
-from ... import ai_review, deck_editor, deck_language, deck_outline, deck_scan, preview_thumbnails, reveal_steps, topic_blocks
+from ... import ai_review, deck_editor, deck_language, deck_outline, deck_scan, preview_thumbnails, reveal_steps, slide_language, topic_blocks
 from ...deck_editor import BASE_MACROS, StaleFileError, VERSIONED_MACROS
 from ...deck_outline import SectionRow, SlideRow
 from ...deck_scan import Chapter, Deck
@@ -510,6 +510,7 @@ class SlideList(QWidget):
             self.tree.commitData(editor)
             self.tree.closeEditor(editor, QAbstractItemDelegate.EndEditHint.NoHint)
 
+    @slide_language.shared_links()
     def rebuild(self, *, preserve_focus: bool = False) -> None:
         """Redraw from the deck as it is now; keeps the selection and the focus
         (by what a call is, so an edit elsewhere leaves them), and the scroll position."""

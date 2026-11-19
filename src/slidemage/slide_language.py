@@ -31,6 +31,7 @@ once) and kept honest afterward by slide_rename.regenerate_translation_links().
 """
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import sys
@@ -309,9 +310,35 @@ class TranslationLinks:
         return groups
 
 
+_shared = threading.local()   # .scope: the indexes built in this thread's open shared_links block, by (folder, codes)
+
+
+@contextlib.contextmanager
+def shared_links():
+    """One GUI refresh asks for the links many times (slide list, assistant offers, preview target) and each ask
+    listed the whole slides folder again. Inside this block `links_for` on this thread builds one index on the first
+    ask and returns it to every later ask for the same folder and languages. Nothing inside may write a slide file:
+    the index is not refreshed until the block ends. Nested blocks share the outermost one. Also a decorator:
+    `@shared_links()`."""
+    outer = hasattr(_shared, "scope")
+    if not outer:
+        _shared.scope = {}
+    try:
+        yield
+    finally:
+        if not outer:
+            del _shared.scope
+
+
 def links_for(ctx: ProjectContext) -> TranslationLinks:
-    """A fresh scan of the project's slides, with the project's languages."""
-    return TranslationLinks(ctx.slides_dir, languages.project_languages(ctx).codes)
+    """A scan of the project's slides, with the project's languages: fresh, or the open `shared_links` scope's."""
+    key = (ctx.slides_dir, languages.project_languages(ctx).codes)
+    scope = getattr(_shared, "scope", None)
+    if scope is None:
+        return TranslationLinks(*key)
+    if key not in scope:
+        scope[key] = TranslationLinks(*key)
+    return scope[key]
 
 
 def translated_languages(ctx: ProjectContext, id_slug: str, *, links: Optional[TranslationLinks] = None) -> tuple[str, ...]:

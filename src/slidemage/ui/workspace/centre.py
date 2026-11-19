@@ -1443,6 +1443,7 @@ class CentreColumn(QFrame):
                     "or edit its source with Deck → Source.")
         return "Select a slide in the list. Click it to open its source."
 
+    @slide_language.shared_links()
     def refresh(self) -> None:
         """Bring the visible views up to date with the state."""
         self._forget_missing_tabs()

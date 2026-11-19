@@ -44,7 +44,7 @@ from PySide6.QtWidgets import (
 from ... import background_renders, power_status, preview_build, timing
 from ...stall_monitor import StallMonitor
 from ... import (app_settings, bibliography, deck_headers, deck_outline, latex_edit, latex_help, project,
-                 readability_check, slide_templates, themes, updater)
+                 readability_check, slide_language, slide_templates, themes, updater)
 from ... import version as version_mod
 from ...ai import ai_profile, resolver, routes
 from ...deck_groups import DEFAULT_GROUPS, DeckGroup, load as load_deck_groups
@@ -429,6 +429,7 @@ class WorkspaceWindow(QMainWindow):
 
     # -- decks -----------------------------------------------------------------
 
+    @slide_language.shared_links()
     def reload_decks(self) -> None:
         """Rescans the decks. The current deck stays (a fresh object for the
         same file), follows its file when archived, or falls back to the one
@@ -598,9 +599,10 @@ class WorkspaceWindow(QMainWindow):
             return
         timing.caller("after_version_updates", files=len(paths))
         self._after_write.stop()
-        self.slide_list.rebuild(preserve_focus=True)
-        self.centre.refresh()
-        self.side_panels.refresh()
+        with slide_language.shared_links():
+            self.slide_list.rebuild(preserve_focus=True)
+            self.centre.refresh()
+            self.side_panels.refresh()
         for path in paths:
             self._live_render(path)
 
