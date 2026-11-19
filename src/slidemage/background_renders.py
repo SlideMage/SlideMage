@@ -909,7 +909,8 @@ class BackgroundRenderer:
         if not pages or not self.resolver.publishable(unit, evidence, manifest):
             return None
         key = evidence["key"]
-        paths = [unit.source_path, *[rel for _kind, rel, _sha in manifest.entries]]
+        paths = [unit.source_path, *[rel for _kind, rel, _sha in manifest.entries],
+                 *[Path(path) for path, _state in manifest.tex_files]]
         meta = dict(unit=unit.label, rendered_at=time.time(), duration_ms=int((time.time() - evidence["started"]) * 1000),
                     manifest=manifest.entries, tex_digest=manifest.tex_digest, tex_files=manifest.tex_files,
                     inventory=render_evidence.inventory_state(evidence["inventory"], paths),

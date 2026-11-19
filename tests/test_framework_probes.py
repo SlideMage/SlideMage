@@ -39,8 +39,13 @@ def test_framework_probes_are_covered_by_the_inventory():
                     assert rest.startswith(r'{#1}{\addbibresource{#1}}{\addbibresource{../#1}}'), where
                     assert any(fnmatchcase('references.bib', pattern) for pattern in PROBES), where
                     continue
-                # These two macros expand only the filename, never its search folder.
-                name = name.replace(r'\SMLayoutProfile', 'profile').replace(r'\SMCitationFormat', 'format')
+                if r'\SMLayoutProfile' in name or r'\SMCitationFormat' in name:
+                    # Not a probe: a render reads the one file it names. Lacking it, the false branch raises an error
+                    # whose help starts with the log line that preview_build reads as a missing input.
+                    assert kind == r'\IfFileExists' and re.match(
+                        r'\s*\{(?:[^{}]|\{[^{}]*\})*\}\s*\{\s*\\PackageError\{SlideMage\}\{[^{}]*\}\{\s*File `'
+                        + re.escape(name) + "' not found", rest[argument.end():]), where
+                    continue
                 assert not re.search(r'[\\#]', name), (where, name)
                 names = [name]
             elif kind == 'kpse.find_file':

@@ -300,6 +300,7 @@ def display_path(ctx: project.ProjectContext, path: Path) -> str:
 # in case some other invocation path (e.g. a hand-run compile without
 # -file-line-error) ever produces the classic format instead.
 FATAL_ERROR_RE = re.compile(r"^!|^\S.*:[0-9]+: ", re.MULTILINE)
+MISSING_INPUT_RE = re.compile(r"(?:LaTeX Error: |^)File [`']([^\n]+?)' not found", re.M)
 
 
 def first_tex_error(log_text: str) -> str:

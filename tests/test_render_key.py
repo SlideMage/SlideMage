@@ -161,7 +161,7 @@ def test_a_stale_render_names_the_changed_file_even_when_the_inventory_changed_t
     key, meta = make_record(resolver, unit, [unit.source_path, image])
     store_render(store, key, meta)
     write(image, "other image")
-    write(ctx.root / "SlideMage_layout_x.tex", "a new layout")
+    write(ctx.root / "SlideMage_project_macros.tex", "new macros")
     assert resolver.lookup(unit).why == "file media/pic.png"
     write(image, "img")
     assert resolver.lookup(unit).why == "inventory"

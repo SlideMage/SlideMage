@@ -14,7 +14,7 @@ import shutil
 import threading
 import time
 
-from . import project
+from . import citations, project, themes
 from .preview_metrics import count
 
 # The slide list's thumbnail is 56x31.5 logical pixels (ui/workspace/slide_tree.THUMB_W): this is enough for a
@@ -24,8 +24,10 @@ THUMBNAIL_MAX = (168, 95)
 _SKIP_DIRS = {'.git', '.build', '.previews', '.backups', '.slidemage', '.pytest_cache', '__pycache__', '.venv', 'node_modules'}
 # Names whose mere appearance, in any search folder, changes a compile: the framework's optional files, the .bib
 # fallback, latexmk's configuration, hyphenation patterns and image descriptions. Any other name matters only to a
-# render that reads a file of the same stem (search_inventory). tests/test_framework_probes.py audits this list.
-PROBES = ('SlideMage_layout_*', 'SlideMage_citation_*', 'SlideMage_project_macros.tex', '*.bib',
+# render that reads a file of the same stem (search_inventory). The layout profile and citation format files are
+# not listed: a render reads the one it names, and one that lacks it fails with an error naming the file, which
+# the failure records (preview_build). tests/test_framework_probes.py audits this list.
+PROBES = ('SlideMage_project_macros.tex', '*.bib',
           '.latexmkrc', 'latexmkrc', 'hyphenation/hyph-*', 'hyph-*', 'media/alt-text.*')
 
 
@@ -158,28 +160,12 @@ def _place(path: Path) -> str:
     return str(path)
 
 
-def search_state(project_root: Path, env: dict) -> dict:
-    """Inventory search candidates for the precompiled format."""
-    inventories = {}
-    for root in search_roots(project_root, env):
-        entries = []
-        if not root.exists():
-            inventories[str(root)] = None
-            continue
-        for directory, dirs, files in os.walk(root, followlinks=False, onerror=lambda error: (_ for _ in ()).throw(error)):
-            dirs[:] = sorted(name for name in dirs if name not in _SKIP_DIRS)
-            parent = Path(directory)
-            # Directory symlinks could introduce an unbounded search tree.
-            if any((parent / name).is_symlink() for name in dirs):
-                raise ValueError('Unsupported symlinked TeX search directory')
-            for name in sorted(files):
-                if name.startswith(('_slidemage_', '_snapshot_')):
-                    continue
-                path = parent / name
-                relative = path.relative_to(root).as_posix()
-                entries.append([relative, str(path.resolve()) if path.is_symlink() else None])
-        inventories[str(root)] = entries
-    return inventories
+def without_package_dirs(texinputs: str) -> str:
+    """TEXINPUTS without the folders of installed theme and citation packages, which compiler.build_env adds. They
+    stay search roots (their files are recorded inputs), but the key must not change with the set of packages: a
+    render depends on a package only through the files it reads from it (2026-11-19, issue #251)."""
+    parents = {themes.themes_dir(), citations.citations_dir()}
+    return os.pathsep.join(value for value in texinputs.split(os.pathsep) if Path(value).parent not in parents)
 
 
 _INVENTORY_DIRS = {}
@@ -192,15 +178,18 @@ def search_inventory(project_root: Path, env: dict, *, force=False, inputs=()) -
     A listing taken within MEMO_RACY_SECONDS of its directory's mtime is taken again: a name added in the same
     clock tick (about 16 ms on Windows) leaves the mtime unchanged.
 
-    Sweep planning forces a full re-list; strict checks re-list the directories of
-    recorded inputs. The precompiled format uses whole-tree search_state instead.
+    Sweep planning forces a full re-list; strict checks, and the precompiled format's, re-list the directories of
+    recorded inputs.
+
+    `conservative` covers only the roots that hold probe names: a search root with none, or none at all (a package
+    folder that was just installed or removed), changes no render.
     """
     relist = {Path(path).absolute().parent for path in inputs}
     conservative, stems = {}, {}
     project_root = project_root.absolute()
     for root in search_roots(project_root, env):
         label = _label(root)
-        names = conservative[label] = []
+        names = []
         pending = [root]
         while pending:
             directory = pending.pop()
@@ -209,7 +198,6 @@ def search_inventory(project_root: Path, env: dict, *, force=False, inputs=()) -
             except FileNotFoundError:
                 if directory != root:
                     raise
-                conservative[label] = None
                 continue
             with _INVENTORY_LOCK:
                 known = _INVENTORY_DIRS.get(directory)
@@ -236,7 +224,8 @@ def search_inventory(project_root: Path, env: dict, *, force=False, inputs=()) -
                     names.append(found)
                 else:
                     stems.setdefault(path.stem, set()).add(_place(path))
-        names.sort()
+        if names:
+            conservative[label] = sorted(names)
     return {'conservative': digest(conservative),
             'stems': {stem: sorted(paths) for stem, paths in stems.items()}}
 
@@ -271,6 +260,8 @@ def configuration_state(project_root: Path, env: dict) -> dict:
          'VARTEXFONTS', 'SLIDEMAGE_PREVIEW_FORMAT')}
     if 'SLIDEMAGE_LATEX' in relevant:
         relevant['SLIDEMAGE_LATEX'] = _label(relevant['SLIDEMAGE_LATEX'])
+    if 'TEXINPUTS' in relevant and (texinputs := without_package_dirs(relevant.pop('TEXINPUTS'))):
+        relevant['TEXINPUTS'] = texinputs  # an empty value is the same as none
     return {'environment': relevant, 'tools': tools, 'rc': input_state(rc)}
 
 
