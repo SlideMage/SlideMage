@@ -4426,3 +4426,5 @@ v0.17.36 (2026-11-19, issue #252 step 4 of docs/plans/ui-stalls.md): On Linux, u
 
 NEW: On Linux, SlideMage no longer gets slower the longer it runs.
 - To notice when you use the window (and pause background previews), SlideMage no longer checks every part of the window four times a second, which cost more with every chat message and card.
+
+v0.17.37 (2026-11-19, direct request: "Render now" in the Background previews window did nothing and the debug log did not say why): the debug log (area `background`) now has one line per slide a background render finishes, `result <deck> <slide> <view> <language>: <status>`, with what the render store says about it afterwards (a render the store does not find fresh stays outstanding and is planned again) and the first line of a failure's error; a line when the planner queues jobs (how many, how many units the plan still holds); and a line when Render now is clicked. Written only with the debug log on.
