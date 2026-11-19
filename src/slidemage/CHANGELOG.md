@@ -4359,4 +4359,5 @@ NEW: Check the spelling of a whole deck at once.
 
 v0.17.26 (2026-11-19, direct request: a long prompt with an attached file was cut off on the right of its chat bubble): chat.cards.UserBubble sized its label to the widest word, and an attached file's path is one word wider than the bubble, so every line wrapped at that width and the bubble cut them all. The label is now capped at the bubble's inner width (BUBBLE_WIDTH minus its margins), and a zero-width space after / \ _ and . inside a word lets such names break. Test in tests/test_chat_gui.py. (v0.17.24 is PR #248, v0.17.25 PR #249.)
 
-FIXED: In the AI chat, a long message with an attached file wraps inside its bubble instead of being cut off on the right.
+NEW:
+- In the AI chat, a long message with an attached file wraps inside its bubble instead of being cut off on the right.
