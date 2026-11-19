@@ -4357,6 +4357,21 @@ NEW: Check the spelling of a whole deck at once.
 - Deck -> Check spelling of this deck lists every unknown word of the deck's slides, in every language, with where it occurs; tick words to add them to the word list or ignore them, double-click to open the slide there.
 - Image descriptions on the Images page are spell checked as you type, with suggestions on right-click.
 
+v0.17.24 (2026-11-18, direct request: the "template uni-graz" caption beside an installed theme's name in Settings → Extensions was an unreadable sliver): settings_plugins._ListRow.add_title_line turns word wrap off for the labels on a row's title line, so a caption such as "template <key>" or "format <key>" stays on one line at its full width instead of wrapping into two lines the fixed-height title line cut off.
+
+NEW:
+- In Settings → Extensions, the key beside a theme's or citation format's name is readable again.
+
+v0.17.25 (2026-11-19, direct request: after CampusOnline's "Insert slides" the Deck settings sheet looked stuck, its only live button Cancel): once a plugin tab's footer action has run, DeckSettingsSheet's Cancel button reads Close, as long as no other tab has unsaved changes. The action's edit is saved already, so Cancel undid nothing. Test in tests/test_plugin_deck_edits.py. (v0.17.24 is PR #248.)
+
+NEW:
+- After a plugin such as CampusOnline inserts slides from Deck settings, the sheet offers Close instead of Cancel, so it is clear the slides are in.
+
+v0.17.26 (2026-11-19, direct request: a long prompt with an attached file was cut off on the right of its chat bubble): chat.cards.UserBubble sized its label to the widest word, and an attached file's path is one word wider than the bubble, so every line wrapped at that width and the bubble cut them all. The label is now capped at the bubble's inner width (BUBBLE_WIDTH minus its margins), and a zero-width space after / \ _ and . inside a word lets such names break. Test in tests/test_chat_gui.py. (v0.17.24 is PR #248, v0.17.25 PR #249.)
+
+NEW:
+- In the AI chat, a long message with an attached file wraps inside its bubble instead of being cut off on the right.
+
 v0.17.27 (2026-11-19, issue #251 step 2 of docs/plans/package-install-rerender.md): Installing, removing or updating a theme or citation package no longer changes the key of every render. render_evidence.configuration_state leaves the installed package folders (the folders under themes.themes_dir() and citations.citations_dir(), which compiler.build_env puts on TEXINPUTS) out of the TEXINPUTS value in the evidence, through _without_package_dirs; search_roots still reads the full environment, so a file read from a package stays a recorded input and counts in the stems. An empty TEXINPUTS is left out like an unset one. search_inventory keys the conservative digest only by search roots that hold probe names, so a new or removed root with none (an empty package folder, a missing folder) leaves it as it was, while a root with probe names still counts, also when it disappears. background_renders.store_render and render_key.Resolver.lookup add the absolute tex_files paths to the paths of inventory_state, as publishable already did, so a project copy of a file a render read from a package (a copied theme template) makes the render stale. Every stored key changes once, because the configuration digest does: previews render once more after this update. The SlideMage_citation_* and SlideMage_layout_* probe names (step 3) and preview_format._fresh (step 4) are unchanged.
 
 NEW: Installing or removing a theme no longer re-renders every preview.
