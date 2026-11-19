@@ -4357,6 +4357,16 @@ NEW: Check the spelling of a whole deck at once.
 - Deck -> Check spelling of this deck lists every unknown word of the deck's slides, in every language, with where it occurs; tick words to add them to the word list or ignore them, double-click to open the slide there.
 - Image descriptions on the Images page are spell checked as you type, with suggestions on right-click.
 
+v0.17.24 (2026-11-18, direct request: the "template uni-graz" caption beside an installed theme's name in Settings → Extensions was an unreadable sliver): settings_plugins._ListRow.add_title_line turns word wrap off for the labels on a row's title line, so a caption such as "template <key>" or "format <key>" stays on one line at its full width instead of wrapping into two lines the fixed-height title line cut off.
+
+NEW:
+- In Settings → Extensions, the key beside a theme's or citation format's name is readable again.
+
+v0.17.25 (2026-11-19, direct request: after CampusOnline's "Insert slides" the Deck settings sheet looked stuck, its only live button Cancel): once a plugin tab's footer action has run, DeckSettingsSheet's Cancel button reads Close, as long as no other tab has unsaved changes. The action's edit is saved already, so Cancel undid nothing. Test in tests/test_plugin_deck_edits.py. (v0.17.24 is PR #248.)
+
+NEW:
+- After a plugin such as CampusOnline inserts slides from Deck settings, the sheet offers Close instead of Cancel, so it is clear the slides are in.
+
 v0.17.26 (2026-11-19, direct request: a long prompt with an attached file was cut off on the right of its chat bubble): chat.cards.UserBubble sized its label to the widest word, and an attached file's path is one word wider than the bubble, so every line wrapped at that width and the bubble cut them all. The label is now capped at the bubble's inner width (BUBBLE_WIDTH minus its margins), and a zero-width space after / \ _ and . inside a word lets such names break. Test in tests/test_chat_gui.py. (v0.17.24 is PR #248, v0.17.25 PR #249.)
 
 NEW:

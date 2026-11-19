@@ -74,7 +74,8 @@ class DeckSettingsSheet(ModalSheet):
 
         self.note = caption("")
         self.add_footer_note(self.note)
-        self.add_button("Cancel", role="reject")
+        self.cancel_button = self.add_button("Cancel", role="reject")
+        self.acted = False      # a footer action ran: its edit is saved already, so leaving is Close, not Cancel
         self.save_button = self.add_button("Save", kind="primary")
         self.save_button.clicked.connect(self._on_save)
         self.plugin_button = self.add_button("", kind="primary")     # the footer action of the shown plugin tab
@@ -395,6 +396,7 @@ class DeckSettingsSheet(ModalSheet):
                 log.exception("enabled() of the footer action %r raised; counted as False", action.label)
                 self.plugin_button.setEnabled(False)
         self.save_button.setVisible(action is None)
+        self.cancel_button.setText("Close" if self.acted and not dirty else "Cancel")
         self._say(DIRTY_SHEET_MESSAGE if action is not None and dirty else "")
 
     def _browse(self, key: str | None) -> None:
@@ -432,6 +434,7 @@ class DeckSettingsSheet(ModalSheet):
             log.exception("footer action %r failed", plugin_tab.footer_action.label)
             self._say(f"{plugin_tab.footer_action.label} failed: {exc}", "error")
         else:
+            self.acted = True
             self._sync_footer()
 
     def done(self, result: int) -> None:
