@@ -17,7 +17,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from slidemage import background_renders, citations, compiler, preview_format, render_evidence, slide_templates, themes
+from slidemage import background_renders, citations, compiler, preview_build, preview_format, render_evidence, slide_templates, themes
 from slidemage.render_key import Freshness
 
 from test_background_renders import FakeTeX, deck_named, make, project, raster, render_unit, store  # noqa: F401
@@ -186,3 +186,41 @@ def test_what_the_preamble_read_makes_the_precompiled_format_stale(name, tmp_pat
     (tmp_path / name).parent.mkdir(exist_ok=True)
     (tmp_path / name).write_text("changed, and longer", encoding="utf-8")
     assert not preview_format._fresh(directory / "format.json", tmp_path, {})
+
+
+def test_installing_a_package_keeps_the_precompiled_formats_folder_and_freshness(tmp_path, monkeypatch):
+    runs = _fake_engine(monkeypatch)
+    wrapper = r"\documentclass{beamer}\begin{document}x"
+    before = {"TEXINPUTS": str(tmp_path / "own")}
+
+    def ensure(env):
+        key = preview_build.configuration_key(wrapper, "", tmp_path, env)
+        return preview_format.ensure(r"\documentclass{beamer}", key, project_root=tmp_path, build_dir=tmp_path / ".build",
+                                     env=env, log=lambda line: None, lock=preview_build.build_lock)
+
+    directory = ensure(before)
+    assert ensure({"TEXINPUTS": os.pathsep.join([before["TEXINPUTS"], str(install_theme())])}) == directory
+    assert len(runs) == 1
+
+
+def failed_format(tmp_path, monkeypatch, log):
+    _fake_engine(monkeypatch, log=log)
+    assert _ensure(tmp_path) is None
+    assert list((tmp_path / ".build" / "preview-formats").glob("*/format.bad"))
+
+
+def test_a_format_that_missed_a_layout_profile_is_built_again_once_the_profile_exists(tmp_path, monkeypatch):
+    failed_format(tmp_path, monkeypatch, "Package SlideMage Error: x\nFile `SlideMage_layout_x.tex' not found\n")
+    assert _ensure(tmp_path) is None
+    runs = _fake_engine(monkeypatch)
+    (tmp_path / "SlideMage_layout_x.tex").write_text("% a layout profile\n", encoding="utf-8")
+    directory = _ensure(tmp_path)
+    assert directory and (directory / "preamble.fmt").is_file() and not (directory / "format.bad").exists()
+    assert len(runs) == 1
+
+
+def test_a_format_that_failed_for_no_missing_file_stays_bad(tmp_path, monkeypatch):
+    failed_format(tmp_path, monkeypatch, "./deck.tex:12: Undefined control sequence.\n")
+    runs = _fake_engine(monkeypatch)
+    (tmp_path / "SlideMage_layout_x.tex").write_text("% a layout profile\n", encoding="utf-8")
+    assert _ensure(tmp_path) is None and not runs

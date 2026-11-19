@@ -28,7 +28,7 @@ from .fileio import atomic_write
 from .filelock import build_lock, check_cancel
 from .preview_metrics import measure, stage, record_line, finish_rules
 from . import app_settings, compiler, preview_format
-from .render_evidence import find_tool, search_inventory
+from .render_evidence import find_tool, search_inventory, without_package_dirs
 from .project import ProjectContext
 from .processes import no_console_kwargs
 
@@ -347,13 +347,17 @@ def configuration_key(wrapper_text, id_slug, project_root: Path, env):
             path = Path(executable).resolve()
             info = path.stat()
             tools[name] = (str(path), info.st_size, info.st_mtime_ns)
+    search = {name: value for name, value in env.items() if name.startswith(
+        ('TEX', 'LUA', 'BIB', 'FONTCONFIG', 'LATEXMK', 'MIKTEX')) or name in
+        ('SLIDEMAGE_LATEX', 'PATH', 'SOURCE_DATE_EPOCH', 'OSFONTDIR', 'VARTEXFONTS')}
+    # Installed packages change TEXINPUTS but no render's preamble (what it reads from them is recorded: issue #251).
+    if 'TEXINPUTS' in search and (texinputs := without_package_dirs(search.pop('TEXINPUTS'))):
+        search['TEXINPUTS'] = texinputs      # an empty value is the same as none
     configuration = {
         'schema': 3,                    # 3: PREVIEW_LATEXMKRC and RUN_XML_NOTE
         'preview_rc': PREVIEW_LATEXMKRC, 'run_xml_note': RUN_XML_NOTE,
         'root': str(project_root.resolve()), 'slide': id_slug, 'preamble': preamble,
-        'search': {name: value for name, value in env.items() if name.startswith(
-            ('TEX', 'LUA', 'BIB', 'FONTCONFIG', 'LATEXMK', 'MIKTEX')) or name in
-            ('SLIDEMAGE_LATEX', 'PATH', 'SOURCE_DATE_EPOCH', 'OSFONTDIR', 'VARTEXFONTS')},
+        'search': search,
         'tools': tools,
         'rc': [(str(path), path.read_text(errors='replace') if path.is_file() else '') for path in rc_paths],
     }
@@ -702,7 +706,7 @@ def run_preview(ctx: ProjectContext, wrapper: Path, jobname: str, id_slug: str, 
                                                      ctx=ctx, cache=outdir)
         except OSError:
             failure.preview_inputs = []
-        failure.missing_inputs = re.findall(r"(?:LaTeX Error: |^)File [`']([^\n]+?)' not found", build.log_text, re.M)
+        failure.missing_inputs = compiler.MISSING_INPUT_RE.findall(build.log_text)
         raise failure
     return pdf, rerun_limit
 

@@ -38,7 +38,7 @@ import os
 from pathlib import Path
 import subprocess
 
-from .compiler import FATAL_ERROR_RE, run_streamed
+from .compiler import FATAL_ERROR_RE, MISSING_INPUT_RE, run_streamed
 from .preview_metrics import stage
 from .processes import no_console_kwargs
 from .render_evidence import (FileStates, configuration_state, find_tool, inventory_state, search_inventory,
@@ -179,8 +179,19 @@ def _is_miktex(env: dict) -> bool:
     return bool(engine and 'miktex' in engine.lower()) or bool(find_tool('initexmf', env.get('PATH')))
 
 
-def disable(directory: Path) -> None:
-    (directory / 'format.bad').touch()
+def disable(directory: Path, missing=()) -> None:
+    """Mark the format unusable. `missing`: the input files its build did not find, one name per line: the format
+    is built again once one of them exists in a search folder (issue #251)."""
+    (directory / 'format.bad').write_text('\n'.join(missing), encoding='utf-8')
+
+
+def _found_missing(directory: Path, project_root: Path, env: dict) -> bool:
+    """Whether a file the failed build missed (named in format.bad) is in a search folder now."""
+    try:
+        names = (directory / 'format.bad').read_text(encoding='utf-8').splitlines()
+        return any((root / name).is_file() for name in names for root in search_roots(project_root, env))
+    except (OSError, ValueError):
+        return False
 
 
 def ensure(preamble: str, key: str, *, project_root: Path, build_dir: Path, env: dict,
@@ -200,15 +211,17 @@ def ensure(preamble: str, key: str, *, project_root: Path, build_dir: Path, env:
         with lock(directory / 'build.lock', shared=True, cancel=cancel):
             (directory / 'build.lock').touch()    # last use, including attempts of a disabled format
             if (directory / 'format.bad').exists():
-                return None
-            if stem(directory).with_suffix('.fmt').is_file() and _fresh(directory / 'format.json', project_root, env):
+                if not _found_missing(directory, project_root, env):
+                    return None
+            elif stem(directory).with_suffix('.fmt').is_file() and _fresh(directory / 'format.json', project_root, env):
                 return directory
         with lock(directory / 'build.lock', cancel=cancel):          # build it (unless another render just did)
-            if (directory / 'format.bad').exists():
+            retry = (directory / 'format.bad').exists()
+            if retry and not _found_missing(directory, project_root, env):
                 return None
-            fmt = stem(directory).with_suffix('.fmt')
-            if fmt.is_file() and _fresh(directory / 'format.json', project_root, env):
+            if not retry and stem(directory).with_suffix('.fmt').is_file() and _fresh(directory / 'format.json', project_root, env):
                 return directory
+            (directory / 'format.bad').unlink(missing_ok=True)
             return _build(preamble, directory, project_root=project_root, env=env,
                           log=log, cancel=cancel)
     except OSError:
@@ -264,7 +277,7 @@ def _build(preamble, directory, *, project_root: Path, env, log, cancel=None):
     if (not fmt.is_file() or errors or '\n!' in contents
             or 'Beginning to dump on file' not in contents or not fls.is_file()):
         log('    (preamble cannot be precompiled; previews build the ordinary way)')
-        disable(directory)
+        disable(directory, MISSING_INPUT_RE.findall(contents))
         return None
     try:
         states = FileStates(search_roots(project_root, env))

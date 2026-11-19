@@ -160,7 +160,7 @@ def _place(path: Path) -> str:
     return str(path)
 
 
-def _without_package_dirs(texinputs: str) -> str:
+def without_package_dirs(texinputs: str) -> str:
     """TEXINPUTS without the folders of installed theme and citation packages, which compiler.build_env adds. They
     stay search roots (their files are recorded inputs), but the key must not change with the set of packages: a
     render depends on a package only through the files it reads from it (2026-11-19, issue #251)."""
@@ -260,7 +260,7 @@ def configuration_state(project_root: Path, env: dict) -> dict:
          'VARTEXFONTS', 'SLIDEMAGE_PREVIEW_FORMAT')}
     if 'SLIDEMAGE_LATEX' in relevant:
         relevant['SLIDEMAGE_LATEX'] = _label(relevant['SLIDEMAGE_LATEX'])
-    if 'TEXINPUTS' in relevant and (texinputs := _without_package_dirs(relevant.pop('TEXINPUTS'))):
+    if 'TEXINPUTS' in relevant and (texinputs := without_package_dirs(relevant.pop('TEXINPUTS'))):
         relevant['TEXINPUTS'] = texinputs  # an empty value is the same as none
     return {'environment': relevant, 'tools': tools, 'rc': input_state(rc)}
 
