@@ -156,7 +156,9 @@ def test_a_plugin_save_reaches_the_window_and_the_reopened_sheet_and_is_undoable
 
 def test_a_plugin_insert_shows_the_calls_in_the_slide_list_and_is_undoable(window):
     sheet, page = sheet_of(window)
+    assert sheet.cancel_button.text() == "Cancel"
     sheet.plugin_button.click()
+    assert sheet.cancel_button.text() == "Close"                  # the insert is saved: nothing left to cancel
     assert page.error == ""
     calls = [line for line in disk(window).split("\r\n") if line.startswith("\\slide{")]
     assert len(calls) == 3 and "-EN-Fixture" in calls[-1]

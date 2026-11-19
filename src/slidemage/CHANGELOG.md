@@ -4361,3 +4361,8 @@ v0.17.24 (2026-11-18, direct request: the "template uni-graz" caption beside an 
 
 NEW:
 - In Settings → Extensions, the key beside a theme's or citation format's name is readable again.
+
+v0.17.25 (2026-11-19, direct request: after CampusOnline's "Insert slides" the Deck settings sheet looked stuck, its only live button Cancel): once a plugin tab's footer action has run, DeckSettingsSheet's Cancel button reads Close, as long as no other tab has unsaved changes. The action's edit is saved already, so Cancel undid nothing. Test in tests/test_plugin_deck_edits.py. (v0.17.24 is PR #248.)
+
+NEW:
+- After a plugin such as CampusOnline inserts slides from Deck settings, the sheet offers Close instead of Cancel, so it is clear the slides are in.
