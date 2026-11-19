@@ -377,8 +377,11 @@ class _ListRow(Card):
 
     def add_title_line(self, left: list[QWidget], buttons: list[QWidget]) -> None:
         """`left` at the left, `buttons` at the right, the width between them empty. The buttons are the line's
-        tallest: what is on its left keeps its own height, centred (a chip would stretch)."""
+        tallest: what is on its left keeps its own height, centred (a chip would stretch), on one line (a wrapping
+        caption squeezed by the buttons was cut to an unreadable sliver)."""
         for widget in left:
+            if isinstance(widget, QLabel):
+                widget.setWordWrap(False)
             widget.setSizePolicy(widget.sizePolicy().horizontalPolicy(), QSizePolicy.Policy.Fixed)
         self.layout().addWidget(row(*left, Surface(), *buttons, stretch=len(left)))
 
