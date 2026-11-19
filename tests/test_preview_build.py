@@ -244,7 +244,7 @@ def test_format_invalidates_same_size_mtime_content_and_new_shadow(tmp_path, mon
     package.write_text('y')
     os.utime(package, ns=(previous.st_atime_ns, previous.st_mtime_ns))
     assert _ensure(tmp_path) == first and len(runs) == 2
-    (tmp_path / 'new-shadow.sty').write_text('new search candidate')
+    (tmp_path / 'decks' / 'package.sty').write_text('shadows the one the format read')
     assert _ensure(tmp_path) == first and len(runs) == 3
 
 

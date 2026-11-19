@@ -166,7 +166,6 @@ def test_a_copy_of_a_file_a_render_read_in_the_project_makes_it_stale(where, wor
     assert r.resolver.lookup(unit).state is Freshness.STALE
 
 
-@pytest.mark.xfail(strict=True, reason="fixed in step 4: the format compares every file under every search root")
 def test_a_new_slide_file_leaves_the_precompiled_format_current(tmp_path, monkeypatch):
     runs = _fake_engine(monkeypatch)
     directory = _ensure(tmp_path)
@@ -175,3 +174,15 @@ def test_a_new_slide_file_leaves_the_precompiled_format_current(tmp_path, monkey
     (tmp_path / "slides" / "new-EN-Slide-current.tex").write_text("\\begin{frame}\\end{frame}", encoding="utf-8")
     assert preview_format._fresh(directory / "format.json", tmp_path, {})
     assert len(runs) == 1
+
+
+@pytest.mark.parametrize("name", [
+    pytest.param("decks/package.cls", id="a file with the stem of an input"),
+    pytest.param("refs.bib", id="a probe name"),
+    pytest.param("package.sty", id="an input's content")])
+def test_what_the_preamble_read_makes_the_precompiled_format_stale(name, tmp_path, monkeypatch):
+    _fake_engine(monkeypatch)
+    directory = _ensure(tmp_path)
+    (tmp_path / name).parent.mkdir(exist_ok=True)
+    (tmp_path / name).write_text("changed, and longer", encoding="utf-8")
+    assert not preview_format._fresh(directory / "format.json", tmp_path, {})

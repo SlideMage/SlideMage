@@ -41,10 +41,12 @@ import subprocess
 from .compiler import FATAL_ERROR_RE, run_streamed
 from .preview_metrics import stage
 from .processes import no_console_kwargs
-from .render_evidence import FileStates, configuration_state, find_tool, search_roots, search_state
+from .render_evidence import (FileStates, configuration_state, find_tool, inventory_state, search_inventory,
+                              search_roots)
 from .fileio import atomic_write
 
-SCHEMA = 4           # 4: formats work on Windows/MiKTeX (before, every one there was marked bad)
+SCHEMA = 5           # 4: formats work on Windows/MiKTeX (before, every one there was marked bad)
+                     # 5: format.json holds inventory_state of the inputs, not a walk of every search root
 ENGINE = 'lualatex'
 NAME = 'preamble'   # the format's file name (and TeX jobname) inside its directory
 _FONT_CACHE_RACE = 'no writeable cache path'     # as preview_build.font_cache_race (which imports this module)
@@ -136,7 +138,8 @@ def _fresh(manifest: Path, project_root: Path, env: dict) -> bool:
     try:
         data = json.loads(manifest.read_text(encoding='utf-8'))
         states = FileStates(search_roots(project_root, env))
-        return (data['search'] == search_state(project_root, env)
+        names = [item[0] for item in data['inputs']]
+        return (data['inventory'] == inventory_state(search_inventory(project_root, env, inputs=names), names)
                 and data['configuration'] == configuration_state(project_root, env)
                 and all(_stamp(Path(item[0]), states) == item for item in data['inputs']))
     except (OSError, ValueError, KeyError, IndexError, TypeError, AttributeError):
@@ -265,12 +268,13 @@ def _build(preamble, directory, *, project_root: Path, env, log, cancel=None):
         return None
     try:
         states = FileStates(search_roots(project_root, env))
-        stamps = [_stamp(Path(name), states) for name in _fls_inputs(fls, cwd, directory)]
-        inventory = search_state(project_root, env)
+        stamps = [stamp for name in _fls_inputs(fls, cwd, directory) if (stamp := _stamp(Path(name), states))]
+        names = [stamp[0] for stamp in stamps]
+        inventory = inventory_state(search_inventory(project_root, env, inputs=names), names)
         configuration = configuration_state(project_root, env)
     except (OSError, ValueError):
         disable(directory)
         return None
-    atomic_write(directory / 'format.json', json.dumps({'inputs': [s for s in stamps if s], 'search': inventory,
+    atomic_write(directory / 'format.json', json.dumps({'inputs': stamps, 'inventory': inventory,
                                                        'configuration': configuration}))
     return directory

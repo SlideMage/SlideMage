@@ -168,30 +168,6 @@ def _without_package_dirs(texinputs: str) -> str:
     return os.pathsep.join(value for value in texinputs.split(os.pathsep) if Path(value).parent not in parents)
 
 
-def search_state(project_root: Path, env: dict) -> dict:
-    """Inventory search candidates for the precompiled format."""
-    inventories = {}
-    for root in search_roots(project_root, env):
-        entries = []
-        if not root.exists():
-            inventories[str(root)] = None
-            continue
-        for directory, dirs, files in os.walk(root, followlinks=False, onerror=lambda error: (_ for _ in ()).throw(error)):
-            dirs[:] = sorted(name for name in dirs if name not in _SKIP_DIRS)
-            parent = Path(directory)
-            # Directory symlinks could introduce an unbounded search tree.
-            if any((parent / name).is_symlink() for name in dirs):
-                raise ValueError('Unsupported symlinked TeX search directory')
-            for name in sorted(files):
-                if name.startswith(('_slidemage_', '_snapshot_')):
-                    continue
-                path = parent / name
-                relative = path.relative_to(root).as_posix()
-                entries.append([relative, str(path.resolve()) if path.is_symlink() else None])
-        inventories[str(root)] = entries
-    return inventories
-
-
 _INVENTORY_DIRS = {}
 _INVENTORY_LOCK = threading.Lock()
 
@@ -202,8 +178,8 @@ def search_inventory(project_root: Path, env: dict, *, force=False, inputs=()) -
     A listing taken within MEMO_RACY_SECONDS of its directory's mtime is taken again: a name added in the same
     clock tick (about 16 ms on Windows) leaves the mtime unchanged.
 
-    Sweep planning forces a full re-list; strict checks re-list the directories of
-    recorded inputs. The precompiled format uses whole-tree search_state instead.
+    Sweep planning forces a full re-list; strict checks, and the precompiled format's, re-list the directories of
+    recorded inputs.
 
     `conservative` covers only the roots that hold probe names: a search root with none, or none at all (a package
     folder that was just installed or removed), changes no render.
