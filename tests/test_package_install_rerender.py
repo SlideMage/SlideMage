@@ -3,8 +3,8 @@
 """Installing a package re-renders only what uses it (issue #251, docs/plans/package-install-rerender.md).
 
 Installing the APA citation package made SlideMage render every preview of a project again, though no deck used it:
-the package folder is on TEXINPUTS (so in every render key), the new SlideMage_citation_apa.tex matches a probe name
-(so it counts for every render), and a new slide file made the precompiled preamble format stale.
+the package folder is on TEXINPUTS (so in every render key), the new SlideMage_citation_apa.tex matched a probe name
+(so it counted for every render), and a new slide file made the precompiled preamble format stale.
 
 The renders here are stored by the background renderer's fake TeX; the xfail marks name the plan step that fixes each.
 """
@@ -63,7 +63,6 @@ def render_one(world, inputs=()):
     return r, unit
 
 
-@pytest.mark.xfail(strict=True, reason="fixed in step 3: the folder is in the key, and the file name matches a probe")
 def test_a_citation_package_no_deck_uses_leaves_the_render_fresh(world):
     r, unit = render_one(world)
     install_citation()
@@ -76,9 +75,7 @@ def test_a_theme_package_no_deck_uses_leaves_the_render_fresh(world):
     assert r.resolver.lookup(unit).state is Freshness.FRESH
 
 
-@pytest.mark.parametrize("kind", [
-    pytest.param("citation", marks=pytest.mark.xfail(strict=True, reason="fixed in step 3: as for installing it")),
-    "theme"])
+@pytest.mark.parametrize("kind", ["citation", "theme"])
 def test_removing_a_package_no_deck_uses_leaves_the_render_fresh(kind, world):
     folder = INSTALL[kind]()
     r, unit = render_one(world)
@@ -103,7 +100,7 @@ def test_only_search_roots_with_probe_names_count_for_the_conservative_digest(tm
     assert render_evidence.search_inventory(tmp_path, env)["conservative"] == before
     named = tmp_path / "named"
     named.mkdir()
-    (named / "SlideMage_citation_apa.tex").write_text("% a citation format\n", encoding="utf-8")
+    (named / "SlideMage_project_macros.tex").write_text("% project macros\n", encoding="utf-8")
     env["TEXINPUTS"] = str(named)
     with_names = render_evidence.search_inventory(tmp_path, env)["conservative"]
     assert with_names != before
@@ -129,7 +126,6 @@ def fail_with(r, unit, log, monkeypatch):
 
 
 @needs_tex
-@pytest.mark.xfail(strict=True, reason="fixed in step 3: a PackageError names no missing file the failure could record")
 def test_a_render_that_failed_for_want_of_a_citation_format_runs_again_once_it_is_installed(world, tmp_path, monkeypatch):
     """Judged under the unchanged key: the install itself must end the failure, not the key it happens to change."""
     deck = (r"\documentclass{beamer}" "\n" r"\input{SlideMage_template_grayscale}" "\n"
@@ -142,7 +138,6 @@ def test_a_render_that_failed_for_want_of_a_citation_format_runs_again_once_it_i
 
 
 @needs_tex
-@pytest.mark.xfail(strict=True, reason="fixed in step 3: a PackageError names no missing file the failure could record")
 def test_a_render_that_failed_for_want_of_a_layout_profile_runs_again_once_it_is_installed(world, tmp_path, monkeypatch):
     deck = (r"\documentclass{beamer}" "\n" r"\newcommand{\SMLayoutProfile}{myfont}" "\n"
             r"\input{SlideMage_template_slidemage}" "\n" r"\begin{document}\end{document}" "\n")

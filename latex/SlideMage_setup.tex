@@ -176,8 +176,9 @@
 \IfFileExists{SlideMage_layout_\SMLayoutProfile.tex}
 	{\input{SlideMage_layout_\SMLayoutProfile}}
 	{\PackageError{SlideMage}{Layout profile '\SMLayoutProfile' not found}{%
-		No file SlideMage_layout_\SMLayoutProfile.tex on the TeX search path. SlideMage ships the profile
-		'fira' (the default); a profile of your own goes next to the template that names it.}}
+		File `SlideMage_layout_\SMLayoutProfile.tex' not found on the TeX search path.\MessageBreak
+		SlideMage ships the profile 'fira' (the default);\MessageBreak
+		a profile of your own goes next to the template that names it.}}
 
 % The beamer theme (beamerthemeSlideMage.sty, a modified fork of Romain Noel's
 % Gotham theme, LPPL 1.3c). Sets font sizes and the look; the font files come from

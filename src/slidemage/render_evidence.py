@@ -24,8 +24,10 @@ THUMBNAIL_MAX = (168, 95)
 _SKIP_DIRS = {'.git', '.build', '.previews', '.backups', '.slidemage', '.pytest_cache', '__pycache__', '.venv', 'node_modules'}
 # Names whose mere appearance, in any search folder, changes a compile: the framework's optional files, the .bib
 # fallback, latexmk's configuration, hyphenation patterns and image descriptions. Any other name matters only to a
-# render that reads a file of the same stem (search_inventory). tests/test_framework_probes.py audits this list.
-PROBES = ('SlideMage_layout_*', 'SlideMage_citation_*', 'SlideMage_project_macros.tex', '*.bib',
+# render that reads a file of the same stem (search_inventory). The layout profile and citation format files are
+# not listed: a render reads the one it names, and one that lacks it fails with an error naming the file, which
+# the failure records (preview_build). tests/test_framework_probes.py audits this list.
+PROBES = ('SlideMage_project_macros.tex', '*.bib',
           '.latexmkrc', 'latexmkrc', 'hyphenation/hyph-*', 'hyph-*', 'media/alt-text.*')
 
 

@@ -702,7 +702,7 @@ def run_preview(ctx: ProjectContext, wrapper: Path, jobname: str, id_slug: str, 
                                                      ctx=ctx, cache=outdir)
         except OSError:
             failure.preview_inputs = []
-        failure.missing_inputs = re.findall(r"LaTeX Error: File [`']([^\n]+?)' not found", build.log_text)
+        failure.missing_inputs = re.findall(r"(?:LaTeX Error: |^)File [`']([^\n]+?)' not found", build.log_text, re.M)
         raise failure
     return pdf, rerun_limit
 

@@ -108,10 +108,10 @@ def test_an_unused_file_in_any_search_folder_leaves_the_inventory_current_but_a_
         return render_evidence.inventory_state(render_evidence.search_inventory(root, env, force=True), inputs)
 
     for unused in (root / 'SlideMage_template_x.tex', framework / 'SlideMage_template_x.tex', theme / 'SlideMage_template_x.tex',
-                   theme / 'logo.pdf'):
+                   theme / 'logo.pdf', root / 'SlideMage_layout_x.tex', framework / 'SlideMage_citation_x.tex'):
         unused.write_bytes(b'unused')
         assert current() == recorded
-    for probe in (root / 'SlideMage_layout_x.tex', framework / 'SlideMage_citation_x.tex', theme / 'hyphenation/hyph-xx.pat.txt'):
+    for probe in (root / 'SlideMage_project_macros.tex', framework / '.latexmkrc', theme / 'hyphenation/hyph-xx.pat.txt'):
         probe.parent.mkdir(exist_ok=True)
         probe.write_bytes(b'probe')
         assert current() != recorded
