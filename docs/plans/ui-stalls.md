@@ -1,6 +1,6 @@
 # UI stalls during editing (issue #252): plan
 
-Status: written 2026-11-19, steps based on develop @ 7e524dc7 (v0.17.34). Steps 1–3 stack in .worktrees/ui-stalls, step 4 runs in parallel in .worktrees/ui-stalls-watcher.
+Status: written 2026-11-19, steps based on develop @ 7e524dc7 (v0.17.30). Steps 1–3 stack in .worktrees/ui-stalls, step 4 runs in parallel in .worktrees/ui-stalls-watcher.
 
 The issue names three sources of main-thread stalls in a 17-hour session (about 900 slide files): the slide language
 index rebuilt on the GUI thread several times per refresh, the Linux input watcher walking every widget four times a
