@@ -108,8 +108,9 @@ the planner's `scan()` (`background_renders.py:427`), header sync (`deck_headers
 
 ### Step 5: rank the GIL holders (findings only, no fix)
 
-* A small script under `tools/` reads a debug log and counts, per stall, the busy worker frames from the
-  `stall late=…` reports, grouped by function. Run it on the owner's 17-hour log, then again after steps 2–4.
+* Tool: `python tools/debug_log.py --stalls [files]` (an option of the existing `tools/debug_log.py`) reads the
+  `stall late=…` reports and counts, per stall, the GUI frame and the busy worker frames, grouped by function. Run it
+  on the owner's 17-hour log, then again after steps 2–4.
 * Write the ranking into this file (section 3). Then decide per hotspot, with the owner: yield (`time.sleep(0)`
   every N items in long pure-Python loops), reuse a cache (the planner may be rebuilding outlines that steps 2–3
   now make cheap), or move the work into the render processes. Each fix chosen becomes its own step.
