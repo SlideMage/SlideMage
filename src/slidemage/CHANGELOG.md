@@ -4401,3 +4401,5 @@ v0.17.31 (2026-11-19, direct request: the spell check's underline was easy to ov
 NEW:
 - Misspelled words are easier to see: a clearer wavy underline and a faint red tint behind the word.
 - Right-clicking an underlined word always shows the spelling rows, also when the word is selected; while the text is being checked again the menu says so.
+
+v0.17.32 (2026-11-19, issue #252 step 1 of docs/plans/ui-stalls.md): The debug log's `slide_language.scan` event now fires on every first use of a TranslationLinks' groups, not only when they are rebuilt, and gains `listing_s` (the time of the `_listing` scandir and stats), `settled` (no file changed within `_RACY_NS`), `cached` (the groups came from `_groups_cache`) and `caller` (the first frame outside slide_language, deck_language and deck_outline), to size the stalls of issue #252. All of it runs only while the debug log is on; caching and results are unchanged.

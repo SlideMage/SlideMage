@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -135,6 +136,7 @@ _groups_cache: dict[tuple[Path, tuple[str, ...]], tuple[frozenset, dict]] = {}  
 # A file changed this recently is read again every time: Windows moves a file's mtime on only every 15 ms or so, and a
 # second write of the same size inside that keeps the stamp (git's "racy" files). A sync client can be later still.
 _RACY_NS = 2_000_000_000
+_OWN_MODULES = ("slide_language.py", "deck_language.py", "deck_outline.py")   # skipped by _caller
 
 
 def _listing(slides_dir: Path) -> tuple[dict[str, Path], dict[str, tuple[int, int]]]:
@@ -156,6 +158,14 @@ def _listing(slides_dir: Path) -> tuple[dict[str, Path], dict[str, tuple[int, in
     except OSError:
         pass
     return paths, stamps
+
+
+def _caller() -> str:
+    """`file.py:line function` of the first frame outside the language index's own modules, for the debug log."""
+    frame = sys._getframe(1)
+    while frame is not None and Path(frame.f_code.co_filename).name in _OWN_MODULES:
+        frame = frame.f_back
+    return f"{Path(frame.f_code.co_filename).name}:{frame.f_lineno} {frame.f_code.co_name}" if frame else "?"
 
 
 def clear_cache() -> None:
@@ -182,7 +192,9 @@ class TranslationLinks:
         self.slides_dir = slides_dir
         self.codes = codes
         self._listed_ns = time.time_ns()
+        began = time.perf_counter()
         self.paths, self.stamps = _listing(slides_dir)
+        self.listing_s = time.perf_counter() - began                                      # for the debug log
         self.headers: dict[str, str] = {}
         self._groups: dict[str, Group] | None = None
         self.read_files, self.read_chars, self.read_seconds, self.slowest = 0, 0, 0.0, 0.0   # for the debug log
@@ -223,27 +235,29 @@ class TranslationLinks:
         current file, is its own group. Links count from either side, as "Translation of:" and as
         "<LANG> translation:"."""
         if self._groups is None:
+            began = time.perf_counter()
             # The groups depend on the project's languages and the current files' text alone: unchanged stamps give
             # the groups of the last scan (the Group objects are frozen and shared, never changed).
             key, stamps = (self.slides_dir, self.codes), frozenset(self.stamps.items())
             settled = not any(self._racy(stamp) for stamp in self.stamps.values())
             with _cache_lock:
                 cached = _groups_cache.get(key)
-            if settled and cached is not None and cached[0] == stamps:
+            reused = settled and cached is not None and cached[0] == stamps
+            if reused:
                 self._groups = cached[1]
-                return self._groups.get(bare_id(id_slug)) or Group(id_slug, {}, True)
-            began = time.perf_counter()
-            self._groups = self._scan()
-            if settled:
-                with _cache_lock:
-                    _groups_cache[key] = (stamps, self._groups)
+            else:
+                self._groups = self._scan()
+                if settled:
+                    with _cache_lock:
+                        _groups_cache[key] = (stamps, self._groups)
             if timing.enabled():
                 # its own logger: the `timing` area is the prompt-to-preview timeline of one request
-                diagnostics.event(_perf_log, "slide_language.scan", listed=len(self.paths), files=self.read_files,
-                                  chars=self.read_chars,
+                diagnostics.event(_perf_log, "slide_language.scan", listed=len(self.paths),
+                                  listing_s=round(self.listing_s, 3), settled=settled, cached=reused,
+                                  files=self.read_files, chars=self.read_chars,
                                   reading_s=round(self.read_seconds, 3), slowest_read_s=round(self.slowest, 3),
                                   total_s=round(time.perf_counter() - began, 3),
-                                  gui=threading.current_thread() is threading.main_thread())
+                                  gui=threading.current_thread() is threading.main_thread(), caller=_caller())
         return self._groups.get(bare_id(id_slug)) or Group(id_slug, {}, True)
 
     def find(self, id_slug: str, language: str) -> str | None:
