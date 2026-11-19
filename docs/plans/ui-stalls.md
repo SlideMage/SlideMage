@@ -119,4 +119,31 @@ the planner's `scan()` (`background_renders.py:427`), header sync (`deck_headers
 
 ## 3. Results
 
-(Step 1 measurements and the step 5 ranking go here.)
+### 3.1 Step 5 ranking, before the fixes (2026-11-19)
+
+Taken with `python tools/debug_log.py --stalls` over the local Linux log of v0.17.23 (17 h, started 2026-11-18 17:07): 2950
+stalls, 866 s late in total. In 1142 of them the GUI was idle (a worker held the GIL), and in 837 the watchdog took no
+sample. Threads parked in a blocking call (`selectors.py select`, `ptyprocess.py read`) are left out of the worker
+table: they release the GIL.
+
+GUI thread (count, seconds late):
+- `background_previews.py _watch_widgets` 273 / 63 s, plus `_weakrefset.py` `_remove` / `__contains__` 136 / 32 s
+  (the watcher's WeakSet). Step 4.
+- `slide_language.py _listing` 160 / 147 s. Steps 1–3.
+- `window.py open_settings` 180 / 46 s: opening Settings. A one-off, not part of #252.
+- `app_settings.py _read` 51, `<frozen posixpath> _joinrealpath` 74: not traced yet.
+
+Busy workers during stalls (count, seconds late):
+- `preview-display` `render_evidence.search_inventory` 413 / 158 s, plus `pathlib stat` 408 / 183 s.
+- `edit-watch-scan` `project_watch.scan` 357 / 128 s: the once-a-second poll of the project's text files. Since v0.16.50
+  it runs off the GUI thread (older logs show it on the GUI thread), but it walks and stats the whole project every
+  second, in Python.
+- Other `stat` calls: `render-scheduler` 313, `Thread- (_run)` 382 (compile jobs).
+- `dep_hash.hash`: `background-planner` 158, `preview-display` 150, `list-thumbnails` 115.
+- `pty-reader` `service.py _emit` 220 / 110 s: terminal output.
+
+Candidates for follow-up steps, decided after steps 1–4 have been measured:
+- (a) `project_watch.scan` every second: skip unchanged folders by their mtime, or poll less often while no agent runs.
+- (b) `search_inventory` / `dep_hash` in the preview-display thread: check whether the same key is computed several
+  times per refresh.
+- (c) Why the watchdog takes no sample in 837 stalls.
