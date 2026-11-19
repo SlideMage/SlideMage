@@ -1235,3 +1235,51 @@ def test_a_render_stays_current_when_the_bundled_framework_moves(project, store,
     monkeypatch.setattr(projects, "template_dir", lambda name: second)
     assert r.resolver.lookup(unit, strict=True).usable
 
+
+
+class HangingTeX(FakeTeX):
+    """A TeX that never finishes by itself: it returns only once the job was stopped."""
+
+    def __call__(self, unit, cancel):
+        self.calls.append((unit.id_slug, unit.view, unit.language))
+        deadline = time.monotonic() + 20
+        while not cancel.is_set() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        raise RuntimeError("stopped")
+
+
+def test_a_render_that_hangs_is_stopped_and_its_slides_are_tried_again_one_by_one(project, store, raster, monkeypatch):
+    monkeypatch.setattr(background_renders, "JOB_SECONDS", 0.4)
+    monkeypatch.setattr(background_renders, "UNIT_SECONDS", 0.0)
+    tex = HangingTeX(project, pages=1)
+    r = make(project, store, raster, tex=tex, batch=4)
+    deck = deck_named(r, "slidemage-manual")
+    store.touch_deck(deck.name, opened=True)
+    r.tick()
+    job = next(iter(r.scheduler.jobs(P_IDLE)))
+    labels = [unit.label for unit in job.payload[0]]
+    started = time.monotonic()
+    r.scheduler.run_next()                       # returns because the watchdog stops the hung render
+    assert time.monotonic() - started < 10
+    assert set(labels) <= r._slow and all(r._timeouts[label] == 1 for label in labels)
+    r.tick()                                     # planned again, each slide on its own
+    assert all(label in r._single for label in labels)
+    assert not (set(labels) & r._gave_up)
+
+
+def test_a_slide_that_times_out_on_its_own_twice_is_left_alone(project, store, raster, monkeypatch):
+    monkeypatch.setattr(background_renders, "JOB_SECONDS", 0.2)
+    monkeypatch.setattr(background_renders, "UNIT_SECONDS", 0.0)
+    r = make(project, store, raster, tex=HangingTeX(project, pages=1), batch=1)
+    deck = deck_named(r, "slidemage-manual")
+    store.touch_deck(deck.name, opened=True)
+    r.tick()
+    job = next(iter(r.scheduler.jobs(P_IDLE)))
+    label = job.payload[0][0].label
+    for _ in range(background_renders.TIMEOUTS_BEFORE_GIVING_UP):
+        r.scheduler.submit(job.key, job.payload, P_IDLE, job.rank, group=job.group)
+        r.scheduler.run_next()
+    assert label in r._gave_up
+    r._replan.set()
+    r.tick()
+    assert all(unit.label != label for _rank, unit in r._plan)

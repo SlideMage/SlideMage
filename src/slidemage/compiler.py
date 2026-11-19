@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import logging
 import os
+import queue
 import re
 import signal
 import shutil
@@ -448,6 +449,20 @@ class CancelToken:
                 proc.kill()
 
 
+STOP_GRACE_SECONDS = 10.0       # how long run_streamed waits for a stopped process's output to end
+
+
+def _pump_lines(stream, lines: "queue.Queue") -> None:
+    """Put the lines of `stream` in `lines`, None at the end (also when reading fails)."""
+    try:
+        for line in stream:
+            lines.put(line)
+    except (OSError, ValueError):
+        pass
+    finally:
+        lines.put(None)
+
+
 def run_streamed(
     cmd: list[str] | str, *, cwd: Path, env: dict, log: LogCallback,
     cancel: Optional[CancelToken] = None, on_line: Optional[LogCallback] = None,
@@ -473,11 +488,36 @@ def run_streamed(
         if cancel is not None:
             cancel._set_process(proc)
         assert proc.stdout is not None
-        for line in proc.stdout:
+        # The output is read on a thread of its own, so that a stopped run can end although the pipe stays open: a
+        # process the kill missed (a helper that MiKTeX started, say) keeps the pipe's write end, the read never
+        # returns, and the render job hung for hours with "Render now" unable to do anything (2026-11-19).
+        lines: queue.Queue = queue.Queue()
+        threading.Thread(target=_pump_lines, args=(proc.stdout, lines), daemon=True, name="process-output").start()
+        abandon_at = None
+        while True:
+            try:
+                line = lines.get(timeout=0.5)
+            except queue.Empty:
+                if cancel is not None and cancel.is_set():
+                    if abandon_at is None:
+                        abandon_at = time.monotonic() + STOP_GRACE_SECONDS
+                    elif time.monotonic() >= abandon_at:
+                        cancel._kill(proc)              # once more, then let go of whatever still holds the pipe
+                        diagnostics.event(_log, "process output abandoned after a stop", pid=proc.pid)
+                        break
+                continue
+            if line is None:
+                break
             if on_line is not None:
                 on_line(line)
             log(line.rstrip("\n"))
-        returncode = proc.wait()
+        if abandon_at is None:
+            returncode = proc.wait()
+        else:
+            try:
+                returncode = proc.wait(timeout=STOP_GRACE_SECONDS)
+            except subprocess.TimeoutExpired:
+                returncode = -1
         return returncode
     finally:
         diagnostics.event(_log, "process ended", program=cmd if isinstance(cmd, str) else cmd[0], exit=returncode,
