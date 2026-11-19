@@ -635,8 +635,11 @@ class BackgroundRenderer:
             self._planned_at = now
             self._evict()
         reason = self.gate.reason()
+        queued_before = self.scheduler.pending()
         if reason is None and self._top_up() and not self.scheduler.pending():
             reason = STORE_FULL
+        if reason is None and self.scheduler.pending() != queued_before:
+            self.trace(f"planner: queued {self.scheduler.pending() - queued_before} jobs, plan holds {len(self._plan)} units")
         before = self.progress.paused_because
         self.progress.paused_because = reason if (self._plan or self.scheduler.pending()) else None
         if self.progress.paused_because != before:
@@ -822,6 +825,7 @@ class BackgroundRenderer:
             results = batch_render.render_batch(self.renders, requests, cancel=cancel, batch_size=self.batch_size())
             validation = render_evidence.ValidationPass()
             for unit, result in zip(units, results):
+                found = None
                 if result.status in ('rendered', 'cached'):
                     found = self.resolver.lookup(unit, validation=validation)
                     if found.state is render_key.Freshness.FRESH:
@@ -829,6 +833,12 @@ class BackgroundRenderer:
                         self._count_fresh(unit)
                 elif result.status == 'failed':
                     self._failed(unit, RuntimeError(result.error))
+                # One line per slide: what the render said and whether the store then counts the slide as current
+                # (a render that is not found fresh afterwards stays outstanding and is planned again).
+                self.trace(f"result {unit.deck} {unit.id_slug} {unit.view} {unit.language}: {result.status}"
+                           + (f", store says {found.state.name}" if found is not None else "")
+                           + (f", error: {str(result.error).strip().splitlines()[0][:200]}"
+                              if result.status == 'failed' and str(result.error).strip() else ""))
             if cancel.is_set():
                 raise Cancelled('Preview canceled')
         finally:

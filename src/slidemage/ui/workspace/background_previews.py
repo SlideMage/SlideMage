@@ -637,6 +637,7 @@ class BackgroundPreviews(QObject):
         self.refresh()
 
     def render_now(self) -> None:
+        self.renderer.trace("Render now clicked")
         self.renderer.gate.paused = False
         self.renderer.gate.force()
         self.renderer.replan()
