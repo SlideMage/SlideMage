@@ -246,7 +246,8 @@ class AssistantHeader(Surface):
     def offers(self, scope: str) -> list[Bubble]:
         """The tasks that fit `scope` now, as task_bubbles.py finds them (kept until something changes)."""
         if scope not in self._offers:
-            self._offers[scope] = deck_bubbles(self.app) if scope == DECK else bubbles(self.app)
+            with slide_language.shared_links():
+                self._offers[scope] = deck_bubbles(self.app) if scope == DECK else bubbles(self.app)
         return self._offers[scope]
 
     def _task_buttons(self) -> list[QWidget]:

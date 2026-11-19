@@ -86,6 +86,17 @@ def test_a_new_and_a_deleted_slide_change_the_listing(slides):
     assert group(folder).members == {"EN": "aaa-EN-One"}
 
 
+def test_a_link_added_to_one_file_shows_at_once_while_files_are_recent(slides):
+    """The links of settled files come from the cache; a recent file, even another one, makes the scan run again."""
+    folder, _reads = slides
+    group(folder)
+    now = time.time()
+    write(folder / "eee-DE-Zwei-current.tex", "body\n", now)                       # recent: no cached groups
+    assert group(folder, "bbb-EN-Two").members == {"EN": "bbb-EN-Two"}
+    write(folder / "bbb-EN-Two-current.tex", "%% DE translation: eee-DE-Zwei\nbody\n", OLD + 60)
+    assert group(folder, "bbb-EN-Two").members == {"EN": "bbb-EN-Two", "DE": "eee-DE-Zwei"}
+
+
 def test_other_languages_are_their_own_groups(slides):
     folder, _reads = slides
     assert group(folder).members == {"EN": "aaa-EN-One", "DE": "ddd-DE-Eins"}

@@ -87,6 +87,25 @@ def test_a_group_is_the_original_and_its_translations(ctx):
     assert links.find(AAA, "DE") is None and links.find(DDD, "EN") is None and links.find("eee-mult-All", "EN") is None
 
 
+def test_inside_a_shared_scope_the_links_are_one_index(ctx):
+    with slide_language.shared_links():
+        shared = slide_language.links_for(ctx)
+        assert slide_language.links_for(ctx) is shared
+        with slide_language.shared_links():
+            assert slide_language.links_for(ctx) is shared
+    assert slide_language.links_for(ctx) is not shared
+    assert slide_language.links_for(ctx) is not slide_language.links_for(ctx)
+
+
+def test_a_link_written_between_two_scopes_is_seen_by_the_second(ctx):
+    with slide_language.shared_links():
+        assert "FR" in slide_language.links_for(ctx).group(AAA).members
+    write_slide(ctx, AAA)
+    write_slide(ctx, CCC)
+    with slide_language.shared_links():
+        assert "FR" not in slide_language.links_for(ctx).group(AAA).members
+
+
 def test_a_translation_is_found_from_either_side(ctx):
     write_slide(ctx, AAA)                                     # the original no longer names its translations
     write_slide(ctx, CCC, "%% Translation of: aaa-DE-Eins\n")

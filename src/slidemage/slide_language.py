@@ -31,8 +31,10 @@ once) and kept honest afterward by slide_rename.regenerate_translation_links().
 """
 from __future__ import annotations
 
+import contextlib
 import os
 import re
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -128,13 +130,17 @@ def _header(path: Path) -> str:
 # kept with the (mtime, size) of the files it came from, so a scan reads only the files that changed since the last one.
 # Each scan used to read the whole text of every *-current.tex: 1015 files and 2.3 MB on the user's project, 319 times in
 # 4 minutes (75 s), up to three times in a row on the GUI thread, and 0.9 s each while header sync and the thumbnail,
-# planner and preview threads scanned at the same time (stalls of 2-3 s after a deck save).
+# planner and preview threads scanned at the same time (stalls of 2-3 s after a deck save). The links parsed from each
+# text are kept too (v0.17.34): while a file is being edited the groups are scanned again on every refresh, and the
+# two regexes over 900 texts took more than the listing.
 _cache_lock = threading.Lock()
 _texts: dict[Path, tuple[tuple[int, int], str]] = {}                              # path -> (stamp, text)
+_parsed: dict[Path, tuple[tuple[int, int], tuple]] = {}                           # path -> (stamp, _links)
 _groups_cache: dict[tuple[Path, tuple[str, ...]], tuple[frozenset, dict]] = {}   # (folder, codes) -> (stamps, groups)
 # A file changed this recently is read again every time: Windows moves a file's mtime on only every 15 ms or so, and a
 # second write of the same size inside that keeps the stamp (git's "racy" files). A sync client can be later still.
 _RACY_NS = 2_000_000_000
+_OWN_MODULES = ("slide_language.py", "deck_language.py", "deck_outline.py")   # skipped by _caller
 
 
 def _listing(slides_dir: Path) -> tuple[dict[str, Path], dict[str, tuple[int, int]]]:
@@ -158,10 +164,19 @@ def _listing(slides_dir: Path) -> tuple[dict[str, Path], dict[str, tuple[int, in
     return paths, stamps
 
 
+def _caller() -> str:
+    """`file.py:line function` of the first frame outside the language index's own modules, for the debug log."""
+    frame = sys._getframe(1)
+    while frame is not None and Path(frame.f_code.co_filename).name in _OWN_MODULES:
+        frame = frame.f_back
+    return f"{Path(frame.f_code.co_filename).name}:{frame.f_lineno} {frame.f_code.co_name}" if frame else "?"
+
+
 def clear_cache() -> None:
     """Forget every text and group read so far (tests, and nothing else needs it: stamps tell a changed file)."""
     with _cache_lock:
         _texts.clear()
+        _parsed.clear()
         _groups_cache.clear()
 
 
@@ -182,7 +197,9 @@ class TranslationLinks:
         self.slides_dir = slides_dir
         self.codes = codes
         self._listed_ns = time.time_ns()
+        began = time.perf_counter()
         self.paths, self.stamps = _listing(slides_dir)
+        self.listing_s = time.perf_counter() - began                                      # for the debug log
         self.headers: dict[str, str] = {}
         self._groups: dict[str, Group] | None = None
         self.read_files, self.read_chars, self.read_seconds, self.slowest = 0, 0, 0.0, 0.0   # for the debug log
@@ -218,32 +235,52 @@ class TranslationLinks:
                 self.headers[id_slug] = text
         return self.headers[id_slug]
 
+    def _links(self, id_slug: str) -> tuple[tuple[str, ...], tuple[tuple[str, str], ...]]:
+        """(the bare ids "Translation of:" names, the (language, bare id) pairs of "<LANG> translation:") of one file.
+        Kept like `header` keeps the text: a recent file is parsed again every time."""
+        path = self.slides_dir / current_name(id_slug)
+        stamp = self.stamps.get(path.name)
+        settled = stamp is not None and not self._racy(stamp)
+        with _cache_lock:
+            cached = _parsed.get(path)
+        if settled and cached is not None and cached[0] == stamp:
+            return cached[1]
+        header = self.header(id_slug)
+        links = (tuple(bare_id(m.group(1)) for m in TRANSLATION_OF_RE.finditer(header)),
+                 tuple((m.group(1), bare_id(m.group(2))) for m in LANG_TRANSLATION_RE.finditer(header)))
+        if settled:
+            with _cache_lock:
+                _parsed[path] = (stamp, links)
+        return links
+
     def group(self, id_slug: str) -> Group:
         """The translation group of the slide with this id-slug's bare id. A slide of no language, or with no
         current file, is its own group. Links count from either side, as "Translation of:" and as
         "<LANG> translation:"."""
         if self._groups is None:
+            began = time.perf_counter()
             # The groups depend on the project's languages and the current files' text alone: unchanged stamps give
             # the groups of the last scan (the Group objects are frozen and shared, never changed).
             key, stamps = (self.slides_dir, self.codes), frozenset(self.stamps.items())
             settled = not any(self._racy(stamp) for stamp in self.stamps.values())
             with _cache_lock:
                 cached = _groups_cache.get(key)
-            if settled and cached is not None and cached[0] == stamps:
+            reused = settled and cached is not None and cached[0] == stamps
+            if reused:
                 self._groups = cached[1]
-                return self._groups.get(bare_id(id_slug)) or Group(id_slug, {}, True)
-            began = time.perf_counter()
-            self._groups = self._scan()
-            if settled:
-                with _cache_lock:
-                    _groups_cache[key] = (stamps, self._groups)
+            else:
+                self._groups = self._scan()
+                if settled:
+                    with _cache_lock:
+                        _groups_cache[key] = (stamps, self._groups)
             if timing.enabled():
                 # its own logger: the `timing` area is the prompt-to-preview timeline of one request
-                diagnostics.event(_perf_log, "slide_language.scan", listed=len(self.paths), files=self.read_files,
-                                  chars=self.read_chars,
+                diagnostics.event(_perf_log, "slide_language.scan", listed=len(self.paths),
+                                  listing_s=round(self.listing_s, 3), settled=settled, cached=reused,
+                                  files=self.read_files, chars=self.read_chars,
                                   reading_s=round(self.read_seconds, 3), slowest_read_s=round(self.slowest, 3),
                                   total_s=round(time.perf_counter() - began, 3),
-                                  gui=threading.current_thread() is threading.main_thread())
+                                  gui=threading.current_thread() is threading.main_thread(), caller=_caller())
         return self._groups.get(bare_id(id_slug)) or Group(id_slug, {}, True)
 
     def find(self, id_slug: str, language: str) -> str | None:
@@ -259,14 +296,12 @@ class TranslationLinks:
         slugs = {bare: slug for bare, slug in slugs.items() if self.own(slug) not in (None, MULT)}
         parents: dict[str, set[str]] = {bare: set() for bare in slugs}
         for bare, slug in slugs.items():
-            header = self.header(slug)
-            for m in TRANSLATION_OF_RE.finditer(header):
-                original = bare_id(m.group(1))
+            originals, translations = self._links(slug)
+            for original in originals:
                 if original in slugs and self.own(slugs[original]) != self.own(slug):
                     parents[bare].add(original)
-            for m in LANG_TRANSLATION_RE.finditer(header):
-                translation = bare_id(m.group(2))
-                if translation in slugs and self.own(slugs[translation]) == m.group(1) != self.own(slug):
+            for language, translation in translations:
+                if translation in slugs and self.own(slugs[translation]) == language != self.own(slug):
                     parents[translation].add(bare)
         neighbours: dict[str, set[str]] = {bare: set(found) for bare, found in parents.items()}
         for bare, found in parents.items():
@@ -295,9 +330,35 @@ class TranslationLinks:
         return groups
 
 
+_shared = threading.local()   # .scope: the indexes built in this thread's open shared_links block, by (folder, codes)
+
+
+@contextlib.contextmanager
+def shared_links():
+    """One GUI refresh asks for the links many times (slide list, assistant offers, preview target) and each ask
+    listed the whole slides folder again. Inside this block `links_for` on this thread builds one index on the first
+    ask and returns it to every later ask for the same folder and languages. Nothing inside may write a slide file:
+    the index is not refreshed until the block ends. Nested blocks share the outermost one. Also a decorator:
+    `@shared_links()`."""
+    outer = hasattr(_shared, "scope")
+    if not outer:
+        _shared.scope = {}
+    try:
+        yield
+    finally:
+        if not outer:
+            del _shared.scope
+
+
 def links_for(ctx: ProjectContext) -> TranslationLinks:
-    """A fresh scan of the project's slides, with the project's languages."""
-    return TranslationLinks(ctx.slides_dir, languages.project_languages(ctx).codes)
+    """A scan of the project's slides, with the project's languages: fresh, or the open `shared_links` scope's."""
+    key = (ctx.slides_dir, languages.project_languages(ctx).codes)
+    scope = getattr(_shared, "scope", None)
+    if scope is None:
+        return TranslationLinks(*key)
+    if key not in scope:
+        scope[key] = TranslationLinks(*key)
+    return scope[key]
 
 
 def translated_languages(ctx: ProjectContext, id_slug: str, *, links: Optional[TranslationLinks] = None) -> tuple[str, ...]:

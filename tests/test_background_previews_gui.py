@@ -114,6 +114,32 @@ def test_input_watcher_tracks_new_dialogs_but_not_private_qobjects(qapp, monkeyp
         dialog.deleteLater()
 
 
+def test_input_watcher_reaches_children_and_top_levels_added_later(qapp, monkeypatch):
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QLineEdit, QWidget
+
+    monkeypatch.setattr(background_previews, "USE_WIDGET_INPUT_WATCHER", True)
+    monkeypatch.setattr(QApplication, "allWidgets", lambda: pytest.fail("the watcher must not walk allWidgets"))
+    inputs = []
+    parent = QWidget()
+    watcher = background_previews._InputWatcher(lambda: inputs.append(True), parent)
+    other = QWidget()
+    try:
+        child = QLineEdit(parent)       # added after the watcher started: ChildAdded
+        QTest.keyClick(child, Qt.Key.Key_A)
+        assert inputs
+
+        inputs.clear()
+        edit = QLineEdit(other)         # a top-level with no watched parent: found by the next timer tick
+        other.show()
+        QTest.qWait(300)
+        QTest.keyClick(edit, Qt.Key.Key_B)
+        assert inputs
+    finally:
+        watcher.stop()
+        other.close()
+
+
 def test_application_input_watcher_needs_no_widget_polling_and_is_removed_on_stop(qapp, monkeypatch):
     from PySide6.QtCore import QEvent, QObject
     from PySide6.QtGui import QKeyEvent
