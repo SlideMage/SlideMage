@@ -10,13 +10,14 @@ The renders here are stored by the background renderer's fake TeX; the xfail mar
 """
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from slidemage import background_renders, citations, compiler, preview_format, slide_templates, themes
+from slidemage import background_renders, citations, compiler, preview_format, render_evidence, slide_templates, themes
 from slidemage.render_key import Freshness
 
 from test_background_renders import FakeTeX, deck_named, make, project, raster, render_unit, store  # noqa: F401
@@ -69,7 +70,6 @@ def test_a_citation_package_no_deck_uses_leaves_the_render_fresh(world):
     assert r.resolver.lookup(unit).state is Freshness.FRESH
 
 
-@pytest.mark.xfail(strict=True, reason="fixed in step 2: the folder is in the key and a new search root")
 def test_a_theme_package_no_deck_uses_leaves_the_render_fresh(world):
     r, unit = render_one(world)
     install_theme()
@@ -78,12 +78,37 @@ def test_a_theme_package_no_deck_uses_leaves_the_render_fresh(world):
 
 @pytest.mark.parametrize("kind", [
     pytest.param("citation", marks=pytest.mark.xfail(strict=True, reason="fixed in step 3: as for installing it")),
-    pytest.param("theme", marks=pytest.mark.xfail(strict=True, reason="fixed in step 2: as for installing it"))])
+    "theme"])
 def test_removing_a_package_no_deck_uses_leaves_the_render_fresh(kind, world):
     folder = INSTALL[kind]()
     r, unit = render_one(world)
     shutil.rmtree(folder)
     assert r.resolver.lookup(unit).state is Freshness.FRESH
+
+
+def test_updating_a_theme_package_a_render_read_makes_it_stale(world):
+    """The folder keeps its name, so only the file's content tells."""
+    template = install_theme() / themes.template_file("newtheme")
+    r, unit = render_one(world, inputs=[template])
+    template.write_text("% a changed template\n", encoding="utf-8")
+    assert r.resolver.lookup(unit).state is Freshness.STALE
+
+
+def test_only_search_roots_with_probe_names_count_for_the_conservative_digest(tmp_path):
+    env = {"TEXINPUTS": ""}
+    before = render_evidence.search_inventory(tmp_path, env)["conservative"]
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    env["TEXINPUTS"] = os.pathsep.join([str(empty), str(tmp_path / "missing")])
+    assert render_evidence.search_inventory(tmp_path, env)["conservative"] == before
+    named = tmp_path / "named"
+    named.mkdir()
+    (named / "SlideMage_citation_apa.tex").write_text("% a citation format\n", encoding="utf-8")
+    env["TEXINPUTS"] = str(named)
+    with_names = render_evidence.search_inventory(tmp_path, env)["conservative"]
+    assert with_names != before
+    shutil.rmtree(named)
+    assert render_evidence.search_inventory(tmp_path, env)["conservative"] == before
 
 
 def fail_with(r, unit, log, monkeypatch):
@@ -137,9 +162,7 @@ def framework_file(root):
 
 @pytest.mark.parametrize("where", [
     pytest.param(framework_file, id="framework"),
-    pytest.param(package_file, id="package", marks=pytest.mark.xfail(
-        strict=True, reason="fixed in step 2: the inventory a render stores leaves out its absolute "
-                            "inputs (tex_files)"))])
+    pytest.param(package_file, id="package")])
 def test_a_copy_of_a_file_a_render_read_in_the_project_makes_it_stale(where, world):
     """A file of the same name earlier on the search path shadows the one the render read."""
     original = where(world.project.root)
