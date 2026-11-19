@@ -43,6 +43,9 @@ Say in one line which case you take.
    rerun the tests that matter: the task's own tests and those of every file the merge touched, and after any renumbering
    `tests/test_version.py`, `tests/test_release_notes.py` and `tests/test_compat.py` (the version, its CHANGELOG entry
    and its NEW: paragraph). A failing test stops here: switch to case A.
+   Every CHANGELOG entry needs a `NEW:` paragraph (one summary sentence, then `- ` bullets): the Release workflow
+   fails after the merge otherwise (v0.14.49, v0.16.45, v0.17.38). The PR check `changelog-check.yml` runs the same
+   check; wait for it to pass before merging.
 3. **PR.** Open one against `develop` (the repo's default branch for other repositories) if none exists, with the attribution
    line the system gives. Bind it with the ccd_pr tools.
 4. **Merge.** `/finish` is the user's go to merge. Run, as a bare command, `gh pr merge <n> --admin --merge` (plain
