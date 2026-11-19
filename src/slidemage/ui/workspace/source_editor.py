@@ -115,8 +115,13 @@ def spelling_selections(edit: QPlainTextEdit, marks: list[tuple[int, int]], colo
     Qt counts UTF-16 code units, so a character outside the BMP counts twice there)."""
     text = edit.toPlainText()
     fmt = QTextCharFormat()
-    fmt.setUnderlineStyle(QTextCharFormat.UnderlineStyle.SpellCheckUnderline)
+    # The platform's spell-check underline is a hairline that is easy to overlook; a wavy line plus a faint
+    # tint behind the word makes an unknown word visible at a glance.
+    fmt.setUnderlineStyle(QTextCharFormat.UnderlineStyle.WaveUnderline)
     fmt.setUnderlineColor(QColor(color))
+    tint = QColor(color)
+    tint.setAlpha(45)
+    fmt.setBackground(tint)
     selections, done, position = [], 0, 0
     for start, end in sorted(marks):
         if not done <= start < end <= len(text):
