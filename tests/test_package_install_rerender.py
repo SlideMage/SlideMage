@@ -224,3 +224,12 @@ def test_a_format_that_failed_for_no_missing_file_stays_bad(tmp_path, monkeypatc
     runs = _fake_engine(monkeypatch)
     (tmp_path / "SlideMage_layout_x.tex").write_text("% a layout profile\n", encoding="utf-8")
     assert _ensure(tmp_path) is None and not runs
+
+
+def test_a_changed_key_says_key_changed_and_a_unit_never_rendered_says_no_render(world):
+    r, unit = unit_of(world)
+    assert r.resolver.lookup(unit).why == "no render"
+    r, unit = render_one(world)
+    unit.source_path.write_text(unit.source_path.read_text(encoding="utf-8") + "\n% edited\n", encoding="utf-8")
+    result = r.resolver.lookup(unit)
+    assert result.state is Freshness.STALE and result.why == "key changed"

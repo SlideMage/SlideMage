@@ -393,6 +393,8 @@ class Resolver:
                 why = f"file {changed}"
         # An older render of the same unit under another key (the slide changed): shown as outdated.
         previous = self.store.latest_for_unit(unit.label)
+        if previous and why == "no render":
+            why = "key changed"
         return Lookup(Freshness.STALE if previous else Freshness.MISSING, previous, key, why=why)
 
 
