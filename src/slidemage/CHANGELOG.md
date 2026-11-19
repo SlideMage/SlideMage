@@ -4359,4 +4359,5 @@ NEW: Check the spelling of a whole deck at once.
 
 v0.17.24 (2026-11-18, direct request: the "template uni-graz" caption beside an installed theme's name in Settings → Extensions was an unreadable sliver): settings_plugins._ListRow.add_title_line turns word wrap off for the labels on a row's title line, so a caption such as "template <key>" or "format <key>" stays on one line at its full width instead of wrapping into two lines the fixed-height title line cut off.
 
-FIXED: In Settings → Extensions, the key beside a theme's or citation format's name is readable again.
+NEW:
+- In Settings → Extensions, the key beside a theme's or citation format's name is readable again.
