@@ -285,3 +285,30 @@ def test_an_underlined_word_whose_check_is_stale_says_so_in_the_menu(pane, ctx):
     menu = PopoverMenu()
     assert file.spell_check.add_menu_rows(menu, word.end)
     assert any(e[0] == "item" and "checked again" in e[2] for e in menu._entries)
+
+
+def test_a_real_right_click_finds_the_word_under_the_pointer_beside_the_line_numbers(pane, ctx, monkeypatch):
+    """customContextMenuRequested gives viewport coordinates; the viewport starts right of the line numbers, so
+    treating them as the editor's shifted the offset by the width of that margin."""
+    from PySide6.QtGui import QContextMenuEvent, QTextCursor
+    from PySide6.QtWidgets import QApplication
+
+    file = _open(pane, ctx, text="Teh quick brwn fox and teh slide title and brwn fox\n")
+    editor = file.editor
+    pane.resize(700, 400)
+    pane.show()
+    QApplication.processEvents()
+    assert editor.viewport().x() > 0
+    shown = []
+    monkeypatch.setattr(SourcePane, "_popup_at", staticmethod(lambda menu, point: shown.append(menu)))
+    start = editor.text().rindex("brwn")
+    cursor = QTextCursor(editor.document())
+    cursor.setPosition(start + 2)
+    rect = editor.cursorRect(cursor)
+    point = QPoint(rect.x(), rect.y() + rect.height() // 2)
+    editor.viewport().setFocus()
+    QApplication.sendEvent(editor.viewport(), QContextMenuEvent(
+        QContextMenuEvent.Reason.Mouse, point, editor.viewport().mapToGlobal(point)))
+    wait_until(lambda: bool(shown))
+    assert any(e[0] == "header" and "brwn" in str(e) for e in shown[-1]._entries)
+    shown[-1].close()

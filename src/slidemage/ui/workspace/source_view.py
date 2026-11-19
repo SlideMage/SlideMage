@@ -753,13 +753,13 @@ class SourcePane(Surface):
                      else f"{file.path.name}: indentation already correct")
 
     def _on_context_menu(self, pos: QPoint) -> None:
-        """Right-click in the editor: the edit commands and, in a slide, Rewrite selection and Proofread selection
+        """Right-click in the editor (`pos` is in the viewport's coordinates, which start right of the line numbers): the edit commands and, in a slide, Rewrite selection and Proofread selection
         (enabled when the selection can be worked on)."""
         editor = self._current.editor
         selected, writable = editor.textCursor().hasSelection(), not editor.is_read_only()
         menu = PopoverMenu(self, min_width=240)
         if self._current.spell_check is not None:    # also with a selection: a double-clicked word is selected
-            self._current.spell_check.add_menu_rows(menu, editor.offset_at(editor.viewport().mapFrom(editor, pos)))
+            self._current.spell_check.add_menu_rows(menu, editor.offset_at(pos))
         menu.add_item("undo", "Undo", meta="Ctrl+Z", enabled=writable)
         menu.add_item("redo", "Redo", meta="Ctrl+Y", enabled=writable)
         menu.add_separator()
@@ -776,7 +776,7 @@ class SourcePane(Surface):
                 usable = False
             add_menu_items(menu, usable)
         menu.triggered.connect(self._on_context_chosen)
-        self._popup_at(menu, editor.mapToGlobal(pos))
+        self._popup_at(menu, editor.viewport().mapToGlobal(pos))
 
     def _on_context_chosen(self, key: str) -> None:
         if self._current is not None and self._current.spell_check is not None \

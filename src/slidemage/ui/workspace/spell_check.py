@@ -350,14 +350,13 @@ _EDIT_ROWS = (("undo", "Undo", "Ctrl+Z"), ("redo", "Redo", "Ctrl+Y"), (None, Non
 
 
 def _plain_menu(edit, spell: SpellCheck, pos) -> None:
-    """The field's right-click menu: the spelling rows of an underlined word, then the usual edit commands."""
+    """The field's right-click menu (`pos`: viewport coordinates): the spelling rows of an underlined word, then the usual edit commands."""
     from ..kit.widgets import PopoverMenu
     from .source_editor import char_offset_at
 
-    viewport_pos = edit.viewport().mapFrom(edit, pos)
     menu = PopoverMenu(edit, min_width=220)
     selected, writable = edit.textCursor().hasSelection(), not edit.isReadOnly()
-    spell.add_menu_rows(menu, char_offset_at(edit, viewport_pos))   # also with a selection (a double-clicked word)
+    spell.add_menu_rows(menu, char_offset_at(edit, pos))   # also with a selection (a double-clicked word)
     for key, label, keys in _EDIT_ROWS:
         if key is None:
             menu.add_separator()
@@ -367,4 +366,4 @@ def _plain_menu(edit, spell: SpellCheck, pos) -> None:
         menu.add_item(key, label, meta=keys, enabled=enabled)
     menu.triggered.connect(lambda key: spell.handle_choice(key) or getattr(edit, key)())
     menu.closed.connect(menu.deleteLater)
-    menu.popup_at(edit.mapToGlobal(pos))
+    menu.popup_at(edit.viewport().mapToGlobal(pos))

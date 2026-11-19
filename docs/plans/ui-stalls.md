@@ -1,13 +1,13 @@
 # UI stalls during editing (issue #252): plan
 
-Status: steps 1–5 done 2026-11-19 (v0.17.32–v0.17.35), on feature/ui-stalls-pr, rebased onto develop @ 3d0983f0 (v0.17.31); tested by the owner. Step 5 follow-ups (section 3.1) are not started.
+Status: steps 1–5 done 2026-11-19 (v0.17.33–v0.17.36), on feature/ui-stalls-pr, rebased onto develop @ 3d0983f0 (v0.17.31); tested by the owner. Step 5 follow-ups (section 3.1) are not started.
 
 The issue names three sources of main-thread stalls in a 17-hour session (about 900 slide files): the slide language
 index rebuilt on the GUI thread several times per refresh, the Linux input watcher walking every widget four times a
 second, and background threads holding the GIL. This plan fixes the first two and measures the third before
 changing anything there.
 
-One branch per step, from `develop`, one patch version each (v0.17.32 onwards), a CHANGELOG entry with a `NEW:` bullet
+One branch per step, from `develop`, one patch version each (v0.17.33 onwards), a CHANGELOG entry with a `NEW:` bullet
 where the user notices something. Run the tests as in the "Running tests in worktrees" note (one capped pytest run at a time).
 
 ---
@@ -57,7 +57,7 @@ the planner's `scan()` (`background_renders.py:427`), header sync (`deck_headers
 
 ## 2. Steps
 
-### Step 1: measure the index (v0.17.32)
+### Step 1: measure the index (v0.17.33)
 
 * Extend the `slide_language.scan` perf event: `listing_s` (time in `_listing`), `settled` (whether the cached
   groups could be used), and `caller`, the first frame outside `slide_language` / `deck_language` / `deck_outline`
@@ -68,7 +68,7 @@ the planner's `scan()` (`background_renders.py:427`), header sync (`deck_headers
   listings per edit, the listing time compared with the regex time, and which callers are involved. Steps 2 and 3
   are sized from these numbers. If the listing turns out cheap, step 3 comes first.
 
-### Step 2: one listing per GUI refresh (v0.17.33)
+### Step 2: one listing per GUI refresh (v0.17.34)
 
 * `slide_language.shared_links(ctx)`: a context manager. Inside it, `links_for(ctx)` on the same thread returns one
   instance (a thread-local keyed by `slides_dir` and the language codes). Outside it, nothing changes. Nesting reuses
@@ -83,7 +83,7 @@ the planner's `scan()` (`background_renders.py:427`), header sync (`deck_headers
 * Leave background threads (`batch_render`, the planner, header sync) as they are. They already share one
   `links` per pass.
 
-### Step 3: re-read only the files that changed (v0.17.34)
+### Step 3: re-read only the files that changed (v0.17.35)
 
 * Cache each file's parsed links (`Translation of:` targets, `<LANG> translation:` pairs) by `(path, stamp)` next to
   `_texts`, and build `parents` in `_scan()` from those. The regexes then run only on files that are new, changed, or
@@ -93,7 +93,7 @@ the planner's `scan()` (`background_renders.py:427`), header sync (`deck_headers
 * Tests: a link added or removed in one file changes the groups straight away, including within 2 s of a previous
   write. A file deleted between two scans drops out of its group.
 
-### Step 4: input watcher without the widget walk (v0.17.35)
+### Step 4: input watcher without the widget walk (v0.17.36)
 
 * Install the filter on each top-level widget, and from there on every child already present
   (`findChildren(QWidget)`) and every child added later (`QEvent.ChildAdded` with `isinstance(child, QWidget)`, as in

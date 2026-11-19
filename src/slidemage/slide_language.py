@@ -131,7 +131,7 @@ def _header(path: Path) -> str:
 # Each scan used to read the whole text of every *-current.tex: 1015 files and 2.3 MB on the user's project, 319 times in
 # 4 minutes (75 s), up to three times in a row on the GUI thread, and 0.9 s each while header sync and the thumbnail,
 # planner and preview threads scanned at the same time (stalls of 2-3 s after a deck save). The links parsed from each
-# text are kept too (v0.17.33): while a file is being edited the groups are scanned again on every refresh, and the
+# text are kept too (v0.17.34): while a file is being edited the groups are scanned again on every refresh, and the
 # two regexes over 900 texts took more than the listing.
 _cache_lock = threading.Lock()
 _texts: dict[Path, tuple[tuple[int, int], str]] = {}                              # path -> (stamp, text)
