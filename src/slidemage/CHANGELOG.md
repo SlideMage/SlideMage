@@ -4404,7 +4404,6 @@ NEW:
 
 v0.17.32 (2026-11-19, issue #252 step 1 of docs/plans/ui-stalls.md): The debug log's `slide_language.scan` event now fires on every first use of a TranslationLinks' groups, not only when they are rebuilt, and gains `listing_s` (the time of the `_listing` scandir and stats), `settled` (no file changed within `_RACY_NS`), `cached` (the groups came from `_groups_cache`) and `caller` (the first frame outside slide_language, deck_language and deck_outline), to size the stalls of issue #252. All of it runs only while the debug log is on; caching and results are unchanged.
 
-
 v0.17.33 (2026-11-19, issue #252 step 2 of docs/plans/ui-stalls.md): slide_language.shared_links() is a context manager (and decorator) that keeps one thread-local index: inside it `links_for` builds the TranslationLinks on its first ask and returns it to every later ask for the same folder and languages, so one GUI refresh lists the slides folder once instead of once per ask (the slide list's resolve_outline, the assistant header's offers, the Preview's target and neighbours, deck_language.slots). Nested scopes share the outermost; outside a scope nothing changes; nothing inside may write a slide file. The scopes are `SlideList.rebuild`, `CentreColumn.refresh`, `AssistantHeader.offers` (the two bubble searches), `MainWindow.reload_decks` (after every deck edit: it fans out to the list, the centre and the side panels) and the three refreshes of `MainWindow.after_version_updates`. Not wrapped: the user actions that ask once (panels/used.py `_open`, presentation/launch.py, task_bubbles `_new_card` and `_fresh`) and the background threads. Tests in tests/test_translation_groups.py (one index per scope, a link written between two scopes is seen by the second).
 
 NEW: The slide list and the assistant react faster after an edit in large projects.
@@ -4414,3 +4413,8 @@ v0.17.34 (2026-11-19, issue #252 step 3 of docs/plans/ui-stalls.md): Translation
 
 NEW: The slide list and the assistant stay smoother while slides are being edited, in projects with many translated slides.
 - Linking translations is no longer worked out again for every slide after each edit, only for the slides that changed.
+
+v0.17.35 (2026-11-19, issue #252 step 4 of docs/plans/ui-stalls.md): On Linux, ui.workspace.background_previews._InputWatcher no longer walks QApplication.allWidgets() every 250 ms (thousands of widgets, a GUI-thread stall each time). _watch installs the filter on a widget and its existing children; eventFilter calls it for every QEvent.ChildAdded of a QWidget (as terminal/web.py does), and the timer only calls it for QApplication.topLevelWidgets() (menus, popups and dialogs have no parent to send ChildAdded) besides the cursor poll. stop() removes the filter from the widgets in the WeakSet. The non-Linux application filter is unchanged; an application-wide filter stays off on Linux (Shiboken crash with WebEngine's private focus objects).
+
+NEW: On Linux, SlideMage no longer gets slower the longer it runs.
+- To notice when you use the window (and pause background previews), SlideMage no longer checks every part of the window four times a second, which cost more with every chat message and card.
