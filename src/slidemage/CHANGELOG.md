@@ -4401,3 +4401,8 @@ v0.17.31 (2026-11-19, direct request: the spell check's underline was easy to ov
 NEW:
 - Misspelled words are easier to see: a clearer wavy underline and a faint red tint behind the word.
 - Right-clicking an underlined word always shows the spelling rows, also when the word is selected; while the text is being checked again the menu says so.
+
+v0.17.32 (2026-11-19, direct request: right-clicking an underlined word such as "datax" still showed no spelling rows): source_view._on_context_menu took the point customContextMenuRequested gives as the editor's coordinates, but it is the viewport's, which starts right of the line numbers; mapping it from the editor shifted it left by the width of that margin, so the click hit a word several characters to the left (and the menu appeared offset by the same amount). The point is now used as it is, for the word and for the popup's position; the same in spell_check._plain_menu. Test in tests/test_spell_check_gui.py (a real QContextMenuEvent on the viewport).
+
+NEW:
+- Right-clicking an underlined word in the Source view shows its spelling rows again; the click was read a few characters too far left, so it missed the word.
