@@ -4409,3 +4409,8 @@ v0.17.33 (2026-11-19, issue #252 step 2 of docs/plans/ui-stalls.md): slide_langu
 
 NEW: The slide list and the assistant react faster after an edit in large projects.
 - After an edit or a new slide version, the slide list, the preview and the assistant's suggestions are updated with one look at the slides folder instead of several.
+
+v0.17.34 (2026-11-19, issue #252 step 3 of docs/plans/ui-stalls.md): TranslationLinks keeps each current file's parsed links (the `Translation of:` targets and the `<LANG> translation:` pairs) next to its text, in slide_language._parsed under the same (path, stamp) and 2 s rule, and `_scan` builds the parents from them. A scan while some file is being edited (the groups cache does not apply then) ran both link regexes over the text of all ~900 current files; now only new, changed or recent files are parsed. `header()` still returns the full text.
+
+NEW: The slide list and the assistant stay smoother while slides are being edited, in projects with many translated slides.
+- Linking translations is no longer worked out again for every slide after each edit, only for the slides that changed.

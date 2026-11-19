@@ -130,9 +130,12 @@ def _header(path: Path) -> str:
 # kept with the (mtime, size) of the files it came from, so a scan reads only the files that changed since the last one.
 # Each scan used to read the whole text of every *-current.tex: 1015 files and 2.3 MB on the user's project, 319 times in
 # 4 minutes (75 s), up to three times in a row on the GUI thread, and 0.9 s each while header sync and the thumbnail,
-# planner and preview threads scanned at the same time (stalls of 2-3 s after a deck save).
+# planner and preview threads scanned at the same time (stalls of 2-3 s after a deck save). The links parsed from each
+# text are kept too (v0.17.33): while a file is being edited the groups are scanned again on every refresh, and the
+# two regexes over 900 texts took more than the listing.
 _cache_lock = threading.Lock()
 _texts: dict[Path, tuple[tuple[int, int], str]] = {}                              # path -> (stamp, text)
+_parsed: dict[Path, tuple[tuple[int, int], tuple]] = {}                           # path -> (stamp, _links)
 _groups_cache: dict[tuple[Path, tuple[str, ...]], tuple[frozenset, dict]] = {}   # (folder, codes) -> (stamps, groups)
 # A file changed this recently is read again every time: Windows moves a file's mtime on only every 15 ms or so, and a
 # second write of the same size inside that keeps the stamp (git's "racy" files). A sync client can be later still.
@@ -173,6 +176,7 @@ def clear_cache() -> None:
     """Forget every text and group read so far (tests, and nothing else needs it: stamps tell a changed file)."""
     with _cache_lock:
         _texts.clear()
+        _parsed.clear()
         _groups_cache.clear()
 
 
@@ -231,6 +235,24 @@ class TranslationLinks:
                 self.headers[id_slug] = text
         return self.headers[id_slug]
 
+    def _links(self, id_slug: str) -> tuple[tuple[str, ...], tuple[tuple[str, str], ...]]:
+        """(the bare ids "Translation of:" names, the (language, bare id) pairs of "<LANG> translation:") of one file.
+        Kept like `header` keeps the text: a recent file is parsed again every time."""
+        path = self.slides_dir / current_name(id_slug)
+        stamp = self.stamps.get(path.name)
+        settled = stamp is not None and not self._racy(stamp)
+        with _cache_lock:
+            cached = _parsed.get(path)
+        if settled and cached is not None and cached[0] == stamp:
+            return cached[1]
+        header = self.header(id_slug)
+        links = (tuple(bare_id(m.group(1)) for m in TRANSLATION_OF_RE.finditer(header)),
+                 tuple((m.group(1), bare_id(m.group(2))) for m in LANG_TRANSLATION_RE.finditer(header)))
+        if settled:
+            with _cache_lock:
+                _parsed[path] = (stamp, links)
+        return links
+
     def group(self, id_slug: str) -> Group:
         """The translation group of the slide with this id-slug's bare id. A slide of no language, or with no
         current file, is its own group. Links count from either side, as "Translation of:" and as
@@ -274,14 +296,12 @@ class TranslationLinks:
         slugs = {bare: slug for bare, slug in slugs.items() if self.own(slug) not in (None, MULT)}
         parents: dict[str, set[str]] = {bare: set() for bare in slugs}
         for bare, slug in slugs.items():
-            header = self.header(slug)
-            for m in TRANSLATION_OF_RE.finditer(header):
-                original = bare_id(m.group(1))
+            originals, translations = self._links(slug)
+            for original in originals:
                 if original in slugs and self.own(slugs[original]) != self.own(slug):
                     parents[bare].add(original)
-            for m in LANG_TRANSLATION_RE.finditer(header):
-                translation = bare_id(m.group(2))
-                if translation in slugs and self.own(slugs[translation]) == m.group(1) != self.own(slug):
+            for language, translation in translations:
+                if translation in slugs and self.own(slugs[translation]) == language != self.own(slug):
                     parents[translation].add(bare)
         neighbours: dict[str, set[str]] = {bare: set(found) for bare, found in parents.items()}
         for bare, found in parents.items():
