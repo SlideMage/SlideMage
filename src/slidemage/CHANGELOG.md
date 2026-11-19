@@ -4356,3 +4356,7 @@ v0.17.23 (2026-11-17, direct request: "Start step 4", handover task ai-spellchec
 NEW: Check the spelling of a whole deck at once.
 - Deck -> Check spelling of this deck lists every unknown word of the deck's slides, in every language, with where it occurs; tick words to add them to the word list or ignore them, double-click to open the slide there.
 - Image descriptions on the Images page are spell checked as you type, with suggestions on right-click.
+
+v0.17.25 (2026-11-19, direct request: after CampusOnline's "Insert slides" the Deck settings sheet looked stuck, its only live button Cancel): once a plugin tab's footer action has run, DeckSettingsSheet's Cancel button reads Close, as long as no other tab has unsaved changes. The action's edit is saved already, so Cancel undid nothing. Test in tests/test_plugin_deck_edits.py. (v0.17.24 is PR #248.)
+
+FIXED: After a plugin such as CampusOnline inserts slides from Deck settings, the sheet offers Close instead of Cancel, so it is clear the slides are in.
