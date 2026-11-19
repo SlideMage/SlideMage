@@ -38,6 +38,9 @@ from .render_store import RenderStore
 
 STORE_WIDTH = 1920      # as wide as the Preview's own image (slide_snapshot.FULL_SIZE)
 RASTER_CHUNK = 4                # pages per raster request, so another reader of a raster child never waits long
+JOB_SECONDS = 300.0             # a background render running longer than this (plus UNIT_SECONDS a unit) is stopped
+UNIT_SECONDS = 30.0
+TIMEOUTS_BEFORE_GIVING_UP = 2   # a slide that times out on its own this often is left alone until the next start
 QUEUE_AHEAD = 12                # idle jobs handed to the scheduler at a time
 STORE_FULL = "disk limit reached"            # Settings → Background previews → Disk limit
 REPLAN_SECONDS = 120.0
@@ -235,6 +238,10 @@ class BackgroundRenderer:
         self.rescanning = False                 # the store's rescan runs (start() .. the planner's first step)
         self._working: list[str] = []
         self._working_lock = threading.Lock()
+        self._slow: set[str] = set()            # labels of units whose batch timed out: each is rendered on its own
+        self._timeouts: Counter = Counter()     # label -> how many times a render of it was stopped as too slow
+        self._gave_up: set[str] = set()         # labels that timed out on their own often enough
+        self._timed_out: set[str] = set()       # keys of the running jobs the watchdog stopped
         self._single: set[str] = set()          # labels of the units whose last render failed: each is rendered on its own
         self._counted: set[str] = set()         # labels the progress counts as fresh already: each is counted once
         self._last_try: set[str] = set()        # labels of failed units tried once more now that the rest is rendered
@@ -509,6 +516,9 @@ class BackgroundRenderer:
                             else:
                                 progress.failed += 1
                                 progress.count(view, 2)
+                        elif unit.label in self._gave_up:
+                            progress.failed += 1        # too slow on its own, more than once: not tried again now
+                            progress.count(view, 2)
                         else:
                             plan.append(((deck_rank, language_rank, view_rank, order), unit))
             if deck_clean:
@@ -529,7 +539,7 @@ class BackgroundRenderer:
                 single.add(unit.label)
                 last_try.add(unit.label)
         self._last_try = last_try
-        self._single = single
+        self._single = single | self._slow
         self._counted = counted
         with self._working_lock:
             self._failure_keys = failure_keys
@@ -819,6 +829,9 @@ class BackgroundRenderer:
         units, requests = job.payload
         self._set_working(job.key, True)
         self.trace(f"start {job.key}")
+        watchdog = threading.Timer(JOB_SECONDS + UNIT_SECONDS * len(units), self._job_too_slow, args=(job, cancel))
+        watchdog.daemon = True
+        watchdog.start()
         try:
             cancel.low_priority = True
             requests = requests or tuple(self._sweep_request(unit) for unit in units)
@@ -842,8 +855,34 @@ class BackgroundRenderer:
             if cancel.is_set():
                 raise Cancelled('Preview canceled')
         finally:
+            watchdog.cancel()
             self._set_working(job.key, False)
+            self._after_timeout(job, units)
             self.trace(f"end {job.key}{' (stopped)' if cancel.is_set() else ''}")
+
+    def _job_too_slow(self, job: Job, cancel) -> None:
+        """The watchdog: a render ran far longer than any slide needs (a hung LaTeX or helper process). Stop it; its
+        units are not current, so the planner hands them out again, one slide at a time (_after_timeout)."""
+        self.trace(f"timeout {job.key}: stopped after {self.scheduler._clock() - job.started:.0f} s")
+        with self._working_lock:
+            self._timed_out.add(job.key)
+        cancel.request_stop(wait=False)
+
+    def _after_timeout(self, job: Job, units) -> None:
+        """A job the watchdog stopped: its slides are rendered on their own next time, and one that is too slow
+        even then is left alone until the next start."""
+        with self._working_lock:
+            if job.key not in self._timed_out:
+                return
+            self._timed_out.discard(job.key)
+            for unit in units:
+                self._timeouts[unit.label] += 1
+                self._slow.add(unit.label)
+                if len(units) == 1 and self._timeouts[unit.label] >= TIMEOUTS_BEFORE_GIVING_UP:
+                    self._gave_up.add(unit.label)
+        self.trace(f"timeout {job.key}: {len(units)} units will be tried again" + (
+            " (left alone)" if len(units) == 1 and units[0].label in self._gave_up else ""))
+        self.replan()
 
     def _count_fresh(self, unit: render_key.Unit) -> None:
         # Each slide counts once per plan. Counted twice were a slide the plan found right apart from its page number,

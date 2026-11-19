@@ -145,18 +145,34 @@ def search_roots(project_root: Path, env: dict) -> tuple[Path, ...]:
 BUNDLED = '<bundled framework>'
 
 
+_BUNDLED_CACHE: dict = {}
+
+
+def _bundled_framework():
+    """(absolute folder, normalised prefix to compare names with) of the bundled framework, or (None, None). Looked up
+    once: project.template_dir stats the disk, and _place asks for every file of every unit while the sweep plans (a
+    scan of 4800 units spent about two minutes there, 2026-11-19). It does not change while the program runs."""
+    lookup = project.template_dir
+    if _BUNDLED_CACHE.get('lookup') is not lookup:
+        folder = lookup('latex')
+        folder = folder.absolute() if folder is not None else None
+        _BUNDLED_CACHE.update(lookup=lookup, folder=folder,
+                              prefix=os.path.join(os.path.normcase(str(folder)), '') if folder is not None else None)
+    return _BUNDLED_CACHE['folder'], _BUNDLED_CACHE['prefix']
+
+
 def _label(folder) -> str:
     """A search folder as evidence. SlideMage's own framework is named, not located: a one-file build unpacks it into
     a new temporary folder at every start, and a moved install would otherwise make every render stale."""
-    bundled = project.template_dir('latex')
-    return BUNDLED if bundled is not None and Path(folder).absolute() == bundled.absolute() else str(folder)
+    bundled, _prefix = _bundled_framework()
+    return BUNDLED if bundled is not None and Path(folder).absolute() == bundled else str(folder)
 
 
 def _place(path: Path) -> str:
     """A file's location as evidence, the bundled framework named by _label's rule."""
-    bundled = project.template_dir('latex')
-    if bundled is not None and path.is_relative_to(bundled.absolute()):
-        return f'{BUNDLED}/{path.relative_to(bundled.absolute()).as_posix()}'
+    bundled, prefix = _bundled_framework()
+    if bundled is not None and os.path.normcase(str(path)).startswith(prefix) and path.is_relative_to(bundled):
+        return f'{BUNDLED}/{path.relative_to(bundled).as_posix()}'
     return str(path)
 
 
