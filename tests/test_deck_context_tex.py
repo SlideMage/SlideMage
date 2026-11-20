@@ -14,8 +14,9 @@ from conftest import EXAMPLE
 from slidemage import compile_records, compiler, deck_context, deck_editor, deck_scan, preview_target
 from slidemage.project import ProjectContext, _ignore_template_build_output
 
-pytestmark = pytest.mark.skipif(shutil.which("latexmk") is None or shutil.which("lualatex") is None,
-                                reason="needs a TeX installation")
+pytestmark = [pytest.mark.skipif(shutil.which("latexmk") is None or shutil.which("lualatex") is None,
+                                 reason="needs a TeX installation"),
+              pytest.mark.usefixtures("same_tex_configuration")]     # one format and build folder for the module
 
 SLIDES = {
     "zz1-EN-Intro": "\\begin{standardframe}{Introduction}\nHello\n\\end{standardframe}\n",
