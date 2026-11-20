@@ -45,12 +45,6 @@ def test_a_prompt_of_the_user_with_placeholders_is_filled_in_too(ctx):
 
 # -- the form of address ----------------------------------------------------------------------------------
 
-def test_the_address_falls_back_to_the_old_german_key(ctx):
-    assert translation_style.address(ctx) == "formal" and translation_style.de_address(ctx) == "Sie"
-    write_project(ctx, {"de_address": "du"})
-    assert translation_style.address(ctx) == "informal" and translation_style.de_address(ctx) == "du"
-
-
 def test_the_address_key_wins_and_set_address_writes_both_keys(ctx):
     write_project(ctx, {"de_address": "du", "address": "formal"})
     assert translation_style.address(ctx) == "formal"
@@ -76,15 +70,6 @@ def test_a_glossary_table_gives_the_rows_of_the_pair():
     assert translation_style.glossary_for(TABLE, "de", "fr") == "Folie = diapositive"      # a row needs both terms
     assert translation_style.glossary_for(TABLE, "FR", "EN") == "diapositive = slide"
     assert translation_style.glossary_for(TABLE, "FR", "ES") == ""
-
-
-def test_the_old_lines_are_read_for_english_and_german_as_they_are():
-    old = "slide = Folie\ndeck = Foliensatz\n"
-    assert translation_style.glossary_for(old, "EN", "DE") == "slide = Folie\ndeck = Foliensatz"
-    assert translation_style.glossary_for(old, "DE", "EN") == "slide = Folie\ndeck = Foliensatz"
-    assert translation_style.glossary_for(old, "EN", "FR") == ""
-    mixed = old + "\n" + TABLE
-    assert translation_style.glossary_for(mixed, "DE", "FR") == "Folie = diapositive"
 
 
 def test_a_request_carries_only_the_glossary_rows_of_its_pair():

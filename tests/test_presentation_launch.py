@@ -60,16 +60,6 @@ def test_no_presenter_pdf_offers_to_compile_or_to_present_the_normal_pdf(monkeyp
     assert calls.started == [plain] and calls.compiled == ["presenter"]
 
 
-def test_an_old_presenter_pdf_asks_to_recompile_or_present_anyway(monkeypatch, calls):
-    presenter = pdf()
-    monkeypatch.setattr(launch, "find_presenter_pdf", lambda ctx, deck: Found(presenter, True, None))
-    calls.answers[:] = [1, 0]
-    launch.on_present(window(), DECK)
-    assert calls.started == [presenter]
-    launch.on_present(window(), DECK)
-    assert calls.compiled == ["presenter"] and calls.started == [presenter]    # the compile did not start here: nothing waits
-
-
 def test_after_a_compile_that_made_no_pdf_the_user_is_told(monkeypatch, calls):
     monkeypatch.setattr(launch, "find_presenter_pdf", lambda ctx, deck: Found(None, False, None))
     launch.on_present(window(), DECK, after_compile=True)

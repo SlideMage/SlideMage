@@ -34,7 +34,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-xdist", "ruff"]
+dev = ["pytest", "pytest-xdist", "ruff", "jsonschema"]
 build = ["pyinstaller"]
 keyring = ["keyring"]
 

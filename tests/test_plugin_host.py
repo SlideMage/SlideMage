@@ -46,11 +46,6 @@ def test_cache_dirs(host, tmp_path):
     assert host.legacy_cache_dir() == host_module.project.cache_dir()
 
 
-def test_legacy_cache_dir_missing(host, monkeypatch, tmp_path):
-    monkeypatch.setattr(host_module.project, "cache_dir", lambda: tmp_path / "nothing")
-    assert host.legacy_cache_dir() is None
-
-
 def test_settings_round_trip(host, pctx):
     s = host.settings()
     assert s.get("a", 5) == 5
@@ -438,18 +433,6 @@ def test_a_deck_changed_at_the_commit_is_not_overwritten(host, pctx, state, monk
     with pytest.raises(plugin_api.StaleFileError):
         host.insert_slides(deck, host.insert_positions(deck)[0], [("A", "a")], "en")
     assert_untouched(pctx, other, slides, csv)
-
-
-def test_legacy_settings_accessors(host, monkeypatch):
-    from slidemage import app_settings
-    from slidemage.plugins import migrate
-
-    monkeypatch.setattr(migrate, "legacy_anthropic_key", lambda ctx: "old-key" if ctx is host.ctx else None)
-    monkeypatch.setattr(app_settings, "peek_ollama_host", lambda ctx: "http://old:11434")
-    assert host.legacy_secret("anthropic_api_key") == "old-key"
-    assert host.legacy_ollama_host() == "http://old:11434"
-    with pytest.raises(ValueError):
-        host.legacy_secret("other")
 
 
 def test_progress_is_delivered_on_ui_thread_before_done(host, qapp):

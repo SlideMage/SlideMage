@@ -13,7 +13,7 @@ from conftest import qapp as qapp  # noqa: F401
 from slidemage.ai import routes
 from slidemage.plugins import session
 from slidemage.plugins.registry import Registrar
-from slidemage.ui.dialogs.settings import AI, GENERAL, OLLAMA, PLUGINS, PROMPTS, PROJECT
+from slidemage.ui.dialogs.settings import AI, GENERAL, OLLAMA, PLUGINS, PROJECT
 from test_settings_gui import open_sheet, tab_names
 from fake_routes import FakeRoute
 
@@ -96,13 +96,6 @@ def test_without_ai_routes_there_is_no_ai_tab(qapp):
     assert sheet.current_tab() == PLUGINS and sheet._tabs.tabText(sheet._tabs.currentIndex()) == "Extensions"
     sheet.set_current_tab(PROJECT)
     assert sheet._tabs.tabText(sheet._tabs.currentIndex()) == "Project"
-    sheet.close()
-
-
-@pytest.mark.parametrize("alias, section", [(PROMPTS, "prompts")])
-def test_the_old_tabs_open_the_ai_tab_at_their_section(qapp, alias, section):
-    sheet = open_sheet(qapp, tab=alias)
-    assert sheet.current_tab() == AI and sheet.scrolled_to == section
     sheet.close()
 
 

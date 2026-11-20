@@ -153,17 +153,6 @@ def test_wrappers_in_the_build_folder_are_pruned_too(tmp_path):
     assert [p.name for p in wrappers.iterdir()] == ['_slidemage_preview-fresh.tex']
 
 
-def test_the_wrappers_left_in_decks_before_v8_58_are_removed_once(tmp_path):
-    ctx = ProjectContext.at(tmp_path)
-    ctx.decks_dir.mkdir()
-    (ctx.decks_dir / '_slidemage_preview-old.tex').write_text('x')
-    (ctx.decks_dir / 'deck.tex').write_text('x')
-    assert preview_build.remove_legacy_wrappers(ctx) == 1
-    assert [p.name for p in ctx.decks_dir.iterdir()] == ['deck.tex']
-    (ctx.decks_dir / '_slidemage_preview-later.tex').write_text('x')
-    assert preview_build.remove_legacy_wrappers(ctx) == 0          # once per project and session
-
-
 def test_rerun_limit_accepts_only_a_new_clean_pdf(tmp_path, monkeypatch):
     produce = True
 

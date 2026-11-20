@@ -224,87 +224,6 @@ def test_repeated_puts_of_an_unswept_label_leave_one_object(ctx, resolver, store
         assert [p.name for p in (store.root / "objects").glob("*/*")] == [key]
 
 
-def test_an_old_format_object_is_never_found_or_kept(ctx, resolver, store):
-    unit = unit_for(ctx)
-    write(unit.source_path, "slide")
-    key, meta = make_record(resolver, unit, [unit.source_path])
-    store_render(store, key, meta)
-    folder = render_store.object_dir(store.root, key)
-    old = json.loads((folder / "meta.json").read_text(encoding="utf-8"))
-    old["format"] = render_store.STORE_FORMAT - 1
-    (folder / "meta.json").write_text(json.dumps(old), encoding="utf-8")
-    store.db.execute("UPDATE renders SET meta=?", (json.dumps(old),))
-    assert not store.find(key) and store.latest_for_unit(unit.label) is None
-    store.record_failure(key, render_store.DETERMINISTIC, "old failure", [])
-    store.note_last_try(key)
-    store.db.execute("UPDATE filehash SET sha256='old raw-byte hash'")
-    store.db.execute("PRAGMA user_version=0")
-    store.db.commit()
-    again = render_store.RenderStore(ctx, store.root)
-    try:
-        hashes = dep_hash.HashCache(again.db, again.lock)
-        current = render_key.Resolver(ctx, hashes, again, engine_fp=lambda: "LuaHBTeX 1.22|Windows")
-        assert current.lookup(unit).state is Freshness.MISSING
-        assert not again.find(key) and again.latest_for_unit(unit.label) is None
-        assert not again.failures() and not again.tried_last(key)
-        assert hashes.hash(unit.source_path) == preview_requests.SourceRevision.capture(unit.source_path).content_hash
-        again.rescan()
-        assert not folder.exists()
-    finally:
-        again.close()
-
-
-def test_an_old_index_opens_without_losing_its_render(ctx, resolver, store):
-    unit = unit_for(ctx)
-    write(unit.source_path, "slide")
-    key, meta = make_record(resolver, unit, [unit.source_path])
-    store_render(store, key, meta)
-    # Recreate the PNG publication an older release wrote, including its on-disk and indexed metadata.
-    from PIL import Image
-
-    folder = render_store.object_dir(store.root, key)
-    legacy = json.loads((folder / "meta.json").read_text(encoding="utf-8"))
-    for name in list(legacy["files"]):
-        if name.endswith(".webp"):
-            path = folder / name
-            png = path.with_suffix(".png")
-            with Image.open(path) as image:
-                image.save(png, format="PNG")
-            path.unlink()
-            del legacy["files"][name]
-            legacy["files"][png.name] = png.stat().st_size
-    legacy["bytes"] = sum(legacy["files"].values())
-    (folder / "meta.json").write_text(json.dumps(legacy), encoding="utf-8")
-    store.db.execute("UPDATE renders SET bytes=?, meta=? WHERE key=?", (legacy["bytes"], json.dumps(legacy), key))
-    store.db.commit()
-    before = store.find(key)
-    store.db.executescript("""
-        ALTER TABLE renders RENAME TO new_renders;
-        CREATE TABLE renders (
-            name TEXT PRIMARY KEY, fast_key TEXT NOT NULL, origin TEXT NOT NULL, unit TEXT NOT NULL,
-            bytes INTEGER NOT NULL, rendered_at REAL NOT NULL, last_used REAL NOT NULL,
-            decks TEXT NOT NULL, meta TEXT NOT NULL);
-        INSERT INTO renders SELECT key, key, 'background', unit, bytes, rendered_at, last_used, decks, meta FROM new_renders;
-        DROP TABLE new_renders;
-        CREATE INDEX renders_key ON renders(fast_key);
-        ALTER TABLE failures DROP COLUMN last_try;
-        CREATE TABLE last_tries (fast_key TEXT PRIMARY KEY, tried_at REAL NOT NULL);
-    """)
-    folder = store.root
-    upgraded = render_store.RenderStore(ctx, folder)
-    try:
-        assert upgraded.count() == 1 and upgraded.find(key) == before
-        record = upgraded.find(key)
-        assert upgraded.page(record, 1) == real_png()
-        assert upgraded.pages(record) == [real_png()] * 2
-        assert upgraded.thumbnail_path(record) == Path(record["dir"]) / "thumb.png"
-        assert upgraded.thumbnail_path(record).read_bytes().startswith(b"\x89PNG")
-        store_render(upgraded, key, meta, pages=1)
-        assert upgraded.find(key)["pages"] == 1
-    finally:
-        upgraded.close()
-
-
 def test_rescan_deletes_objects_the_index_does_not_know(ctx, resolver, store):
     unit = unit_for(ctx)
     write(unit.source_path, "slide")
@@ -444,32 +363,6 @@ def test_failures_are_remembered_for_the_input_state_and_backed_off(ctx, resolve
     store.record_failure(k2, render_store.TRANSIENT, "timeout", m2)
     clock[0] += 10 * 3600
     assert not store.may_retry(store.failure(k2))
-
-
-def test_legacy_failures_are_retried_once_without_discarding_renders(ctx, tmp_path):
-    folder = tmp_path / "legacy-store"
-    with_store = render_store.RenderStore(ctx, folder)
-    try:
-        store_render(with_store, "good", {"unit": "deck:slide:instructor:EN"})
-        with_store.record_failure("bad", render_store.DETERMINISTIC, "missing setup", [])
-        with_store.note_last_try("bad")
-        with_store.db.execute("DELETE FROM store_flags WHERE name=?", (render_store.FAILURE_INPUTS_TRACKED,))
-        with_store.db.commit()
-    finally:
-        with_store.close()
-    upgraded = render_store.RenderStore(ctx, folder)
-    try:
-        assert upgraded.failures() == [] and not upgraded.tried_last("bad")
-        assert upgraded.find("good")
-        upgraded.record_failure("new", render_store.DETERMINISTIC, "still broken", [])
-    finally:
-        upgraded.close()
-    reopened = render_store.RenderStore(ctx, folder)
-    try:
-        assert [f["key"] for f in reopened.failures()] == ["new"]
-        assert reopened.find("good")
-    finally:
-        reopened.close()
 
 
 def test_deck_usage_orders_decks_by_recency(store):

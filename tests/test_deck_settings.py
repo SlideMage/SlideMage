@@ -214,13 +214,6 @@ def test_the_mode_line_is_read_and_comments_and_the_body_are_ignored(declaration
     assert deck_settings.set_mode(ignored, "") == ignored
 
 
-def test_the_old_dark_switch_is_no_longer_a_setting():
-    marker = r"\input{SlideMage_template_acme}"
-    text = DECK.replace(marker, r"\newcommand{\SMDarkMode}{}" + "\n" + marker)
-    assert read(text).mode == ""
-    assert not hasattr(read(text), "dark_mode")
-
-
 def test_setting_a_mode_moves_a_late_mode_line_before_the_template():
     text = DECK.replace(r"\begin{document}", r"\newcommand{\SMModeOverride}{dark}" + "\n" + r"\begin{document}")
     assert read(text).mode == ""

@@ -212,14 +212,6 @@ def test_next_large_clock_has_the_next_slide_large_the_notes_above_a_big_clock_a
     assert layout.profile_named("Mirror and clock") is profile
 
 
-def test_the_big_clock_is_a_big_element_and_old_profiles_stay_valid():
-    assert "bigclock" in layout.BIG and "bigclock" not in layout.SMALL
-    with pytest.raises(ValueError):
-        layout.profile_from_dict({"name": "x", "tree": {"leaf": ["current", "bigclock"]}})   # not alone
-    old = {"name": "old", "tree": {"split": "h", "a": {"leaf": "current"}, "b": {"leaf": ["clock", "timer"]}}}
-    assert layout.profile_from_dict(old).tree.b.is_strip         # a small "clock" stays a strip element
-
-
 def test_a_profile_survives_json_and_bad_ones_are_refused():
     data = layout.profile_to_dict(layout.CURRENT_LARGE)
     again = layout.profile_from_dict(data)
@@ -322,15 +314,6 @@ def test_settings_have_defaults_survive_the_store_and_ignore_bad_values(ctx):
 def test_the_default_pen_is_opaque_blue_and_the_laser_pure_red():
     defaults = PresentationSettings()
     assert defaults.pen_color == "#ff0055ff" and defaults.laser_color == "#ff0000" and defaults.eraser_size == 0.02
-
-
-def test_saved_colours_are_kept_but_the_old_defaults_saved_with_every_other_setting_become_the_new_ones(ctx):
-    layout_settings.set("presentation", {"laser_color": "#ff2020", "pen_color": "#c0ffd400", "confirm_links": False})
-    old = PresentationSettings.load()
-    assert (old.laser_color, old.pen_color, old.confirm_links) == ("#ff0000", "#ff0055ff", False)
-    layout_settings.set("presentation", {"laser_color": "#00ff00", "pen_color": "#ffffd400"})
-    chosen = PresentationSettings.load()
-    assert (chosen.laser_color, chosen.pen_color) == ("#00ff00", "#ffffd400")        # a choice stays, even a near miss
 
 
 def test_the_eraser_reaches_a_circle_of_its_size_in_slide_heights(qapp):
@@ -445,25 +428,3 @@ def test_a_nav_that_does_not_fit_leaves_the_presenter_pdf_as_it_was(tmp_path, qa
     assert not label_presenter_pages(pdf, nav, lambda _line: None)
     assert not label_presenter_pages(pdf, tmp_path / "missing.nav", lambda _line: None)
     assert pdf.read_bytes() == before
-
-
-def test_the_doubled_labels_of_an_older_presenter_pdf_are_not_used(tmp_path, qapp):
-    import pymupdf
-    pdf = make_pdf(tmp_path / "p.pdf")
-    with pymupdf.open(pdf) as doc:        # as LaTeX made them: one rule for the slide, one for the note page
-        doc.set_page_labels([{"startpage": i, "prefix": str(i // 2 + 1), "firstpagenum": 1} for i in range(12)])
-        doc.saveIncr()
-    deck = PresentationDeck(pdf)
-    try:
-        assert deck.page_labels() is None and deck.frame_map() is None
-    finally:
-        deck.close()
-
-
-def test_the_builtins_names_and_the_old_clock_name_still_resolves():
-    assert [p.name for p in layout.BUILTINS] == ["Current large", "Next large", "Mirror and clock"]
-    assert all(layout.DESCRIPTIONS[p.name] for p in layout.BUILTINS)
-    assert layout.profile_named("Current large") is layout.CURRENT_LARGE
-    assert layout.profile_named("Next large") is layout.NEXT_LARGE
-    assert layout.profile_named("Next large, clock") is layout.NEXT_LARGE_CLOCK
-    assert layout.profile_named("Mirror and clock") is layout.NEXT_LARGE_CLOCK

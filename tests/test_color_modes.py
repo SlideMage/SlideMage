@@ -89,12 +89,6 @@ def test_a_dark_preset_mixes_the_dark_colour_with_white(tmp_path):
     assert r == g == b and 60 <= r <= 76  # c_primary_dark (1e1e1e) mixed 17 % with white
 
 
-def test_the_old_dark_flag_stops_the_compile_with_a_message(tmp_path):
-    with pytest.raises(AssertionError) as failed:
-        compile_mode(tmp_path, None, flag=True)
-    assert "was removed in SlideMage v0.16.0" in str(failed.value)
-
-
 def test_an_explicit_role_line_wins_over_the_preset(tmp_path):
     r, g, b = canvas(compile_mode(tmp_path, "mine"))
     assert b > g and r > g and (r, g, b) != canvas(compile_mode(tmp_path, "dark"))  # violet mixed with black

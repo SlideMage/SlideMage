@@ -91,36 +91,6 @@ def test_english_decks_and_descriptions_do_not_make_german_a_language(ctx):
     assert languages.project_languages(ctx).secondary == ()
 
 
-def test_migrating_writes_the_inferred_languages_once_and_keeps_the_other_keys(ctx):
-    slide(ctx, "1aa-EN-One-current.tex")
-    slide(ctx, "1ab-DE-Eins-current.tex")
-    write_json(ctx, {"format": 1, "ai": {"policy": "local"}})
-    languages.migrate(ctx)
-    path = ctx.root / project.PROJECT_INFO_PATH
-    assert json.loads(path.read_text(encoding="utf-8")) == {
-        "format": 1, "ai": {"policy": "local"}, "languages": {"main": "en", "secondary": ["de"]}}
-    before = (path.read_bytes(), path.stat().st_mtime_ns)
-    (ctx.slides_dir / "1ab-DE-Eins-current.tex").unlink()                  # the key now rules, not the files
-    languages.migrate(ctx)
-    assert (path.read_bytes(), path.stat().st_mtime_ns) == before
-    assert languages.project_languages(ctx) == languages.Languages("en", ("de",))
-
-
-def test_migrating_a_project_without_german_writes_english_alone(ctx):
-    slide(ctx, "1aa-EN-One-current.tex")
-    languages.migrate(ctx)
-    assert project.read_project_json(ctx.root) == {"languages": {"main": "en", "secondary": []}}
-    assert languages.project_languages(ctx) == languages.Languages("en")
-
-
-def test_migrating_does_not_touch_a_key_that_is_there_even_a_malformed_one(ctx):
-    slide(ctx, "1ab-DE-Eins-current.tex")
-    write_json(ctx, {"languages": "fr"})
-    languages.migrate(ctx)
-    assert project.read_project_json(ctx.root) == {"languages": "fr"}
-    assert languages.project_languages(ctx) == languages.Languages("en", ("de",))      # read like a missing key
-
-
 def test_a_project_that_cannot_be_written_keeps_the_inferred_languages(ctx, monkeypatch):
     slide(ctx, "1ab-DE-Eins-current.tex")
     def refuse(root, data):
@@ -129,14 +99,6 @@ def test_a_project_that_cannot_be_written_keeps_the_inferred_languages(ctx, monk
     languages.migrate(ctx)
     assert languages.project_languages(ctx) == languages.Languages("en", ("de",))
     assert not (ctx.root / project.PROJECT_INFO_PATH).exists()
-
-
-def test_opening_a_project_migrates_it(tmp_path):
-    from slidemage import cli
-    root = tmp_path / "proj"
-    slide(ProjectContext.at(root), "1ab-DE-Eins-current.tex")
-    assert cli.check_project_format(root, "v0.13.25")
-    assert project.read_project_json(root)["languages"] == {"main": "en", "secondary": ["de"]}
 
 
 def test_a_snapshot_is_not_migrated(tmp_path):

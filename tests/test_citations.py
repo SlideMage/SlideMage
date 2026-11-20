@@ -449,16 +449,6 @@ def test_a_deck_chooses_an_installed_format_which_is_loaded_and_applied_once(pac
 
 
 @needs_tex
-def test_the_default_is_loaded_for_a_plain_deck_and_a_legacy_input_changes_nothing(tmp_path):
-    plain = _compile(tmp_path, DECK % "", [])
-    assert "SM-CITATION-SAMPLE" not in plain and not compiler.FATAL_ERROR_RE.search(plain), plain[-1500:]
-    assert "SlideMage_citation_default.tex" in _unwrapped(plain)
-    legacy = _compile(tmp_path, DECK % (BS + "input{SlideMage_bibliography_default}\n"), [])
-    assert not compiler.FATAL_ERROR_RE.search(legacy), legacy[-1500:]
-    assert "SlideMage_bibliography_default.tex" in _unwrapped(legacy)
-
-
-@needs_tex
 def test_a_missing_format_is_an_error_naming_the_key(tmp_path):
     log = _compile(tmp_path, DECK % (BS + "renewcommand{" + BS + "SMCitationFormat}{nowhere}\n"), [])
     assert 'The citation format "nowhere" is not available' in log

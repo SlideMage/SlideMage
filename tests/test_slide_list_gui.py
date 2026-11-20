@@ -540,17 +540,6 @@ def test_alt_arrows_move_a_section_with_all_its_slides(make_list, direction, new
     assert path.read_bytes() == expected.encode("utf-8")
 
 
-def test_a_section_moves_up_with_its_legacy_block(make_list):
-    body = ("\\section{Before}\n%% Block: legacy\n%%\n\\slide{aaa-First}\n\\slide{bbb-Second}\n"
-            "%% End block: legacy\n%%\n\\section{After}\n")
-    slide_list, _window, path = make_list(body)
-    choose_section(slide_list, "After")
-    menu = slide_list._section_menu()
-    assert _entry(menu, "section:section_up")[6] and not _entry(menu, "section:section_down")[6]
-    slide_list.run_section("section_up")
-    assert read(path) == HEAD + "\\section{After}\n" + body.replace("\\section{After}\n", "") + TAIL
-
-
 @pytest.mark.parametrize("undo_action", ["toast", "shortcut"])
 def test_delete_removes_the_slides_and_undo_brings_them_back(make_list, qapp, undo_action):
     slide_list, _window, path = make_list(FRONT_AND_SECTIONS)

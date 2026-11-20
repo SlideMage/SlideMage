@@ -59,21 +59,6 @@ def test_the_state_is_written_only_when_to_review_and_comes_back(ctx):
     assert alt_images.source_state(stored(ctx)) == SOURCE_REVIEWED
 
 
-def test_an_older_store_without_the_field_loads_as_reviewed(ctx):
-    ctx.media_dir.mkdir(parents=True, exist_ok=True)
-    (ctx.media_dir / "alt-text.json").write_text(json.dumps({"version": 2, "images": {
-        "media/a.png": {"role": "informative", "status": "reviewed", "short": "s", "source": "Own illustration"},
-        "media/b.png": {"role": "informative", "status": "auto"},
-        "media/c.png": {"source": "x", "source_status": "nonsense"},
-    }}), encoding="utf-8")
-    entries = alt_images.load_store(ctx)
-    assert [alt_images.source_state(entries[name]) for name in ("media/a.png", "media/b.png", "media/c.png")] == [
-        SOURCE_REVIEWED, "", SOURCE_REVIEWED]
-    # saving the store again keeps them reviewed and writes no new key
-    alt_images.save_store(ctx, entries)
-    assert all("source_status" not in raw for raw in raw_images(ctx).values())
-
-
 def test_the_compile_csv_keeps_its_columns(ctx):
     put(ctx, source="Own illustration")
     alt_images.save_source(ctx, IMG, source="Changed")

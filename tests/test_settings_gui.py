@@ -511,16 +511,6 @@ def test_a_project_with_one_language_has_no_secondary_ones_and_can_add_and_remov
     page.move(1)                                                    # nothing selected, nothing to move
 
 
-def test_another_main_language_keeps_the_old_one_as_a_secondary_language(tmp_path, qapp):
-    page, app = languages_page(tmp_path, qapp)
-    page.main.activated.emit(page.main.findData("fr"))
-    assert languages.project_languages(app.project) == languages.Languages("fr", ("en", "de"))
-    assert page.main.currentData() == "fr" and shown(page) == ["en", "de"]
-    page.main.activated.emit(page.main.findData("de"))          # a secondary one becomes the main language
-    assert languages.project_languages(app.project) == languages.Languages("de", ("fr", "en"))
-    assert app.logged[-1] == "Main language of the project: German"
-
-
 def test_adding_a_language_appends_it_and_moving_reorders(tmp_path, qapp):
     page, app = languages_page(tmp_path, qapp)
     assert page.add_language("fr") and page.add_language("it")

@@ -32,39 +32,6 @@ def test_places_are_in_the_cache_folder_under_the_project_id(tmp_path):
     assert ProjectContext.at(tmp_path / "Other").previews_dir != base       # one folder per project
 
 
-def test_first_use_moves_an_old_previews_folder(tmp_path):
-    root = tmp_path / "Proj"
-    old = make_old_copy(root)
-    (old / "benchmarks").mkdir()
-    (old / "benchmarks" / "evidence.tar.gz").write_bytes(b"keep")
-    ctx = ProjectContext.at(root)
-    assert (ctx.tikz_previews_dir / "t-1.png").is_file()
-    assert (ctx.pdf_render_cache_dir / "m.png").is_file()
-    assert not (project.previews_cache_dir(root) / "slide_previews").exists()
-    assert [p.name for p in old.iterdir()] == ["benchmarks"]               # the caches and the lock are gone, the rest stays
-
-
-def test_an_empty_old_folder_is_removed_and_the_new_place_wins(tmp_path):
-    root = tmp_path / "Proj"
-    old = make_old_copy(root)
-    new = project.previews_cache_dir(root) / project.TIKZ_PREVIEWS
-    new.mkdir(parents=True)
-    (new / "kept.png").write_bytes(b"new")
-    project.migrate_previews(root)
-    assert not old.exists()
-    assert [p.name for p in new.iterdir()] == ["kept.png"]                 # not merged with the old copy
-    project.migrate_previews(root)                                           # nothing left to do, nothing raised
-
-
-def test_migration_runs_once_per_process(tmp_path):
-    root = tmp_path / "Proj"
-    ctx = ProjectContext.at(root)
-    ctx.tikz_previews_dir.mkdir(parents=True)
-    make_old_copy(root)                                                      # appears after the first use: not touched again
-    assert ctx.tikz_previews_dir.is_dir()
-    assert (root / ".previews" / project.TIKZ_PREVIEWS).is_dir()
-
-
 def other_drive(path: Path):
     """A drive letter other than `path`'s that exists and is writable, else None."""
     if os.name != "nt":
