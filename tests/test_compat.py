@@ -183,22 +183,6 @@ def test_registry_ids_are_unique_and_every_breaking_release_has_an_entry():
                 f"{entry.version} has a BREAKING: paragraph but no slidemage.compat.CHANGES entry")
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def test_changes_slidemage_made_itself_are_a_notice_not_an_update(tmp_path):
     root = make_project(tmp_path)
     assert not compat.evaluate(root, "v5.30.0", [AUTO, BREAKING]).applied      # not converted: nothing to tell

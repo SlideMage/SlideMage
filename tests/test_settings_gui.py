@@ -21,7 +21,6 @@ from test_templates import _framework, _project
 from slidemage.project import ProjectContext
 
 
-
 class FakeApp(QWidget):
     """The window as far as Settings uses it."""
 

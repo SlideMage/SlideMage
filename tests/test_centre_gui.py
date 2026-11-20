@@ -2028,8 +2028,6 @@ def test_a_frozen_tabs_details_show_the_frozen_file_with_its_chip_and_no_changin
     assert "Frozen v1.0.0" in facts()[2]
 
 
-
-
 def test_a_file_that_is_no_slide_and_no_deck_has_no_context_and_the_list_shows_a_placeholder(centre, files):
     seen = []
     centre.context_changed.connect(seen.append)

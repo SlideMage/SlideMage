@@ -15,7 +15,6 @@ import os
 import shutil
 import subprocess
 import sys
-import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -549,58 +548,16 @@ class _InPreviews:
     def __get__(self, context: "ProjectContext | None", owner: type | None = None):
         if context is None:
             return self
-        migrate_previews_once(context.root)
         return previews_cache_dir(context.root).joinpath(*self.parts)
 
 
 TIKZ_PREVIEWS = "tikz_illustration_previews"
 PDF_RENDER_CACHE = "pdf_render_cache"
-_OLD_PREVIEWS = ".previews"
-_MIGRATED: set[str] = set()
-_MIGRATE_LOCK = threading.Lock()
 
 
 def previews_cache_dir(root: Path) -> Path:
     """This computer's TikZ pictures and rendered PDF pages for the project at `root`."""
     return cache_dir() / "previews" / project_id(root)
-
-
-def migrate_previews(root: Path) -> None:
-    """Move the caches an earlier version kept in the project's `.previews/` into previews_cache_dir(root) (what the
-    new place already holds wins; the rest of the old copy is deleted: it is only a cache), then remove the old
-    lock file and, when nothing else is in it, `.previews/` itself. Flat slide snapshots are deleted.
-    Works across drives. Never raises."""
-    old = Path(root) / _OLD_PREVIEWS
-    if not old.is_dir():
-        return
-    new = previews_cache_dir(root)
-    shutil.rmtree(old / "slide_previews", ignore_errors=True)
-    for name in (TIKZ_PREVIEWS, PDF_RENDER_CACHE):
-        source = old / name
-        if not source.is_dir():
-            continue
-        target = new / name
-        try:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            if not target.exists():
-                shutil.move(str(source), str(target))
-        except OSError:
-            pass
-        shutil.rmtree(source, ignore_errors=True)
-    try:
-        (old / "preview-maintenance.lock").unlink(missing_ok=True)
-        old.rmdir()                      # only when empty: a benchmark archive in it stays
-    except OSError:
-        pass
-
-
-def migrate_previews_once(root: Path) -> None:
-    key = os.path.normcase(os.path.normpath(str(root)))
-    with _MIGRATE_LOCK:
-        if key in _MIGRATED:
-            return
-        _MIGRATED.add(key)
-    migrate_previews(root)
 
 
 @dataclass(frozen=True)

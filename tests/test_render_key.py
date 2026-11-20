@@ -83,7 +83,6 @@ def test_the_key_follows_slide_text_preamble_view_language_and_engine(ctx, resol
     assert resolver.fast_key(unit) != key
 
 
-
 def test_the_key_ignores_the_preamble_lines_only_slidemage_reads(ctx, resolver):
     """A deck's PDF output folders, tags and open-PDF choice do not change what TeX typesets: renders stay current."""
     write(ctx.slides_dir / "aaa-EN-One-current.tex", "\\begin{frame}A\\end{frame}")

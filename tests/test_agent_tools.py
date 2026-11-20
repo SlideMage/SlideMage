@@ -480,7 +480,6 @@ def test_insert_existing_rejects_missing_frozen_non_slide_and_outside_files(box,
     assert (root / "decks/test.tex").read_bytes() == before
 
 
-
 def test_add_bib_entry_writes_a_sorted_entry_with_a_suggested_key(box, root):
     box.box.ctx.mode = EDIT_AUTO
     out = box.ok("add_bib_entry", kind="article", fields={

@@ -187,10 +187,6 @@ def test_a_chat_tool_creating_the_store_file_flags_its_sources(agent):
     assert alt_images.source_state(stored(ctx)) == SOURCE_TO_REVIEW
 
 
-
-
-
-
 def test_importing_the_manual_sends_a_replaced_entry_with_another_source_to_review(root, tmp_path):
     ctx = ProjectContext.at(root)
     put(ctx, source="Old credit", short="old")

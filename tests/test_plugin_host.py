@@ -544,7 +544,6 @@ def test_route_task_lease_shares_core_slot_and_has_ownership(host, monkeypatch):
     assert host.acquire_route_task("another", "working") is not None
 
 
-
 def test_route_lease_survives_a_detached_worker_stop_until_it_exits(host, monkeypatch, qapp):
     from PySide6.QtCore import QThread
     from PySide6.QtWidgets import QMessageBox
@@ -634,8 +633,6 @@ def test_chat_surface_context_operations(host, monkeypatch):
     context.close()
     assert calls == [("set", "deck"), ("scope", "deck"), ("callback", "deck"), "setup",
                      ("edits", "changes"), ("show", Path("slide.tex")), "closed"]
-
-
 
 
 def test_progress_error_is_delivered_after_reports(host, qapp):
@@ -737,8 +734,6 @@ def test_chat_context_builds_fresh_tools_on_gui_and_exposes_full_focus(host, mon
     state.deck.is_test_deck = True
     assert context.focus_details().deck is None
     context.close()
-
-
 
 
 def test_log_takes_a_level_and_says_whether_debug_is_on(host, caplog, monkeypatch):

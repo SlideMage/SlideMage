@@ -419,7 +419,6 @@ def test_arrow_keys_move_the_focus_and_enter_or_a_double_click_open_the_source(m
     assert [p.name for p in window.opened] == ["bbb-Two-current.tex", "aaa-One-current.tex"]
 
 
-
 def test_arrow_keys_step_over_section_headings_from_slide_to_slide(make_list):
     slide_list, window, _path = make_list(FRONT_AND_SECTIONS)
     focus(slide_list, "aaa")

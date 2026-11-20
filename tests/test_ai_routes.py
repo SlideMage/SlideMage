@@ -17,8 +17,6 @@ def fake_route(fake_routes):
     return fake_routes.local
 
 
-
-
 def test_registry_sides_and_duplicate_ids(fake_routes):
     assert routes.on_side(True) == [fake_routes.local]
     assert routes.on_side(False) == [fake_routes.cloud]

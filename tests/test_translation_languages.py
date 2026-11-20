@@ -27,9 +27,6 @@ def write_project(ctx, data):
 # -- prompts --------------------------------------------------------------------------------------------
 
 
-
-
-
 def test_the_last_resort_prompt_names_the_pair(ctx):
     for source, target, name in (("de", "fr", "French"), ("fr", "en", "English"), ("en", "de", "German")):
         prompt = tp.get_effective_prompt(ctx, "any-model", source, target).prompt
