@@ -8,7 +8,7 @@ SPDX-PackageDownloadLocation = "https://github.com/SlideMage/SlideMage"
 
 [[annotations]]
 path = ["pyproject.toml", "uv.lock", ".gitattributes", ".gitignore", ".github/**", ".claude/**",
-        "packaging/**", "tools/**", "tests/**", "src/slidemage/CHANGELOG.md",
+        "packaging/**", "tools/**", "tests/**", "changes/**", "src/slidemage/CHANGELOG.md",
         "src/slidemage/assets/**"]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 Stefan Palan, Jürgen Fleiß"

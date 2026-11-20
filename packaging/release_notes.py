@@ -4,6 +4,10 @@
 the history entries in src/slidemage/CHANGELOG.md of every version since the
 previous release, and refuse a release whose notes would be incomplete.
 
+Since issue #247 packaging/make_release.py writes one entry per release (from
+the changes/ fragments), so a new release has exactly one entry here; the
+bundling of several entries below is still how releases up to v0.17.38 read.
+
     python packaging/release_notes.py v4.1.0 > release_notes.md
     python packaging/release_notes.py v0.13.6 --presenter > release_notes.md     # the release carries SlideMage Presenter
 
