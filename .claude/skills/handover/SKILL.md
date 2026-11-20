@@ -50,8 +50,8 @@ says it could not notify Claude, the user tells you in chat. Either way, then:
 3. For each picked task, in that order: read only the handover section its `src` points to (grep for the heading), plus the
    "Working rule" and "How to work" parts of the section it sits in. The user's note refines or overrides the task text: integrate it into the task's description first
    (`desc`, the text between its markers, and its section), clear the block line's `notes` field, and then work from the result.
-4. Do the task. Apply the file's standing rules (a worktree and branch per step from `origin/develop`; bump the version with
-   app-code commits; merge only on the user's go; never touch the main checkout's `latex/`). If the note leaves a decision the
+4. Do the task. Apply the file's standing rules (a worktree and branch per step from `origin/develop`; add a `changes/` fragment for
+   app-code changes, never a version bump; merge only on the user's go; never touch the main checkout's `latex/`). If the note leaves a decision the
    task text says to ask about open, ask before building.
 5. After each step, update `docs/handover.md`: the task's line in the TASKS block (`status`: `done` or `blocked`, and a
    changed `desc` if the scope moved) and its section, as the working rule says. Re-read the lines right before editing:
