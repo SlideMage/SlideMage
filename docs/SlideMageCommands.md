@@ -270,6 +270,18 @@ finishes.
 
 ---
 
+## Images on notes pages
+
+`\note{...}` text appears on the presenter's notes page (the presenter compile only). To put an image there, use `\SMNoteImage` inside the note:
+
+```latex
+\note{Ask for the chart's source. \SMNoteImage{media/chart-x.png}}
+```
+
+The image is scaled to fit 90% of the note's width and 45% of the page height, so it cannot push the note's text off the page (the notes page does not break; an image taller than the page is cut off). Keys are `\includegraphics` keys and override the limits: `\SMNoteImage[width=0.5\linewidth]{media/chart-x.png}`. Notes are not in the normal PDF or the transcript, so the image needs no alt text there.
+
+---
+
 ## Notes
 
 - The deck version system does not use beamer's handout mode

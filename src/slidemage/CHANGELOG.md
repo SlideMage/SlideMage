@@ -4437,3 +4437,7 @@ v0.17.38 (2026-11-19, direct request: the background previews' scan took about 1
 NEW: Background previews start sooner and no longer get stuck on a render that hangs.
 - The background preview scan is much faster, so the progress chip appears sooner after starting.
 - A preview render that hangs is stopped after a few minutes and tried again, instead of blocking background rendering until you close SlideMage.
+
+v0.17.39 (2026-11-20, direct request: images on notes pages): \SMNoteImage[keys]{file} in latex/SlideMage_base.tex puts an image inside \note{...}, scaled to fit 90% of the note's width and 45% of the page height (keepaspectratio), because beamer's note page does not break: an image taller than the notes area was cut off and pushed the note's text off the page (checked with a tall image in a plain beamer presenter compile; not in a full SlideMage presenter compile). Keys are \includegraphics keys and override the limits. The help catalogue (latex_help.py) and docs/SlideMageCommands.md describe it. The unused-media scan reads the slide source, so an image used only in a note counts as used; notes are typeset only in the presenter compile, so no alt text is involved.
+
+NEW: Notes pages can show images: write \SMNoteImage{media/picture.png} inside a \note{...}.
