@@ -101,12 +101,25 @@ def run_git(*args: str) -> str | None:
     return None if out is None else out.strip()
 
 
+def unreleased_fragments() -> list[Path]:
+    """The checkout's changes/*.md fragments (issue #247; see change_fragments): changes merged since the release
+    VERSION_NUMBER names. A frozen build has no checkout, so none."""
+    folder = Path(__file__).resolve().parents[2] / "changes"
+    try:
+        return sorted(p for p in folder.glob("*.md") if p.name != "README.md")
+    except OSError:
+        return []
+
+
 def _compute_version_string() -> str:
-    commit_dt = run_git(
-        "show", "-s", "--format=%cd", "--date=format:%Y-%m-%d %H:%M", "HEAD"
-    )
-    if commit_dt is None:
+    """VERSION_NUMBER, from a checkout with the commit date; with unreleased fragments the number is that of the
+    last release, so it gets "+dev" and the commit: "v0.17.38+dev (3e7142f9, 2026-11-18 14:02)"."""
+    out = run_git("show", "-s", "--format=%h %cd", "--date=format:%Y-%m-%d %H:%M", "HEAD")
+    if out is None:
         return VERSION_NUMBER
+    commit, _, commit_dt = out.partition(" ")
+    if unreleased_fragments():
+        return f"{VERSION_NUMBER}+dev ({commit}, {commit_dt})"
     return f"{VERSION_NUMBER} ({commit_dt})"
 
 

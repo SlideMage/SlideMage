@@ -3,8 +3,8 @@
 """The About sheet (UI_REDESIGN_PLAN.md, step 9): SlideMage's release history and license.
 
 The history is version.parse_history(), read from CHANGELOG.md, so a new history
-entry appended there (this project's per-bump convention) shows up here with nothing else to
-keep in sync. Each entry collapses to a one-line summary (some run to a dozen sentences);
+entry appended there (one per release, by packaging/make_release.py) shows up here with nothing else to
+keep in sync; a checkout's unreleased changes/ fragments are listed on top, as "Unreleased". Each entry collapses to a one-line summary (some run to a dozen sentences);
 "show more" expands that one entry in place. The toggles are links of a made-up `toggle:N` scheme
 that the browser must not navigate to (setOpenLinks(False)), so anchorClicked() is all that
 reacts. The license is the LICENSE file, read on each open.
@@ -12,14 +12,26 @@ reacts. The license is the LICENSE file, read on each open.
 from __future__ import annotations
 
 import html as _html
+import re
 
 from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import QPlainTextEdit, QTextBrowser
 
-from ... import app_info
+from ... import app_info, change_fragments
 from ... import version as version_mod
 from ..kit.theme import ThemeManager
 from ..kit.widgets import ModalSheet
+
+
+def _unreleased() -> list[version_mod.HistoryEntry]:
+    """The changes/ fragments of a checkout (issue #247) as entries headed "Unreleased"; none in a frozen build."""
+    entries = []
+    for fragment in change_fragments.read_all():
+        description = re.sub(r"\s+", " ", " ".join(fragment.technical)).strip()
+        entries.append(version_mod.HistoryEntry(
+            version="Unreleased", meta=f"{fragment.kind}, {fragment.reason}", description=description,
+            summary=fragment.summary, news=fragment.news))
+    return entries
 
 
 class AboutSheet(ModalSheet):
@@ -54,8 +66,8 @@ class AboutSheet(ModalSheet):
         scrollbar.setValue(position)
 
     def _build_html(self) -> str:
-        # Newest first -- parse_history() returns oldest first.
-        entries = list(reversed(version_mod.parse_history()))
+        # Newest first -- parse_history() returns oldest first; a checkout's unreleased fragments on top.
+        entries = _unreleased() + list(reversed(version_mod.parse_history()))
         parts = [f"<h2>SlideMage &mdash; {_html.escape(version_mod.VERSION)}</h2>"]
         for index, entry in enumerate(entries):
             summary = app_info.summary(entry.description)
