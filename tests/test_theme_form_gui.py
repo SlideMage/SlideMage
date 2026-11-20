@@ -31,7 +31,7 @@ def make_form(path: Path, text: str | None = None):
 
 
 def cell_for(form: ThemeForm, key: str, mode: str) -> _Cell:
-    """The cell that reads `key` (a palette colour or a role) in `mode`: its reader's bound defaults."""
+    """The cell that reads `key` (a palette color or a role) in `mode`: its reader's bound defaults."""
     for cell in form._cells:
         if (cell.read.__defaults__ or ()) == (key, mode):
             return cell
@@ -65,7 +65,7 @@ def test_a_dark_value_and_follow(qapp):
     assert cell.tag.text() == "set here" and not cell.tag.isHidden() and not hasattr(cell, "reset")
     assert cell.edit.text() == "#ff6b6b"
     cell.edit.setText("")
-    cell._commit()                     # empty: the line goes, the base colour applies
+    cell._commit()                     # empty: the line goes, the base color applies
     assert "\\SMSetColor{c_custom_red}" not in editor.text()
     cell.update_value()
     assert cell.edit.text() == "" and cell.edit.placeholderText() == "#b00000"

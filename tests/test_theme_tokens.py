@@ -23,7 +23,7 @@ def test_fixed_contains_exactly_the_fields_equal_across_themes():
 
 
 @pytest.mark.parametrize("dark", [False, True])
-def test_syntax_colours_read_tokens(dark):
+def test_syntax_colors_read_tokens(dark):
     theme = ThemeManager(dark=dark)
     assert theme.syntax_colors() == {
         **{name: getattr(theme.tokens, f"syntax_{name}")

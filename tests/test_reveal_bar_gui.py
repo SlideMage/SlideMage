@@ -245,7 +245,7 @@ COLORS = ((1, 0, 0), (0, 1, 0), (0, 0, 1), (1, 1, 0))
 
 @pytest.fixture
 def steps_renders(tmp_path, monkeypatch):
-    """preview_target's renderers, replaced by recorders that write a four-page PDF, one colour per page."""
+    """preview_target's renderers, replaced by recorders that write a four-page PDF, one color per page."""
     pdf = tmp_path / "steps.pdf"
     doc = pymupdf.open()
     for color in COLORS:

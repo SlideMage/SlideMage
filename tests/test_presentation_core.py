@@ -38,9 +38,9 @@ def test_a_double_width_pdf_splits_into_slide_and_notes(deck):
 
 def test_slide_and_notes_render_their_own_half(deck):
     image = deck.render(2, SLIDE, 400, 400)
-    colour = image.pixelColor(image.width() - 5, image.height() - 5)    # away from the text
+    color = image.pixelColor(image.width() - 5, image.height() - 5)    # away from the text
     expected = page_color(2)
-    assert colour.redF() == pytest.approx(expected[0], abs=0.02) and colour.blueF() == pytest.approx(expected[2], abs=0.02)
+    assert color.redF() == pytest.approx(expected[0], abs=0.02) and color.blueF() == pytest.approx(expected[2], abs=0.02)
     notes = deck.render(2, NOTES, 400, 400)
     assert notes.pixelColor(notes.width() - 5, notes.height() - 5).lightness() > 240      # white paper
     assert deck.render(0, SLIDE, 400, 400) is deck.render(0, SLIDE, 400, 400)           # cached
@@ -324,7 +324,7 @@ def test_the_default_pen_is_opaque_blue_and_the_laser_pure_red():
     assert defaults.pen_color == "#ff0055ff" and defaults.laser_color == "#ff0000" and defaults.eraser_size == 0.02
 
 
-def test_saved_colours_are_kept_but_the_old_defaults_saved_with_every_other_setting_become_the_new_ones(ctx):
+def test_saved_colors_are_kept_but_the_old_defaults_saved_with_every_other_setting_become_the_new_ones(ctx):
     layout_settings.set("presentation", {"laser_color": "#ff2020", "pen_color": "#c0ffd400", "confirm_links": False})
     old = PresentationSettings.load()
     assert (old.laser_color, old.pen_color, old.confirm_links) == ("#ff0000", "#ff0055ff", False)

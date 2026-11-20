@@ -25,10 +25,10 @@
 \input{SlideMage_setup}
 
 % ---------------------------------------------------------------------------
-% Palette: greys only. Each colour keeps its role's contrast (SlideMage_setup.tex, 'Palette'):
+% Palette: greys only. Each color keeps its role's contrast (SlideMage_setup.tex, 'Palette'):
 % dark text on every c_secondary_* block title >= 4.5:1, so none is darker than #898989;
 % the link underline c_secondary_blue on white >= 3:1, so it is no lighter than #949494.
-% The c_tertiary_* colours are the 50% blends with white, as in the SlideMage template.
+% The c_tertiary_* colors are the 50% blends with white, as in the SlideMage template.
 % ---------------------------------------------------------------------------
 \definecolor{c_primary_dark}{HTML}{222222}      % body text, footer box
 \definecolor{c_primary_highlight}{HTML}{555555} % accent: bullets, highlights, code commands
@@ -53,7 +53,7 @@
 \definecolor{c_custom_brown}{HTML}{5a5a5a}
 % Code comments: a little darker than c_primary_gray, for 4.5:1 on the code panel.
 \definecolor{SMCodeCommentColor}{HTML}{5f5f5f}
-% Code commands in the accent grey (6.4:1 on the panel), copied here, before the colour modes: the
+% Code commands in the accent grey (6.4:1 on the panel), copied here, before the color modes: the
 % framework's default would take c_primary_highlight after the mode's palette line, which in dark mode
 % is a light grey on the light code panel (1.4:1; the theme form's contrast check, v0.16.8).
 \colorlet{SMCodeKeywordColor}{c_primary_highlight}
@@ -75,13 +75,13 @@
 \renewcommand{\SMProgressBarColor}{c_primary_gray}
 
 % ---------------------------------------------------------------------------
-% Colour modes (SlideMage_setup.tex, 'Colour modes and role colours'): light, the colours
+% Color modes (SlideMage_setup.tex, 'Color modes and role colors'): light, the colors
 % above, is the base mode; dark starts from the framework's dark preset (canvas #484848 from
 % c_primary_dark, white text). The title bar turns dark with white text, like the footer. The
 % palette's dark greys are near the canvas (1.0:1 to 1.5:1), so dark mode gives the accent grey
 % and the custom greys, which slides write as text and lines, light values, each at least 4.7:1
 % there (v0.16.5); bullets, \alert, rules, image borders and markers follow, as they are made of them.
-% A deck picks the mode in Deck settings -> Colours.
+% A deck picks the mode in Deck settings -> Colors.
 % ---------------------------------------------------------------------------
 \SMDeclareMode{light}{}
 \SMDeclareMode{dark}{dark}

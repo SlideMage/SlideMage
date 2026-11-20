@@ -1,13 +1,13 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-r"""Where on the sample slides a colour is used (docs/plans/theme-editor.md, section 3.3, stage C1c part 2): the theme
-form dims everything but the parts of the slides that a focused colour field changes.
+r"""Where on the sample slides a color is used (docs/plans/theme-editor.md, section 3.3, stage C1c part 2): the theme
+form dims everything but the parts of the slides that a focused color field changes.
 
-The sample deck is rendered once more with every colour role (or every palette colour) given a colour of its own from
+The sample deck is rendered once more with every color role (or every palette color) given a color of its own from
 PROBES, added as lines right before \input{SlideMage_base} of a copy of the theme. In that PDF every piece of text and
-every drawn path carries its colour exactly, so `usage_map` reads those (no pixels: an anti-aliased edge between two
-probe colours can look like a third) and keeps a box for each. One probe render per kind ("role", "palette") and colour
-mode, made when a colour field first gets the focus and kept until the text changes."""
+every drawn path carries its color exactly, so `usage_map` reads those (no pixels: an anti-aliased edge between two
+probe colors can look like a third) and keeps a box for each. One probe render per kind ("role", "palette") and color
+mode, made when a color field first gets the focus and kept until the text changes."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -22,25 +22,25 @@ PAD_X, PAD_Y = 1.5, 1.0     # points of room around text, lines and small shapes
 JOIN_GAP = 3.0              # points: boxes on one line no further apart become one (a word space)
 MIN_SIDE = 0.5              # points: a thinner rest of a covered box is dropped
 _LEVELS = (0x10, 0x50, 0x90, 0xD0)
-# Colours far from each other (64 per channel) and from greys, so a probe colour says whose it is.
+# Colors far from each other (64 per channel) and from greys, so a probe color says whose it is.
 PROBES: tuple[str, ...] = tuple(f"{r:02X}{g:02X}{b:02X}" for r in _LEVELS for g in _LEVELS for b in _LEVELS
                                 if len({r, g, b}) > 1)
-EXTRA_HOOKS = ("SMHighlightTitleTextColor",)     # a colour hook that is no role of the mode layer
+EXTRA_HOOKS = ("SMHighlightTitleTextColor",)     # a color hook that is no role of the mode layer
 
 
 def names(kind: str, file: ThemeFile) -> list[str]:
-    """What a probe render of `kind` tells apart: role ids (and the extra hooks), or palette colour names."""
+    """What a probe render of `kind` tells apart: role ids (and the extra hooks), or palette color names."""
     if kind == "role":
         roles = [f.name[5:] for f in theme_fields.FIELDS if f.name.startswith("role:")]
         return roles + list(EXTRA_HOOKS)
     palette = [f.name for f in theme_fields.FIELDS if f.group == "palette"]
-    own = [s.key for s in file.settings if s.kind in ("colour", "colorlet") and s.editable
+    own = [s.key for s in file.settings if s.kind in ("color", "colorlet") and s.editable
            and s.key not in theme_fields.BY_NAME]
     return palette + list(dict.fromkeys(own))
 
 
 def probe_text(text: str, kind: str, mode: str) -> tuple[str, dict[str, str]]:
-    """The theme's text with the probe lines for `kind` in colour mode `mode` ("" for the base) and {probe hex: name}."""
+    """The theme's text with the probe lines for `kind` in color mode `mode` ("" for the base) and {probe hex: name}."""
     file = ThemeFile(text)
     at = file.base_line_start
     if at < 0:
@@ -85,7 +85,7 @@ class Box(NamedTuple):
 
 @dataclass
 class UsageMap:
-    """Where each colour is on each page: `pages[p][i]` are the boxes of `names[i]` on page p + 1."""
+    """Where each color is on each page: `pages[p][i]` are the boxes of `names[i]` on page p + 1."""
     kind: str
     mode: str
     names: list[str]
@@ -116,17 +116,17 @@ class UsageMap:
         return [name for _order, name in sorted(found, key=lambda entry: -entry[0])]
 
 
-def _name_of(colour, by_rgb: dict[tuple, int]) -> int:
-    """The 1-based index of the probe a PDF colour (floats, grey or RGB) is, or 0. The PDF holds the colour as it was
+def _name_of(color, by_rgb: dict[tuple, int]) -> int:
+    """The 1-based index of the probe a PDF color (floats, grey or RGB) is, or 0. The PDF holds the color as it was
     set, so only rounding separates it from the probe."""
-    if colour is None:
+    if color is None:
         return 0
-    if len(colour) == 1:
-        colour = tuple(colour) * 3
-    if len(colour) != 3:
+    if len(color) == 1:
+        color = tuple(color) * 3
+    if len(color) != 3:
         return 0
-    rgb = tuple(min(_LEVELS, key=lambda level: abs(level - c * 255)) for c in colour)
-    if any(abs(level - c * 255) > 2 for level, c in zip(rgb, colour)):
+    rgb = tuple(min(_LEVELS, key=lambda level: abs(level - c * 255)) for c in color)
+    if any(abs(level - c * 255) > 2 for level, c in zip(rgb, color)):
         return 0
     return by_rgb.get(rgb, 0)
 
@@ -221,7 +221,7 @@ def _page_boxes(page, by_rgb: dict[tuple, int], count: int) -> list[list[Box]]:
 
 
 def usage_map(pdf: Path, mapping: dict[str, str], kind: str, mode: str) -> UsageMap:
-    """Read a probe render: every piece of text and every drawn path whose colour is a probe colour, as boxes; what an
+    """Read a probe render: every piece of text and every drawn path whose color is a probe color, as boxes; what an
     opaque rectangle painted later covers is cut out of them."""
     import pymupdf
 

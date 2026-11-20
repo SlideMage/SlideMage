@@ -357,7 +357,7 @@ def test_a_deck_switch_rebuilds_the_slide_list_once_and_so_does_a_rescan_of_the_
     assert window.state.deck.name != "gone" and len(count) == 1
 
 
-def test_the_current_view_compiles_once_in_another_colour_mode(env, monkeypatch):
+def test_the_current_view_compiles_once_in_another_color_mode(env, monkeypatch):
     """v0.16.4: with one other mode the command names it and compiles at once; with several it asks."""
     from dataclasses import replace as dc_replace
     from PySide6.QtWidgets import QInputDialog

@@ -1,6 +1,6 @@
 // The glue between xterm.js and SlideMage (ui/workspace/terminal/web.py). Python owns the process: this page
 // only draws what it is sent (base64 of the raw bytes), reports keystrokes, its size and selections, and
-// takes colours from the app theme. Copy: Ctrl+Shift+C (Cmd+C on macOS). Paste: Ctrl+V or Ctrl+Shift+V
+// takes colors from the app theme. Copy: Ctrl+Shift+C (Cmd+C on macOS). Paste: Ctrl+V or Ctrl+Shift+V
 // (Cmd+V on macOS) -- Ctrl+Shift+V matches the terminal-emulator convention, Ctrl+V matches every other
 // text field in the OS, so both work.
 "use strict";

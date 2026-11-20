@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The app side of colour modes: the modes a template declares, the deck's mode line, and the mode a view sees (no TeX)."""
+"""The app side of color modes: the modes a template declares, the deck's mode line, and the mode a view sees (no TeX)."""
 from __future__ import annotations
 
 import pytest
@@ -102,7 +102,7 @@ def test_the_shipped_templates_offer_light_and_dark(key, tmp_path):
 
 @pytest.mark.parametrize("key", ["slidemage", "grayscale"])
 def test_the_text_accents_of_the_shipped_templates_read_on_the_dark_canvas(key, tmp_path):
-    """v0.16.5: the palette colours slides write as text keep at least 4.4:1 on the dark canvas (they were 1.0:1 to
+    """v0.16.5: the palette colors slides write as text keep at least 4.4:1 on the dark canvas (they were 1.0:1 to
     2.2:1 before the templates gave them dark-mode values); in light mode they are the template's own."""
     from slidemage import theme_colors
 

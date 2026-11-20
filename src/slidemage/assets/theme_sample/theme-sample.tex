@@ -1,6 +1,6 @@
 % !TeX program = lualatex
 % The theme sample deck (docs/plans/theme-editor.md, section 3.3): the theme form renders it with the theme being
-% edited, one page per group of fields. SlideMage writes the two lines marked below (the colour mode and the theme)
+% edited, one page per group of fields. SlideMage writes the two lines marked below (the color mode and the theme)
 % and copies snippet.tex next to it; nothing else changes, so a page's number says what it shows (theme_sample.PAGES).
 \documentclass[aspectratio=169]{beamer}
 %MODE%
@@ -11,7 +11,7 @@
 % The logo's width for the theme form (theme_measures.logo_rect): a click on the logo goes to its field.
 \makeatletter
 \hypersetup{pdfinfo={SMLogoWidth={\strip@pt\dimexpr\SMLogoWidth*7200/7227\relax}}}
-% Every footnote marker is a link without a border or a colour, so the form finds where the markers are
+% Every footnote marker is a link without a border or a color, so the form finds where the markers are
 % (theme_sample.read_geometry, FOOTNOTE_MARKS): a click on one goes to the footnote marker setting.
 \AtBeginDocument{%
 	\let\SMSampleFootnoteMark\SMFootnoteMark

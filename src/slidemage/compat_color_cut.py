@@ -1,14 +1,14 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 """compat.py change "dark-switch-removed" (v0.16.0, BREAKING): the dark switch \\SMDarkMode is gone; a deck chooses
-its theme's colour mode with \\newcommand{\\SMModeOverride}{<mode>} before the template, dark included.
+its theme's color mode with \\newcommand{\\SMModeOverride}{<mode>} before the template, dark included.
 
 | Before                                   | After                                   |
 |------------------------------------------|-----------------------------------------|
 | \\newcommand{\\SMDarkMode}{} in a deck      | \\newcommand{\\SMModeOverride}{dark}       |
 | % SlideMage dark mode: true (template)   | % SlideMage modes: light, dark, and \\SMDeclareMode / \\SMSetRole lines |
-| \\ifdefined\\SMDarkMode ... \\fi (template) | \\SMSetRole{<role>}{dark}{<colour>} lines  |
-| c_primary_dark turned white in dark mode | c_primary_dark is one colour; slides use c_text (colour-roles-in-slides) |
+| \\ifdefined\\SMDarkMode ... \\fi (template) | \\SMSetRole{<role>}{dark}{<color>} lines  |
+| c_primary_dark turned white in dark mode | c_primary_dark is one color; slides use c_text (color-roles-in-slides) |
 
 migrate(root): decks (decks/ and decks/archive/; not the regenerated _slidemage* decks) lose their \\SMDarkMode
 definition; it becomes \\newcommand{\\SMModeOverride}{dark} in the same place, or simply goes when the deck already
@@ -16,7 +16,7 @@ has a mode line (that line always won). Idempotent.
 
 detect(root): those decks, plus every live \\SMDarkMode or `% SlideMage dark mode:` line in a project template, the
 project macros, a slide or a snippet: a template's hand-written dark block cannot be converted mechanically (its
-colours become \\SMDeclareMode, \\SMSetColor and \\SMSetRole lines), so it is reported with file and line.
+colors become \\SMDeclareMode, \\SMSetColor and \\SMSetRole lines), so it is reported with file and line.
 
 Installed themes are not the project's: themes.check_contents refuses one whose template still uses \\SMDarkMode, and
 Settings offers its update.
@@ -142,7 +142,7 @@ CHANGE = Change(
         "\\newcommand{\\SMModeOverride}{dark} before the template. The old switch \\newcommand{\\SMDarkMode}{} stops the "
         "compile with a message, a template's `% SlideMage dark mode: true` line and \\ifdefined\\SMDarkMode block do "
         "nothing any more, and c_primary_dark stays dark in every mode: slides that use it as ink need the role "
-        "colors (the change \"colour-roles-in-slides\", which Update project runs too). Installed themes made for "
+        "colors (the change \"color-roles-in-slides\", which Update project runs too). Installed themes made for "
         "an older SlideMage are not used until they are updated."),
     fix=(
         "In each deck, replace \\newcommand{\\SMDarkMode}{} by \\newcommand{\\SMModeOverride}{dark} (Update project "

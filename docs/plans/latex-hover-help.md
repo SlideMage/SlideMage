@@ -71,7 +71,7 @@ is on a key in the command's `[...]`:
   html, viewport, rect)`, where `rect` is the token's rectangle so the tooltip goes away once the pointer leaves the
   word. With no hit, `QToolTip.hideText()` and `event.ignore()`.
 * `format_help_html(hit, theme)`: the signature in the monospace font, the summary, a two-column table of keys
-  (the hovered key in bold), and the example. The colours come from the kit theme tokens, so it works in light and
+  (the hovered key in bold), and the example. The colors come from the kit theme tokens, so it works in light and
   dark. Its width is capped at about 60 characters.
 * The `SourceEditor` protocol is unchanged, because the hover belongs to this implementation. A different editor
   (EMBEDDED_EDITOR_PLAN.md) can reuse `latex_help` as it is.

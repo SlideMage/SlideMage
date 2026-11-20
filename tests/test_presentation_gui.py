@@ -313,8 +313,8 @@ def test_a_drawing_lands_on_the_same_spot_of_the_slide_on_screens_of_different_s
         image = canvas.grab().toImage()
         for fraction, drawn in (((0.5, 0.5), True), ((0.25, 0.5), True), ((0.5, 0.9), False), ((0.5, 0.1), False)):
             at = spot(canvas, fraction)
-            colour = image.pixelColor(at.x(), at.y())
-            assert (colour.red() > 200 and colour.green() < 60) == drawn, (canvas.view, fraction)
+            color = image.pixelColor(at.x(), at.y())
+            assert (color.red() > 200 and color.green() < 60) == drawn, (canvas.view, fraction)
 
 
 def test_a_typed_number_is_the_slide_number_when_the_nav_data_fits_else_the_page(make):
@@ -371,7 +371,7 @@ def test_changing_the_layout_leaves_no_updates_to_deleted_widgets(make, capfd):
     assert counter.text() == "Page 5 / 6"
 
 
-def test_the_laser_menu_changes_colour_and_size_for_this_presentation_only(make):
+def test_the_laser_menu_changes_color_and_size_for_this_presentation_only(make):
     from PySide6.QtWidgets import QSlider, QToolButton
     saved = PresentationSettings()
     controller = make(settings=saved)
@@ -514,7 +514,7 @@ def test_the_eraser_menu_has_only_a_size_slider_and_changes_it_for_this_presenta
     controller = make(settings=PresentationSettings())
     assert any(tool.text() == "Eraser" for tool in controller.presenter.findChildren(QToolButton))
     menu = controller._eraser_menu(controller.presenter)
-    assert menu.findChildren(QPushButton) == []                       # no colour
+    assert menu.findChildren(QPushButton) == []                       # no color
     slider = menu.findChildren(QSlider)[0]
     assert slider.value() == 20
     slider.setValue(50)
@@ -617,16 +617,16 @@ def test_the_eraser_size_is_on_the_settings_sheet(qapp):
     assert PresentationSettings.load().eraser_size == pytest.approx(0.02) and tab.eraser_size.value() == pytest.approx(2.0)
 
 
-# -- colour picking without OK -----------------------------------------------------------------
+# -- color picking without OK -----------------------------------------------------------------
 
 def open_pen_dialog(controller):
     from PySide6.QtWidgets import QPushButton
     menu = controller._pen_menu(controller.presenter)
     menu.findChildren(QPushButton)[0].click()
-    return controller._colour_dialog
+    return controller._color_dialog
 
 
-def test_a_colour_chosen_in_the_dialog_applies_at_once_and_a_press_on_the_slide_closes_it_and_draws_in_it(make):
+def test_a_color_chosen_in_the_dialog_applies_at_once_and_a_press_on_the_slide_closes_it_and_draws_in_it(make):
     controller = make(settings=PresentationSettings())
     dialog = open_pen_dialog(controller)
     assert dialog is not None and not dialog.isModal() and dialog.isVisible()
@@ -636,48 +636,48 @@ def test_a_colour_chosen_in_the_dialog_applies_at_once_and_a_press_on_the_slide_
     current = canvases(controller.presenter, CurrentView)[0]
     QTest.mousePress(current, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, spot(current, (0.3, 0.3)))
     QTest.mouseRelease(current, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, spot(current, (0.3, 0.3)))
-    assert controller._colour_dialog is None and not dialog.isVisible()
+    assert controller._color_dialog is None and not dialog.isVisible()
     assert controller.session.strokes[0][0].color == "#ff00aa00" and controller.settings.pen_color == "#ff00aa00"
 
 
-def test_cancel_and_escape_put_back_the_colour_from_before_the_dialog(make):
+def test_cancel_and_escape_put_back_the_color_from_before_the_dialog(make):
     controller = make(settings=PresentationSettings())
     before = controller.settings.pen_color
     dialog = open_pen_dialog(controller)
     dialog.setCurrentColor(QColor("#00aa00"))
     dialog.reject()
-    assert controller.settings.pen_color == before and controller._colour_dialog is None
+    assert controller.settings.pen_color == before and controller._color_dialog is None
     dialog = open_pen_dialog(controller)
     dialog.setCurrentColor(QColor("#123456"))
     QTest.keyClick(dialog, Qt.Key.Key_Escape)
     assert controller.settings.pen_color == before and not controller.ended
 
 
-def test_the_laser_colour_uses_the_same_dialog_and_keys_in_it_do_not_reach_the_presentation(make):
+def test_the_laser_color_uses_the_same_dialog_and_keys_in_it_do_not_reach_the_presentation(make):
     from PySide6.QtWidgets import QPushButton
     controller = make(settings=PresentationSettings())
     menu = controller._laser_menu(controller.presenter)
     menu.findChildren(QPushButton)[0].click()
-    dialog = controller._colour_dialog
+    dialog = controller._color_dialog
     dialog.setCurrentColor(QColor("#0000ff"))
     assert controller.settings.laser_color == "#0000ff"
     page = controller.session.page
     for key in (Qt.Key.Key_Right, Qt.Key.Key_B, Qt.Key.Key_D):
         QTest.keyClick(dialog, key)
     assert controller.session.page == page and not controller.session.black and controller.session.tool != TOOL_PEN
-    controller.accept_colour()
+    controller.accept_color()
     assert controller.settings.laser_color == "#0000ff"               # closing as OK keeps it
 
 
-def test_ending_the_presentation_closes_an_open_colour_dialog(make):
+def test_ending_the_presentation_closes_an_open_color_dialog(make):
     controller = make(settings=PresentationSettings())
     dialog = open_pen_dialog(controller)
     controller.end()
-    assert controller._colour_dialog is None and not dialog.isVisible()
+    assert controller._color_dialog is None and not dialog.isVisible()
 
 
 @pytest.mark.parametrize("key", ["laser_color", "pen_color"])
-def test_settings_swatch_picker_saves_valid_colours_and_cancel_keeps_them(qapp, monkeypatch, key):
+def test_settings_swatch_picker_saves_valid_colors_and_cancel_keeps_them(qapp, monkeypatch, key):
     from PySide6.QtWidgets import QColorDialog
     from slidemage.ui.kit.widgets import ColorSwatchButton
     from slidemage.ui.presentation.settings_page import PresentationTab
@@ -699,7 +699,7 @@ def test_settings_swatch_picker_saves_valid_colours_and_cancel_keeps_them(qapp, 
     expected = chosen.name(QColor.NameFormat.HexArgb if key == "pen_color" else QColor.NameFormat.HexRgb)
     assert getattr(PresentationSettings.load(), key) == expected
     assert button.text() == expected and "#55aaff" in button.styleSheet()
-    chosen = QColor()  # Cancel returns an invalid colour.
+    chosen = QColor()  # Cancel returns an invalid color.
     button.click()
     assert calls[-1] == QColor(expected)
     assert getattr(PresentationSettings.load(), key) == expected and button.text() == expected
@@ -720,7 +720,7 @@ def test_presenter_swatch_live_accept_and_cancel_never_persist(make, tool):
     menu = getattr(controller, f"_{tool}_menu")(controller.presenter)
     swatch = menu.findChildren(ColorSwatchButton)[0]
     swatch.click()
-    dialog = controller._colour_dialog
+    dialog = controller._color_dialog
     assert dialog.isVisible() and not dialog.isModal()
     dialog.setCurrentColor(QColor("#55aaff"))
     assert QColor(getattr(controller.settings, key)) == QColor("#55aaff")
@@ -730,8 +730,8 @@ def test_presenter_swatch_live_accept_and_cancel_never_persist(make, tool):
     assert getattr(controller.settings, key) == before
     assert QColor(before).name() in swatch.styleSheet()
     swatch.click()
-    controller._colour_dialog.setCurrentColor(QColor("#123456"))
-    controller.accept_colour()
+    controller._color_dialog.setCurrentColor(QColor("#123456"))
+    controller.accept_color()
     assert QColor(getattr(controller.settings, key)) == QColor("#123456")
     controller.end()
     assert PresentationSettings.load() == saved

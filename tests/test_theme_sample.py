@@ -227,7 +227,7 @@ def test_the_progress_bars_track_follows_the_slide_background():
             pix = doc[1].get_pixmap(dpi=72)
             canvas = pix.pixel(int(pix.width * 0.5), int(pix.height * 0.6))
             column = [pix.pixel(int(pix.width * 0.9), y) for y in range(pix.height - 12, pix.height)]
-            # the track is the coloured (not grey) row at the bottom, right of the bar
+            # the track is the colored (not grey) row at the bottom, right of the bar
             track = next(p for p in reversed(column) if max(p) - min(p) > 12)
             tracks[mode] = (canvas, track)
     (light_canvas, light_track), (dark_canvas, dark_track) = tracks[""], tracks["dark"]

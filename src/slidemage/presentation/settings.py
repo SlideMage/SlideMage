@@ -11,7 +11,7 @@ from ..ui import layout_settings
 
 SETTINGS_KEY = "presentation"
 TIMER_END, TIMER_DURATION = "end", "duration"
-# The colours that were the defaults until v0.14.21. save() writes every field, so anyone who saved any setting has
+# The colors that were the defaults until v0.14.21. save() writes every field, so anyone who saved any setting has
 # them in layout.json as if chosen; load() reads exactly these values as the current defaults.
 OLD_DEFAULTS = {"laser_color": "#ff2020", "pen_color": "#c0ffd400"}
 

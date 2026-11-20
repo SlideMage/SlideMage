@@ -1,13 +1,13 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The sample slides above the theme form (docs/plans/theme-editor.md, section 3.3, stage C1c): the theme sample deck
-rendered with the theme as it is in the editor, in the colour mode picked here, one page at a time.
+rendered with the theme as it is in the editor, in the color mode picked here, one page at a time.
 
 A render starts a pause after the last change of the buffer (from the form or from typing), runs in a thread, and a
 change during a render stops it and starts again once it has ended. Nothing renders while the panel is hidden; it
 catches up when it is shown.
 
-A click on the slide goes the other way (`picked`): to the field of the colour role that is there, or, with the switch
+A click on the slide goes the other way (`picked`): to the field of the color role that is there, or, with the switch
 on Layout, to the layout setting of that part of the slide; where several are, a small menu asks which."""
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ from ..kit.widgets import Button, SegmentedControl, Surface, caption, text_label
 
 RENDER_DELAY_MS = 1200      # after the last change of the buffer
 DISPLAY_DPI = 220           # the pages as shown: sharp when the panel is large
-DIM_ALPHA = 165             # of 255: the black over the page where the focused colour is not
+DIM_ALPHA = 165             # of 255: the black over the page where the focused color is not
 LIT_RADIUS = 0.004          # of the page width: the corners of the box around lit text
 PICKS = (("color", "Colors"), ("layout", "Layout"))     # what a click on the slide looks for
 PICK_KEY = "theme_sample_pick"      # remembered (layout_settings)
@@ -122,7 +122,7 @@ class ThemeSampleView(Surface):
         self.geometry: dict = {}        # of the last render: the hooks' lengths and the page's size, in bp
         self._measure: Optional[tuple[str, Optional[float]]] = None     # (key, value in bp or None) of a layout field
         self.display_unit = theme_measures.DEFAULT_DISPLAY_UNIT        # the form's, for the marks' labels
-        # Where a colour is used (theme_probe): the focused field's (kind, name, mode), the maps by (kind, mode, text).
+        # Where a color is used (theme_probe): the focused field's (kind, name, mode), the maps by (kind, mode, text).
         self._read_usage = read_usage or theme_probe.usage_map
         self._usage: Optional[tuple[str, str, str]] = None
         self._maps: dict[tuple[str, str, str], Optional[theme_probe.UsageMap]] = {}
@@ -169,7 +169,7 @@ class ThemeSampleView(Surface):
         self.image.installEventFilter(self)
         layout.addWidget(self.image, 1)
         self.spinner = _Spinner(self.image)
-        # One small picture per page: a click shows it; a dot under the pages that use the focused colour.
+        # One small picture per page: a click shows it; a dot under the pages that use the focused color.
         self.thumbs = QHBoxLayout()
         self.thumbs.setSpacing(SPACE.sm)
         self._thumb_buttons: list[QToolButton] = []
@@ -236,7 +236,7 @@ class ThemeSampleView(Surface):
         threading.Thread(target=work, daemon=True, name="theme-sample").start()
 
     def _update_busy(self) -> None:
-        """The spinner turns while the slides render or a colour-usage probe runs; the form stays usable."""
+        """The spinner turns while the slides render or a color-usage probe runs; the form stays usable."""
         self.spinner.run(self._cancel is not None or bool(self._probing))
         self.spinner.move(self.image.width() - self.spinner.width() - 8, 8)
         self.spinner.raise_()
@@ -271,10 +271,10 @@ class ThemeSampleView(Surface):
         self._show_image()
         self._update_busy()
 
-    # --- where a colour is used ------------------------------------------------------------------------------------
+    # --- where a color is used ------------------------------------------------------------------------------------
 
     def show_usage(self, kind: str, name: str, mode: str) -> None:
-        """A colour field has the focus: dim the slides but where `name` (a role id or a palette colour) is used, in its
+        """A color field has the focus: dim the slides but where `name` (a role id or a palette color) is used, in its
         column's mode `mode`, on a page that uses it."""
         if kind not in theme_probe.KINDS:
             return
@@ -299,7 +299,7 @@ class ThemeSampleView(Surface):
             self.say("")
 
     def say(self, text: str) -> None:
-        """A line under the slides about the last click (while no colour field has the focus)."""
+        """A line under the slides about the last click (while no color field has the focus)."""
         self._pick_note = text
         self.usage_label.setText(self._usage_text() or text)
 
@@ -373,7 +373,7 @@ class ThemeSampleView(Surface):
             return
         self._pending = None
         found = self._found(fraction)
-        if found and found[0][0] in ("logo", "footnotes"):      # needs neither the colours nor a layout page
+        if found and found[0][0] in ("logo", "footnotes"):      # needs neither the colors nor a layout page
             self.say("")
             self.picked.emit(found[0][0], found[0][1])
             return
@@ -554,7 +554,7 @@ class ThemeSampleView(Surface):
         return f"Lit up: where {label} is used (page{'s' if len(pages) > 1 else ''} {listed})."
 
     def _composite(self, image: QImage) -> QImage:
-        """`image` dimmed but where the focused colour is used."""
+        """`image` dimmed but where the focused color is used."""
         usage = self._map()
         if usage is None or self._usage is None:
             return image

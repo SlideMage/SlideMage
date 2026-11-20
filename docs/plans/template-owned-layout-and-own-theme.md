@@ -631,7 +631,7 @@ mix it in.
        `\SMWatermarkDefault` (and siblings), documented at the end of `SlideMage_setup.tex`; the patches mini frames
        apply to beamer's navigation are installed only when they are used. Round logo and circle bar were dropped
        with the rest.
-     - Colour roles are `\SMColorA`..`E`, `\SMColorDark`, `\SMColorFG` ...; base calls `\SMApplyColorRoles` where it
+     - Color roles are `\SMColorA`..`E`, `\SMColorDark`, `\SMColorFG` ...; base calls `\SMApplyColorRoles` where it
        called `\gothamset{background=light}`.
      - Gotham's title/section patches of beamer's commands went with the format switches. Their one visible trace was
        `\gotham@subsectiontitleformat` in `.aux` files (`\SMAgendaSubsection`); base keeps that name as a no-op.
@@ -647,9 +647,9 @@ mix it in.
    - Load-time computations that depend on hooks move to base or to the point of use.
    - Pixel-identical. Not breaking.
    - **Done 2026-10-27 (v10.2.0), notes for the later steps:**
-     - Moved into `beamerthemeSlideMage.sty` (base 6998 → 5712 lines, theme 2213 → 3467): the colours of footnote,
+     - Moved into `beamerthemeSlideMage.sty` (base 6998 → 5712 lines, theme 2213 → 3467): the colors of footnote,
        footline text, buttons, canvas, frame title text and blocks (block, alerted, example, reference, info; the
-       theme's own native-block colours and `alertedBlock`/`example text` are gone); the text margins; `\SMBulletDot`
+       theme's own native-block colors and `alertedBlock`/`example text` are gone); the text margins; `\SMBulletDot`
        as the `itemize item/subitem/subsubitem/subsubsubitem` template (no longer set at the start of every
        `standardframe`; a bare `\begin{frame}` now gets SlideMage's bullet too, approved by the user on 2026-10-27 with before/after images); `\SMInstituteLogo`, `\SMInstituteLogoGraphic`,
        `\SMFrametitleHookCode`, `\chapterlogo` with `\SMChapterLogoPath`, `\SMFrametitleFullHeightYellow`,
@@ -659,7 +659,7 @@ mix it in.
        `\SMBlockTitleWithMarker`, `\SMSetBlockBullets`, `\SMBulletDotBlack`, `\SMAlertMarker`; `SMPlainEnumerate`.
      - The theme is expl3 syntax, so the moved code sits between `\ExplSyntaxOff` and `\ExplSyntaxOn` and is the base's
        text unchanged (its `\makeatletter` pairs dropped, `@` is a letter in a package).
-     - `beamer` colours are read when used, so `\setbeamercolor{footline}{fg=\SMFooterTextColor}` and the like are plain
+     - `beamer` colors are read when used, so `\setbeamercolor{footline}{fg=\SMFooterTextColor}` and the like are plain
        theme-load code. Only the `\colorlet`s are eager: `\SMApplyColorRoles` (public, called by the base after the
        template) sets `SMColorDark` from `c_primary_dark`, `SMColorA` from `\SMTitleBoxColor` and the canvas default, then
        runs the roles; the theme runs the internal `\__SM_apply_color_roles:` alone at load.
@@ -731,12 +731,12 @@ mix it in.
      "Done" notes below. Two rules shape the table: a value that a slide reads by name (the real project reads
      `\SMContentTopAlign` 319×, `\SMFooterBoxHeight` 89×, `\SMTitleBarBottomAlign` 77×, `\SMMinipageTopCorrection`
      122×, `\SMFlatItemizeTopCorrection` 123×, ...) stays defined under that name whatever its class; and a hook is a
-     value, never a piece of code (colours, logo and fonts of the profile are not repeated here).
+     value, never a piece of code (colors, logo and fonts of the profile are not repeated here).
 
      | Name | Where | Value | Class | Reason |
      |---|---|---|---|---|
      | `\SMTopMargin` | s:152 | 41.58bp | H | already a hook (step 4) |
-     | `\SMLogoHeight`, `\SMInstituteLogoPath`, colour roles | s:118-142 | 3ex, file, names | H | already hooks |
+     | `\SMLogoHeight`, `\SMInstituteLogoPath`, color roles | s:118-142 | 3ex, file, names | H | already hooks |
      | `\SMFrametitleTopPadding`, `...BottomPadding`, `...LeftPadding` | t:1128-1135 | 2.2ex each | H | space around the title; plan table. Definition moves from the theme to the catalog |
      | `\SMFrametitleRightPadding` | t:1131, s:160 | 2.2ex, set to 0.28cm in setup | H | same; the theme's 2.2ex default is dead (setup always overrides it), so the catalog holds 0.28cm |
      | `\SMFrameSubtitleStrutEnd`, `\SMFrameSubtitleSep` | t:1147-1151 | 0pt, ` ---~` | H | space/text between title and subtitle; already mentioned in the catalog |
@@ -1006,8 +1006,8 @@ mix it in.
      profile.
    - **Look:** a taller title box; en dashes as bullet points; arabic numbers as footnote symbols (instead of the
      theme's currency signs, `\g_SM_footnote_symbols_seq`); a taller footer box; a wider logo area (SlideMage's own
-     logo, with more space around it); wider left and right margins; a grayscale colour scheme (palette and role
-     colours in greys only).
+     logo, with more space around it); wider left and right margins; a grayscale color scheme (palette and role
+     colors in greys only).
    - **Everything through the catalog.** The template sets only catalog settings and picks its profile, like any
      template. Where one of these wishes has no catalog setting (likely the bullet glyph or the footnote symbols),
      that is a finding: add the hook to `SlideMage_setup.tex` with the SlideMage template's value as default, so the
@@ -1030,7 +1030,7 @@ mix it in.
        no lighter than #949494 for 3:1 on white); light title bar with dark text, dark footer with white text; en dash
        bullets, arabic footnote marks; logo 3.6ex with 0.6cm right padding; title paddings 3.4ex, title left padding
        1cm; Top Margin 52bp; text margins 1cm; footer box 11pt, footer text 6pt, id 4.5pt. The SlideMage logo stays
-       coloured (the user's wish).
+       colored (the user's wish).
      - **Profile** `latex/SlideMage_layout_lmroman.tex`, written by `tools/calibrate_font_profile.py --new` (fonts as
        `\setsansfont` and `\setmainfont`: beamer sets frames in the sans family). All checks ok under the SlideMage
        template and under grayscale. **Where the tool fell short, and what changed:** (1) it could not make a profile,
@@ -1041,10 +1041,10 @@ mix it in.
        own fonts and math fonts excepted). Not changed: `\SMLinespread`/`\SMParskip` are copied defaults, a design
        choice the tool cannot measure; the profile header's description is free text.
      - **Findings (a), framework, fixed** (each a catalog hook with today's value as default, so SlideMage renders
-       identically): no bullet setting (`\SMBulletSymbol{<colour>}`), no footnote marker setting (`\SMFootnoteMark`,
-       default `\SMFnSymbol`); the standout frame's text was Gotham's pale yellow fffff0 whatever the title bar colour,
+       identically): no bullet setting (`\SMBulletSymbol{<color>}`), no footnote marker setting (`\SMFootnoteMark`,
+       default `\SMFnSymbol`); the standout frame's text was Gotham's pale yellow fffff0 whatever the title bar color,
        unreadable on a light bar (`\SMStandoutTextColor`, empty = as before); a highlightframe kept the title text
-       colour on its signal colour, dark on dark grey here (`\SMHighlightTitleTextColor`, default `\SMTitleTextColor`);
+       color on its signal color, dark on dark grey here (`\SMHighlightTitleTextColor`, default `\SMTitleTextColor`);
        `\alert` and the optional progress bar used Gotham's orange and yellow with no setting (`\SMAlertTextColor`,
        `\SMProgressBarColor`); the default footnote signs assumed Fira: Latin Modern (lmsans since v10.6.0, lmroman)
        lacks ₹ ₽ ₺ ₴ ₪, so footnotes 3-7 had no visible marker -- the theme now uses only the signs the sans font has
@@ -1087,7 +1087,7 @@ mix it in.
      sets 10pt through it instead of redefining the size commands. Render identical everywhere (SlideMage at 11pt,
      grayscale at 10pt as in v10.18.1).
    - **B. Manual slides that assume the SlideMage look:** fixed-width drawings and tables sized relative to
-     `\linewidth` (1ym, 1im, 1bb), drawings of the template placed and coloured from catalog values (1nt's footer
+     `\linewidth` (1ym, 1im, 1bb), drawings of the template placed and colored from catalog values (1nt's footer
      arrows, 1gr's title bar), too-full slides shortened or split (1rv, 1td, 1w4, 1uw, and any others found), with
      German partners. Rule: a manual slide fits every template the framework ships.
    - **C. Text that states defaults as facts:** 1nz and 2rg describe the currency-sign footnote markers; they say

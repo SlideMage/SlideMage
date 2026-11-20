@@ -114,7 +114,7 @@ LOGO_DPI = 288
 
 def logo_visible_right(page: fitz.Page, width: float, bar_bottom: float, logo_height: float | None = None) -> float:
     """The institute logo's visible right edge: the rightmost rendered pixel
-    in the top-right corner that differs from the page's corner colour.
+    in the top-right corner that differs from the page's corner color.
     Measured on pixels, not on the PDF's drawing list: a logo's outermost
     shape can be a white card with a dark outline (SlideMage's own logo) or
     a small text mark (an institution logo's "®"), and the drawing-list version skipped

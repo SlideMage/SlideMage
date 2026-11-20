@@ -126,7 +126,7 @@ class WindowHostUi:
             window.model_choices_changed.emit(route_id)
 
     def terminal_tokens(self) -> Any:
-        """The design tokens the embedded terminal is coloured with."""
+        """The design tokens the embedded terminal is colored with."""
         window = self.window
         if window is None:
             raise RuntimeError("no window")

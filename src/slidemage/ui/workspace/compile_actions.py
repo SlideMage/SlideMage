@@ -70,7 +70,7 @@ def stop_now(window) -> None:
 
 def compile_current(window, kind: str, pages: Optional[list[int]] = None, mode: Optional[str] = None) -> None:
     """A Compile menu entry for the current deck: `kind` is a view,
-    "chapters" or "presenter" (compiler.build_jobs); `mode` a one-off colour mode (CompileJob.mode)."""
+    "chapters" or "presenter" (compiler.build_jobs); `mode` a one-off color mode (CompileJob.mode)."""
     deck = window.state.deck
     if deck is not None:
         jobs = compiler.build_jobs(deck, kind, pages)
@@ -146,14 +146,14 @@ def shown_view(window) -> Optional[str]:
 
 
 def other_modes(window) -> list[tuple[str, str]]:
-    """The colour modes the current view's template offers besides the one the view compiles in."""
+    """The color modes the current view's template offers besides the one the view compiles in."""
     deck = window.state.deck
     project = getattr(window, "project", None)
     return compiler.other_modes(project, deck, shown_view(window)) if deck is not None and project else []
 
 
 def compile_in_mode(window) -> None:
-    """Compile -> "Current view in another colour mode" (v0.16.4): the same view once in another mode of its
+    """Compile -> "Current view in another color mode" (v0.16.4): the same view once in another mode of its
     template, for instance a light handout of a dark projection, into its own PDF ("<deck>-<view>-<mode>.pdf");
     the deck and its views keep their modes. With one other mode it is used at once; with several, asked."""
     modes = other_modes(window)

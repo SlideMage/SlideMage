@@ -79,7 +79,7 @@ class PresentationController(QObject):
         self.ended = False
         self._digits = ""
         self._wheel = 0
-        self._colour_dialog: Optional[QColorDialog] = None
+        self._color_dialog: Optional[QColorDialog] = None
         self.session.page_changed.connect(self._page_changed)
         self.session.link_requested.connect(self._link)
 
@@ -122,7 +122,7 @@ class PresentationController(QObject):
         if self.ended:
             return
         self.ended = True
-        self.accept_colour()
+        self.accept_color()
         self.keep_awake.stop()
         self.session.set_pointer(None)
         for window in (self.presenter, self.audience):
@@ -139,7 +139,7 @@ class PresentationController(QObject):
                 empty_text: str = "", top: bool = False, name: str = "") -> SlideCanvas:
         slide_input = SlideInput(self.session, self.deck, self.settings) if interactive else None
         if slide_input is not None:
-            slide_input.on_press = self.accept_colour       # a press on the slide settles an open colour dialog
+            slide_input.on_press = self.accept_color       # a press on the slide settles an open color dialog
         canvas = SlideCanvas(self.deck, view, part=part, laser_color=self.settings.laser_color,
                              laser_size=self.settings.laser_size, settings=self.settings, name=name, background=background, empty_text=empty_text, top=top, slide_input=slide_input)
         self.session.changed.connect(canvas.update)
@@ -275,20 +275,20 @@ class PresentationController(QObject):
         return bar
 
     def _pen_menu(self, parent: QWidget) -> QMenu:
-        """Colour and width of the pen, for this presentation only; the saved ones (the Settings sheet) stay."""
-        return self._colour_menu(parent, "Pen", "pen_color", "pen_width", (2, 50), alpha=True)
+        """Color and width of the pen, for this presentation only; the saved ones (the Settings sheet) stay."""
+        return self._color_menu(parent, "Pen", "pen_color", "pen_width", (2, 50), alpha=True)
 
     def _laser_menu(self, parent: QWidget) -> QMenu:
-        """Colour and size of the laser pointer, for this presentation only, like the pen's."""
-        return self._colour_menu(parent, "Laser", "laser_color", "laser_size", (5, 60), alpha=False)
+        """Color and size of the laser pointer, for this presentation only, like the pen's."""
+        return self._color_menu(parent, "Laser", "laser_color", "laser_size", (5, 60), alpha=False)
 
     def _eraser_menu(self, parent: QWidget) -> QMenu:
         """The size of the eraser circle, for this presentation only, like the pen's."""
-        return self._colour_menu(parent, "Eraser", None, "eraser_size", (5, 100), alpha=False)
+        return self._color_menu(parent, "Eraser", None, "eraser_size", (5, 100), alpha=False)
 
-    def _colour_menu(self, parent: QWidget, name: str, color_key: Optional[str], size_key: str, steps: tuple[int, int], *,
+    def _color_menu(self, parent: QWidget, name: str, color_key: Optional[str], size_key: str, steps: tuple[int, int], *,
                      alpha: bool) -> QMenu:
-        """A colour button (none for the eraser) and a size slider (tenths of a percent of the slide height) that
+        """A color button (none for the eraser) and a size slider (tenths of a percent of the slide height) that
         change self.settings, which the canvases read as they draw."""
         menu = QMenu(parent)
         panel = QWidget()
@@ -313,7 +313,7 @@ class PresentationController(QObject):
 
         def pick() -> None:
             menu.close()
-            self.choose_colour(f"{name} color", QColor(getattr(self.settings, color_key)), alpha, apply)
+            self.choose_color(f"{name} color", QColor(getattr(self.settings, color_key)), alpha, apply)
 
         def resize(value: int) -> None:
             setattr(self.settings, size_key, value / 1000)
@@ -333,13 +333,13 @@ class PresentationController(QObject):
         menu.setToolTip(f"For this presentation only; the Settings sheet keeps its own {name.lower()}.")
         return menu
 
-    # -- the colour dialog --------------------------------------------------------------
+    # -- the color dialog --------------------------------------------------------------
 
-    def choose_colour(self, title: str, start: QColor, alpha: bool, apply: Callable[[QColor], None]) -> QColorDialog:
-        """A colour dialog that does not block the presentation: every colour picked in it is applied at once through
-        `apply`, so the next press on a slide draws with it. A press on a slide settles it (accept_colour), as
-        OK would; Cancel or Esc puts back the colour it opened with."""
-        self.accept_colour()
+    def choose_color(self, title: str, start: QColor, alpha: bool, apply: Callable[[QColor], None]) -> QColorDialog:
+        """A color dialog that does not block the presentation: every color picked in it is applied at once through
+        `apply`, so the next press on a slide draws with it. A press on a slide settles it (accept_color), as
+        OK would; Cancel or Esc puts back the color it opened with."""
+        self.accept_color()
         dialog = QColorDialog(start, self.presenter or self.audience)
         dialog.setWindowTitle(title)
         dialog.setModal(False)
@@ -348,16 +348,16 @@ class PresentationController(QObject):
             dialog.setOption(QColorDialog.ColorDialogOption.ShowAlphaChannel)
         dialog.currentColorChanged.connect(apply)
         dialog.rejected.connect(lambda: apply(start))
-        dialog.finished.connect(lambda _result: setattr(self, "_colour_dialog", None)
-                                if self._colour_dialog is dialog else None)
-        self._colour_dialog = dialog
+        dialog.finished.connect(lambda _result: setattr(self, "_color_dialog", None)
+                                if self._color_dialog is dialog else None)
+        self._color_dialog = dialog
         dialog.show()
         dialog.activateWindow()
         return dialog
 
-    def accept_colour(self) -> None:
-        """Closes an open colour dialog keeping its colour (a press on a slide counts as OK)."""
-        dialog, self._colour_dialog = self._colour_dialog, None
+    def accept_color(self) -> None:
+        """Closes an open color dialog keeping its color (a press on a slide counts as OK)."""
+        dialog, self._color_dialog = self._color_dialog, None
         if dialog is not None:
             dialog.accept()
 

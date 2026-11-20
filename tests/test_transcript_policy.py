@@ -63,12 +63,12 @@ def test_instructor_notes_stay_out_of_transcript_and_draft_context(ctx,
     assert "PRIVATE" not in context.body
 
 
-def test_transcript_omits_colour_but_keeps_the_coloured_text(ctx, tmp_path: Path):
-    # Before v4.1.0 the colour name was left glued to the text:
+def test_transcript_omits_color_but_keeps_the_colored_text(ctx, tmp_path: Path):
+    # Before v4.1.0 the color name was left glued to the text:
     # "c_primary_highlightdata dredging", "C00000Promotes non-replicable results".
-    path = tmp_path / "abc-EN-Colours-current.tex"
+    path = tmp_path / "abc-EN-Colors-current.tex"
     path.write_text(
-        r"\begin{standardframe}{Colours}"
+        r"\begin{standardframe}{Colors}"
         r"\begin{itemize}"
         r"\item ``\textbf{\textcolor{c_primary_highlight}{data dredging}} involves''"
         r"\item \textcolor[HTML]{C00000}{Promotes non-replicable results}"
@@ -86,5 +86,5 @@ def test_transcript_omits_colour_but_keeps_the_coloured_text(ctx, tmp_path: Path
     assert "- Promotes non-replicable results" in body
     assert "Switched and boxed and framed" in body
     assert "| A | B |" in body
-    for colour in ("c_primary_highlight", "C00000", "HTML", "red", "yellow", "white", "gray", "EEEEEE"):
-        assert not re.search(rf"(?<![a-z]){colour}(?![a-z])", body), colour
+    for color in ("c_primary_highlight", "C00000", "HTML", "red", "yellow", "white", "gray", "EEEEEE"):
+        assert not re.search(rf"(?<![a-z]){color}(?![a-z])", body), color

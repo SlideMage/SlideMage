@@ -1,15 +1,15 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-r"""The colours a deck's theme gives the c_* names: what the toolbar's Color menu shows, read from the same
+r"""The colors a deck's theme gives the c_* names: what the toolbar's Color menu shows, read from the same
 SlideMage_template_<key>.tex (and the files it \inputs, SlideMage_setup.tex first) that the render loads, so a swatch
-is the colour the slide gets. Only plain \definecolor lines with a HTML, RGB, rgb or gray value and \colorlet lines
-of a colour expression (`name`, `name!60`, `name!60!other`) are read; a name a theme defines otherwise keeps
+is the color the slide gets. Only plain \definecolor lines with a HTML, RGB, rgb or gray value and \colorlet lines
+of a color expression (`name`, `name!60`, `name!60!other`) are read; a name a theme defines otherwise keeps
 latex_edit's fallback swatch.
 
-Since v0.16.3 the colours are those of a colour mode (latex/SlideMage_setup.tex, "Colour modes and role colours"):
+Since v0.16.3 the colors are those of a color mode (latex/SlideMage_setup.tex, "Color modes and role colors"):
 the template's \SMDeclareMode, \SMSetColor and \SMSetRole lines are read and resolved in the framework's order
 (\SM@applymode): the mode's preset, then its palette lines, then each role from its explicit line, else the preset's
-derived value, else the base mode's source. The role colours (c_text, c_canvas, ...) lead the menu."""
+derived value, else the base mode's source. The role colors (c_text, c_canvas, ...) lead the menu."""
 from __future__ import annotations
 
 import re
@@ -27,7 +27,7 @@ _SETROLE_RE = re.compile(r"\\SMSetRole\{(\w+)\}\{(\w+)\}\{([A-Za-z0-9_!.]+)\}")
 _INPUT_RE = re.compile(r"\\input\{([A-Za-z0-9_.-]+)\}")
 _CATEGORIES = {"custom": 0, "primary": 1, "secondary": 2, "tertiary": 3}
 
-# The role colours slides can name, their base-mode source and what the menu says they are (SlideMage_setup.tex).
+# The role colors slides can name, their base-mode source and what the menu says they are (SlideMage_setup.tex).
 ROLES: dict[str, tuple[str, str]] = {
     "text": ("c_primary_dark", "body text, lines"),
     "text_muted": ("c_primary_gray", "secondary text"),
@@ -181,8 +181,8 @@ def _resolve(theme: _Theme, mode: str) -> dict[str, str]:
 
 
 def theme_colors(template: str, root: Path, mode: str = "") -> dict[str, str]:
-    """{colour name: "#rrggbb"} the template `template` gives in colour mode `mode` ("" or an undeclared one: its base
-    mode), for the project at `root`: the palette and the role colours c_text, c_canvas, ..."""
+    """{color name: "#rrggbb"} the template `template` gives in color mode `mode` ("" or an undeclared one: its base
+    mode), for the project at `root`: the palette and the role colors c_text, c_canvas, ..."""
     return _resolve(_load(template, root), mode)
 
 
@@ -195,8 +195,8 @@ def theme_colors_for_text(text: str, root: Path, mode: str = "") -> dict[str, st
 
 
 def swatches(template: str, root: Path, mode: str = "") -> dict[str, str]:
-    """The Color menu's names in menu order and their swatches under `template` in `mode`: the role colours first,
-    then the palette, its own colours over latex_edit's fallback ones."""
+    """The Color menu's names in menu order and their swatches under `template` in `mode`: the role colors first,
+    then the palette, its own colors over latex_edit's fallback ones."""
     resolved = theme_colors(template, root, mode)
     roles = {"c_" + role: resolved["c_" + role] for role in ROLES if "c_" + role in resolved}
     merged = {**latex_edit.TEXTCOLOR_SWATCHES, **resolved}
@@ -206,6 +206,6 @@ def swatches(template: str, root: Path, mode: str = "") -> dict[str, str]:
 
 
 def role_hint(name: str) -> str:
-    """What the role colour `name` is for ("" for a palette name)."""
+    """What the role color `name` is for ("" for a palette name)."""
     role = ROLES.get(name[2:]) if name.startswith("c_") else None
     return role[1] if role else ""

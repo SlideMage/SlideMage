@@ -37,7 +37,7 @@ class SlideCanvas(QWidget):
         self.laser_color, self.background, self.empty_text, self.top = laser_color, background, empty_text, top
         self.input = slide_input
         self._hover: Optional[QPointF] = None      # where the mouse is over this canvas (the eraser circle follows it)
-        self.settings = settings     # when given, the laser's colour and size are read from it as it is drawn
+        self.settings = settings     # when given, the laser's color and size are read from it as it is drawn
         self.name = name             # "Current" or "Next" in the presenter window's top-left corner
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setMinimumSize(40, 30)

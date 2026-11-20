@@ -7,7 +7,7 @@ Every Qt widget picks up `QApplication.setStyleSheet()` changes automatically,
 cascading through the whole widget tree with no registration step: toggling
 dark/light is "rebuild the QSS string, reapply it".
 
-The tokens also supply the source editor's per-character syntax colours,
+The tokens also supply the source editor's per-character syntax colors,
 which QSS cannot express.
 """
 from __future__ import annotations

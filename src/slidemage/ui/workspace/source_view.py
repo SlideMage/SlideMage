@@ -634,7 +634,7 @@ class SourcePane(Surface):
         menu.popup_below(anchor)
 
     def _deck_swatches(self) -> dict[str, str]:
-        """The Color menu's colours under the open deck's theme and colour mode in the view shown (the project's
+        """The Color menu's colors under the open deck's theme and color mode in the view shown (the project's
         render template in its base mode with no deck), read when the menu opens, so a switched deck, view, mode or
         theme shows at once."""
         state = getattr(self.app, "state", None)

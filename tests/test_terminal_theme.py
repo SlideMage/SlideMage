@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The terminal's colours (ui/workspace/terminal/theme.py): every ANSI colour must be readable on the card
+"""The terminal's colors (ui/workspace/terminal/theme.py): every ANSI color must be readable on the card
 it is drawn on, in both themes (the stock xterm palette has yellow and white that vanish on white)."""
 from __future__ import annotations
 
@@ -26,11 +26,11 @@ def contrast(a: str, b: str) -> float:
 
 
 @pytest.mark.parametrize("tokens", [LIGHT, DARK], ids=["light", "dark"])
-def test_every_colour_reads_on_the_background(tokens):
+def test_every_color_reads_on_the_background(tokens):
     theme = xterm_theme(tokens)
     assert theme["background"] == tokens.surface and theme["foreground"] == tokens.text
-    colours = [theme[name] for name in NAMES] + [theme[f"bright{name.capitalize()}"] for name in NAMES]
-    assert len(colours) == 16
+    colors = [theme[name] for name in NAMES] + [theme[f"bright{name.capitalize()}"] for name in NAMES]
+    assert len(colors) == 16
     for name in NAMES:
         assert contrast(theme[name], theme["background"]) >= 3.0, name
         assert contrast(theme[f"bright{name.capitalize()}"], theme["background"]) >= 3.0, name

@@ -65,7 +65,7 @@ The AI mode row is above the columns and outside their scrolling areas. It remai
 | Cloud unavailable under policy | Disabled Cloud choice with **Cloud disabled for this project**. No cloud request can start. A mode change never alters the policy. |
 | Selected profile needs setup | Keep its selected-mode treatment and show **Setup required** with a specific action. Missing Claude Code sign-in or a local vision model never causes a hidden change of route. |
 
-Use theme-specific semantic warning colours with readable text and visible focus in light and dark themes. The icon, explicit wording, and selected state carry the meaning without colour; never rely on a coloured dot alone. Announce committed mode changes accessibly. Reserve red for failures or blocked actions; amber communicates that Cloud is engaged. The persistent warning complements the existing first-cloud-use disclosure and does not add a repeated confirmation for every task.
+Use theme-specific semantic warning colors with readable text and visible focus in light and dark themes. The icon, explicit wording, and selected state carry the meaning without color; never rely on a colored dot alone. Announce committed mode changes accessibly. Reserve red for failures or blocked actions; amber communicates that Cloud is engaged. The persistent warning complements the existing first-cloud-use disclosure and does not add a repeated confirmation for every task.
 
 ## One assistant, two execution choices
 
@@ -229,7 +229,7 @@ Steps 1–3 give the first usable increment. Do not wait for a full application 
 - Switching route does not transmit content, restart a task on another provider, lose a draft, silently discard proposals, or leave hidden cloud work under Local.
 - Changing slide/deck/language during a task never retargets captured work. Unsaved edits, frozen versions, protected content, and reviewed images remain protected.
 - Step/status labels come from real events. Generation and compilation percentages are shown only when the backend supplies meaningful measurements. Stop and failed-preview states accurately describe changes already made.
-- Test keyboard-only navigation, screen-reader labels/live updates, colour-independent status, long titles, narrow panes, scaling, and dark/light themes. Preserve terminal keyboard handling; application shortcuts must not unexpectedly consume terminal input.
+- Test keyboard-only navigation, screen-reader labels/live updates, color-independent status, long titles, narrow panes, scaling, and dark/light themes. Preserve terminal keyboard handling; application shortcuts must not unexpectedly consume terminal input.
 - Reuse `test_chat_gui.py`, `test_claude_code_gui.py`, `test_claude_tasks_gui.py`, `test_ai_models_gui.py`, `test_side_panels_gui.py`, `test_workspace_window.py`, `test_compile_flow_gui.py`, `test_images_page_gui.py`, and lifecycle/provider tests. Add coverage only for new contracts. Use fake providers/CLI, disposable project copies, and no real cloud calls for UI tests.
 - Compare fixed representative outputs for compile, transcript, conversion, partial patch, and snapshot flows after navigation changes. Test frozen Linux/Windows builds for terminal lifecycle and resizing; report unavailable platform checks.
 

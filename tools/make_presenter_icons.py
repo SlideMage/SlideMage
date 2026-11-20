@@ -7,7 +7,7 @@ step 3): presenter-icon.ico (Windows, 16-256 px), presenter-icon.icns (macOS) an
     python tools/make_presenter_icons.py
 
 The SVG is 392x310, so it is centred vertically on a square canvas, transparent around it. QSvgRenderer ignores
-the SVG's dark-mode @media block, so the light-mode colours as written are what is drawn.
+the SVG's dark-mode @media block, so the light-mode colors as written are what is drawn.
 Pass --keep-pngs DIR to also keep the PNG set (16, 24, 32, 48, 64, 128, 256, 512, 1024 px) in DIR."""
 from __future__ import annotations
 

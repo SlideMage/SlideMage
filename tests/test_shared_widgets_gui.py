@@ -104,11 +104,11 @@ def test_host_widget_options_and_faint_restyle_both_ways(qapp, dark):
 
 
 def test_swatch_keeps_its_label_and_only_emits_clicked(qapp):
-    button = ColorSwatchButton("Colour")
+    button = ColorSwatchButton("Color")
     heard = []
     button.clicked.connect(lambda: heard.append(True))
     button.set_color("#8055aaff")
-    assert button.text() == "Colour"
+    assert button.text() == "Color"
     assert "#55aaff" in button.styleSheet()
     button.click()
     assert heard == [True]

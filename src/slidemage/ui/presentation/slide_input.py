@@ -31,7 +31,7 @@ class SlideInput:
         self.session, self.deck, self.settings = session, deck, settings
         self.mode = IDLE
         self._press: tuple[float, float] = (0.0, 0.0)
-        self.on_press: Optional[Callable[[], None]] = None    # told first of every press (the colour dialog closes)
+        self.on_press: Optional[Callable[[], None]] = None    # told first of every press (the color dialog closes)
 
     def press(self, x: float, y: float, ctrl: bool) -> None:
         session = self.session

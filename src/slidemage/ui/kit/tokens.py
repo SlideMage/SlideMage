@@ -168,7 +168,7 @@ class Tokens:
 
 VIEWS = ("instructor", "during", "after")
 
-# Values that are identical across themes, including the overlay's base colour.
+# Values that are identical across themes, including the overlay's base color.
 _WARNING_SOLID = "#b45309"
 FIXED = MappingProxyType({
     "on_solid": "#ffffff",
@@ -190,7 +190,7 @@ _L_OK_FG, _D_OK_FG = "#065f46", "#a7f3d0"
 _L_WARNING_BG, _D_WARNING_BG = "#fef3c7", "#422006"
 _L_WARNING_FG, _D_WARNING_FG = "#78350f", "#fde68a"
 
-# Categorical colours shared by status, reveal steps and terminal base hues.
+# Categorical colors shared by status, reveal steps and terminal base hues.
 ACCENTS = MappingProxyType({
     "light": MappingProxyType({
         "neutral": _L_TEXT, "slate": "#475569", "blue": _L_INFO,

@@ -15,7 +15,7 @@
 %
 % Rules for a template:
 %   1. Before this file: only \SMLayoutProfile (below; fira unless set) and \SMModeOverride
-%      (the colour mode, written into the deck by SlideMage). Both decide what this file computes.
+%      (the color mode, written into the deck by SlideMage). Both decide what this file computes.
 %   2. Between this file and SlideMage_base: \setlength, \renewcommand,
 %      \definecolor and \colorlet on the names in this catalog. Every name
 %      exists already, so a misspelt \renewcommand is an error instead of a
@@ -242,8 +242,8 @@
 \newcommand{\SMAlertTextColor}{SMLightOrange}          % \alert{} text; the theme's orange EB811B
 \newcommand{\SMProgressBarColor}{SMDeepYellowOrange}   % the optional progress bar (below); the theme's yellow FFCC00
 % Block title text: one role for all five kinds, and one per kind that follows it unless a template names it (the
-% default is the dark text the blocks always had). The fill of each kind stays its c_secondary_* colour; a template
-% that fills a title with a dark colour sets the text white, e.g. \renewcommand{\SMBlockTitleTextColor}{c_primary_white}.
+% default is the dark text the blocks always had). The fill of each kind stays its c_secondary_* color; a template
+% that fills a title with a dark color sets the text white, e.g. \renewcommand{\SMBlockTitleTextColor}{c_primary_white}.
 \newcommand{\SMBlockTitleTextColor}{c_primary_dark}           % title text of block (and of every kind below)
 \newcommand{\SMAlertedBlockTitleTextColor}{\SMBlockTitleTextColor}    % alertblock
 \newcommand{\SMExampleBlockTitleTextColor}{\SMBlockTitleTextColor}    % exampleblock
@@ -262,18 +262,18 @@
 %   SMCodeTextColor        \SMCodeFile text                  (c_primary_dark)
 
 % ---------------------------------------------------------------------------
-% Colour modes and role colours (v0.16.0; docs/plans/theme-editor.md, section 3.8)
+% Color modes and role colors (v0.16.0; docs/plans/theme-editor.md, section 3.8)
 % ---------------------------------------------------------------------------
-% A MODE is a colour scheme of a theme: other values for palette colours and for roles, and
+% A MODE is a color scheme of a theme: other values for palette colors and for roles, and
 % nothing else (fonts, margins, bullets and footnote markers are the theme's design). The
 % framework knows no mode name. A theme declares its modes, the first being the base mode (the
-% colours the template sets directly), and may add data lines for the others:
+% colors the template sets directly), and may add data lines for the others:
 %
 %   \SMDeclareMode{light}{}                 % the base mode: first declared, no derivation
 %   \SMDeclareMode{dark}{dark}              % {id}{derive}: derive = dark | gray | colorblind | empty
 %   \SMDeclareMode{gray}{gray}
-%   \SMSetRole{text}{dark}{c_true_white}    % {role}{mode}{colour}
-%   \SMSetColor{c_secondary_blue}{gray}{HTML}{8f8f8f}   % {palette colour}{mode}{model}{spec}
+%   \SMSetRole{text}{dark}{c_true_white}    % {role}{mode}{color}
+%   \SMSetColor{c_secondary_blue}{gray}{HTML}{8f8f8f}   % {palette color}{mode}{model}{spec}
 %
 % A line of another mode than the active one does nothing, so the lines need no \if. The
 % active mode is, in this order: \SMModeOverride, when the deck's wrapper defines it before this
@@ -284,25 +284,25 @@
 % line always wins:
 %   dark        canvas and card from c_primary_dark mixed with white (17 % and 23 %), text, line and
 %               link white, text on an accent fill and on a button black, quote attribution muted
-%   gray        every palette colour converted to its grey
+%   gray        every palette color converted to its grey
 %   colorblind  the accents (c_secondary_*) in the Okabe-Ito set, their tertiary 50 % towards white
 % Nothing applies until SlideMage_base calls \SMApplyColorRoles, after the template, so a role
 % sees the template's palette. In the base mode every role resolves to what it was before
 % modes existed: the PDFs do not change.
 %
-% PALETTE: c_true_black and c_true_white are physical colours the framework defines; no mode
-% changes them. A palette name keeps one meaning, a colour.
+% PALETTE: c_true_black and c_true_white are physical colors the framework defines; no mode
+% changes them. A palette name keeps one meaning, a color.
 %
-% ROLES: a colour name a slide uses to follow the theme and the mode (a palette name means
-% "this exact colour"). Role, colour name, and what it is in the base mode:
+% ROLES: a color name a slide uses to follow the theme and the mode (a palette name means
+% "this exact color"). Role, color name, and what it is in the base mode:
 %   text            c_text            c_primary_dark     body text, rules and lines on the canvas
 %   canvas          c_canvas          SMCanvasColor      the slide background (white unless the template sets it)
 %   card            c_card            SMCardBackgroundColor   fill of an SMCard
 %   line            c_line            SMCardBorderColor  border of an SMCard
 %   text_muted      c_text_muted      c_primary_gray     secondary text
-%   text_on_accent  c_text_on_accent  c_primary_dark     text on a coloured fill
+%   text_on_accent  c_text_on_accent  c_primary_dark     text on a colored fill
 %   link            c_link            c_custom_gray      hyperlinks, buttons
-% Roles for parts of a slide (a colour the framework reads; no colour name for slides), role and what it is in the base mode:
+% Roles for parts of a slide (a color the framework reads; no color name for slides), role and what it is in the base mode:
 %   block_title_fill, alerted_block_title_fill, example_block_title_fill, reference_block_title_fill,
 %   info_block_title_fill    the five block kinds' title fills     c_secondary_violet, _red, _green, _orange, _blue
 %   block_body_fill          the fill of a block body (and SMProcess)   c_tertiary_gray
@@ -314,15 +314,15 @@
 %   table_rule               rules of an SMTable outside a block (inside one: block_body_text)   c_primary_highlight
 %   image_border             the border SMImageBorder draws          c_primary_highlight
 %   marker                   SMHighlight, SMDottedHighlight and the warning sign   c_custom_red
-%   citation                 the colour of a citation mark          black
+%   citation                 the color of a citation mark          black
 %   strip_fill               the \progressstrip's fill   c_tertiary_yellow
 %   strip_text               the \progressstrip's text   c_text_on_accent
-%   code_keyword, code_comment, code_panel, code_text   the \SMCodeFile colours (the optional colours above)
+%   code_keyword, code_comment, code_panel, code_text   the \SMCodeFile colors (the optional colors above)
 %   button_text              the text of \beamergotobutton and its relatives   white
 % Roles that are off unless a mode sets them (v0.16.0): process_line (a border around SMProcess
-% boxes; none in the base) and inline_code (the colour of \SMCode and \SMCmd in body text; text
-% in another colour, on a title bar or a block title, keeps its colour).
-% Roles that set a hook of the catalog above (no colour name for slides): title_fill
+% boxes; none in the base) and inline_code (the color of \SMCode and \SMCmd in body text; text
+% in another color, on a title bar or a block title, keeps its color).
+% Roles that set a hook of the catalog above (no color name for slides): title_fill
 % (\SMTitleBoxColor), title_text, footer_fill (\SMFooterBoxColorDefault), footer_text, bullet,
 % alert, progress, block_title_text and, per kind, alerted_block_title_text, example_block_title_text,
 % reference_block_title_text, info_block_title_text, standout_text. A mode's line replaces the macro; without one it stays what
@@ -352,7 +352,7 @@
 	\ifx\SM@tmpa\SM@tmpb #2\else #3\fi}
 \newcommand{\SMSetRole}[3]{\SM@ifmode{#2}{\expandafter\gdef\csname SM@role@#1\endcsname{#3}}{}}
 \newcommand{\SMSetColor}[4]{\SM@ifmode{#2}{\g@addto@macro\SM@palettelines{\definecolor{#1}{#3}{#4}}}{}}
-% The colours the roles resolve into, defined now so the names exist before the template and the
+% The colors the roles resolve into, defined now so the names exist before the template and the
 % base resolve them for the active mode (\SM@applymode, called by \SMApplyColorRoles).
 \colorlet{c_text}{c_primary_dark}
 \colorlet{c_canvas}{white}
@@ -361,7 +361,7 @@
 \SM@letcolor{c_text_muted}{c_primary_gray}
 \colorlet{c_text_on_accent}{c_primary_dark}
 \colorlet{c_link}{c_custom_gray}
-% Colours of parts of a slide (roles without a colour name for slides; v0.15.10): the framework reads these names.
+% Colors of parts of a slide (roles without a color name for slides; v0.15.10): the framework reads these names.
 \colorlet{SMBlockTitleFill}{c_secondary_violet}
 \colorlet{SMAlertedBlockTitleFill}{c_secondary_red}
 \colorlet{SMExampleBlockTitleFill}{c_secondary_green}
@@ -392,7 +392,7 @@
 	\expandafter\gdef\csname SM@derived@text_muted\endcsname{c_primary_gray!60!white}%
 	\expandafter\gdef\csname SM@derived@text_on_accent\endcsname{c_true_black}%
 	\gdef\SM@derived@link{c_true_white}%
-	% v0.16.5: a button is filled with the link colour, white here, so its text is black; the quote
+	% v0.16.5: a button is filled with the link color, white here, so its text is black; the quote
 	% attribution (c_custom_gray in the base, a dark grey) is muted text
 	\expandafter\gdef\csname SM@derived@button_text\endcsname{c_true_black}%
 	\expandafter\gdef\csname SM@derived@quote_attribution\endcsname{c_primary_gray!60!white}}
@@ -409,7 +409,7 @@
 	\SM@hexcolor{c_secondary_yellow}{F0E442}\SM@hexcolor{c_secondary_violet}{CC79A7}%
 	\@for\SM@n:={blue,green,red,orange,yellow,violet}\do{%
 		\colorlet{c_tertiary_\SM@n}{c_secondary_\SM@n!50!white}}}
-% \SM@rolecolour{<role>}{<colour name>}{<base source>}
+% \SM@rolecolour{<role>}{<color name>}{<base source>}
 \newcommand{\SM@rolecolour}[3]{%
 	\ifcsname SM@role@#1\endcsname
 		\edef\SM@tmpa{\csname SM@role@#1\endcsname}%
@@ -658,7 +658,7 @@
 % ---------------------------------------------------------------------------
 % Lists
 % ---------------------------------------------------------------------------
-% The bullet of every itemize level, drawn in colour #1 (\SMBulletColor, or c_primary_dark
+% The bullet of every itemize level, drawn in color #1 (\SMBulletColor, or c_primary_dark
 % inside a block) (v10.18.0): a filled circle by default. The list's indent follows its
 % width (SlideMage_base measures it), so another glyph needs nothing else, e.g. an en dash:
 %   \renewcommand{\SMBulletSymbol}[1]{\textcolor{#1}{\textendash}}

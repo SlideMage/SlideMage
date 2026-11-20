@@ -16,7 +16,7 @@ slidemage-plugin-ollama (default: SLIDEMAGE_PLUGIN_PATH, else the sibling folder
 as dev plugins; the plugins installed on this computer are not. Without them the shots show SlideMage with no
 AI, and the chat shot is left out.
 
-The manual's own images (MANUAL_IMAGES: crops of these shots, reduced to 256 colours) are written to
+The manual's own images (MANUAL_IMAGES: crops of these shots, reduced to 256 colors) are written to
 OUT_DIR/manual/ under the names the manual's slides use; copy them into example/media/.
 
 Windows keep their logical size (WINDOW) but are rendered at --scale times the pixels (a device pixel
