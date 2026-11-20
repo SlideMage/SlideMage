@@ -9,8 +9,8 @@ writing it; the same "racy" rule as git's index), so its hash is looked at again
 the file is stat-ed once more: one that moved while it was read has no hash yet (None).
 
 Cloud-synced folders make this matter: the sync client may restore another machine's modification time
-(a changed file with an old mtime has another size or is caught by the periodic audit, see
-HashCache.audit) and may touch a file without changing it (a rehash gives the same hash again).
+(a change hidden by the same size and mtime is caught by the selected slide's strict read, `verify=True`)
+and may touch a file without changing it (a rehash gives the same hash again).
 Slide sources (`slides/*.tex`) use UTF-8 text with universal newlines; other files use their bytes.
 Free of Qt.
 """
@@ -52,7 +52,7 @@ class HashCache:
 
     def hash(self, path: Path | str, *, verify: bool = False) -> Optional[str]:
         """The SHA-256 of `path`, or None when the file is missing, unreadable or changed while read.
-        `verify` ignores the shortcut (the idle audit)."""
+        `verify` ignores the shortcut for a strict read of the selected slide."""
         key = norm(path)
         try:
             before = os.stat(path)
@@ -80,14 +80,3 @@ class HashCache:
                                  (key, before.st_size, before.st_mtime_ns, digest))
                 self._db.commit()
         return digest
-
-    def audit(self, limit: int = 20) -> list[str]:
-        """Re-read up to `limit` of the oldest-checked files ignoring the shortcut; the paths whose content
-        had changed under an unchanged size and mtime (what only a sync client can produce)."""
-        with self._lock:
-            rows = self._db.execute("SELECT path, sha256 FROM filehash ORDER BY RANDOM() LIMIT ?", (limit,)).fetchall()
-        changed = []
-        for path, old in rows:
-            if self.hash(path, verify=True) not in (old, None):
-                changed.append(path)
-        return changed

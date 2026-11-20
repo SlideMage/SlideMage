@@ -29,6 +29,7 @@ def test_validation_pass_reads_configuration_once_and_a_new_pass_sees_changes(tm
     env = dict(env, PATH=str(bin_dir))
     first, read = bytes_read(validation.configuration, root, env)
     assert read >= 5000 and first['tools']['latexmk'] == file_state(latexmk)
+    assert set(first['tools']) == {'latexmk', 'lualatex', 'biber'}
     again, read = bytes_read(validation.configuration, root, env)
     assert again == first and read == 0
     latexmk.write_bytes(b'y' * 5001)
@@ -72,9 +73,9 @@ def test_inventory_stays_current_only_when_changed_names_cannot_affect_its_input
     (root / 'media/fig.pdf').write_bytes(b'alternative')
     assert render_evidence.inventory_state(render_evidence.search_inventory(root, env), inputs) != recorded
     (root / 'media/fig.pdf').unlink()
-    (root / 'decks/optional.tex').write_text('optional')
+    (root / 'decks/SlideMage_project_macros.tex').write_text('optional')
     assert render_evidence.inventory_state(render_evidence.search_inventory(root, env), inputs) != recorded
-    (root / 'decks/optional.tex').unlink()
+    (root / 'decks/SlideMage_project_macros.tex').unlink()
     (root / 'media/alt-text.csv').write_text('image,role')
     assert render_evidence.inventory_state(render_evidence.search_inventory(root, env), inputs) != recorded
     (root / 'media/alt-text.csv').unlink()
@@ -89,3 +90,32 @@ def test_inventory_stays_current_only_when_changed_names_cannot_affect_its_input
     listed.clear()
     assert render_evidence.search_inventory(root, env, force=True) == current
     assert set(listed) == {root, picture.parent, root / 'decks'}
+
+
+def test_an_unused_file_in_any_search_folder_leaves_the_inventory_current_but_a_probe_name_does_not(tmp_path):
+    root, framework, theme = tmp_path / 'project', tmp_path / 'latex', tmp_path / 'theme'
+    for folder in (root / 'media', framework, theme):
+        folder.mkdir(parents=True)
+    picture = root / 'media/fig.png'
+    base = framework / 'SlideMage_base.tex'
+    for path in (picture, base):
+        path.write_bytes(b'read')
+    env = {'SLIDEMAGE_LATEX': str(framework), 'TEXINPUTS': str(theme)}
+    inputs = [picture, base]
+    recorded = render_evidence.inventory_state(render_evidence.search_inventory(root, env, force=True), inputs)
+
+    def current():
+        return render_evidence.inventory_state(render_evidence.search_inventory(root, env, force=True), inputs)
+
+    for unused in (root / 'SlideMage_template_x.tex', framework / 'SlideMage_template_x.tex', theme / 'SlideMage_template_x.tex',
+                   theme / 'logo.pdf', root / 'SlideMage_layout_x.tex', framework / 'SlideMage_citation_x.tex'):
+        unused.write_bytes(b'unused')
+        assert current() == recorded
+    for probe in (root / 'SlideMage_project_macros.tex', framework / '.latexmkrc', theme / 'hyphenation/hyph-xx.pat.txt'):
+        probe.parent.mkdir(exist_ok=True)
+        probe.write_bytes(b'probe')
+        assert current() != recorded
+        probe.unlink()
+        assert current() == recorded
+    (theme / 'SlideMage_base.tex').write_bytes(b'shadow')    # a file with the stem of one that was read
+    assert current() != recorded

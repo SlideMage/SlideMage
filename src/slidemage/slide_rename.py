@@ -37,11 +37,9 @@ from pathlib import Path
 from typing import Optional
 
 from .fileio import read_text_exact, write_text_exact
-from . import ai_review, alt_images, deck_editor, deck_headers, languages, slide_ids, slide_language
+from . import ai_review, alt_images, deck_editor, deck_headers, deck_language, languages, library_data, slide_ids, slide_language
 from .project import ProjectContext
 from .processes import delete_file, move_file
-
-# Decks and archived decks can hold \slide{}-family references.
 
 _MACROS = "|".join(sorted(deck_editor.ALL_MACROS))
 
@@ -78,17 +76,11 @@ def count_references(ctx: ProjectContext, id_slug: str) -> int:
     confirmation dialog before set_slide_language() rewrites them."""
     pattern = _reference_pattern(id_slug)
     total = 0
-    deck_paths = _reference_decks(ctx)
+    deck_paths = deck_language.call_files(ctx)
     for deck_path in deck_paths:
         text = read_text_exact(deck_path)
         total += len(pattern.findall(text))
     return total
-
-
-def _reference_decks(ctx: ProjectContext) -> list[Path]:
-    """Every deck file that can call a slide: the decks and the archived decks, #workdeck.tex among them."""
-    return [p for directory in ctx.deck_folders if directory.is_dir()
-            for p in directory.glob("*.tex")]
 
 
 def _rewrite_references_in_file(deck_path: Path, id_slug: str, new_id_slug: str) -> int:
@@ -135,7 +127,7 @@ def _apply_id_slug_rename(ctx: ProjectContext, id_slug: str, new_id_slug: str) -
         move_file(src, dest, ctx.root)
         ai_review.rename(ctx, src, dest)
 
-    deck_paths = _reference_decks(ctx)
+    deck_paths = deck_language.call_files(ctx)
     for deck_path in deck_paths:
         _rewrite_references_in_file(deck_path, id_slug, new_id_slug)
 
@@ -409,7 +401,7 @@ def rename_slide_id(ctx: ProjectContext, old_id: str, new_id: str, reserved: boo
             r"(\\(?:" + _MACROS + r")(?:\[[^\]]*\])?\{)("
             + "|".join(re.escape(s) for s in mapping) + r")(\})"
         )
-        deck_paths = _reference_decks(ctx)
+        deck_paths = deck_language.call_files(ctx)
         for deck_path in deck_paths:
             text = read_text_exact(deck_path)
             new_text = pattern.sub(lambda m: m.group(1) + mapping[m.group(2)] + m.group(3), text)
@@ -443,6 +435,18 @@ def rename_slide_id(ctx: ProjectContext, old_id: str, new_id: str, reserved: boo
     with contextlib.suppress(alt_images.NewerStoreError):   # a newer SlideMage's store is left as it is
         alt_images.update_slide_notes(ctx, _move_notes)
 
+    def rename_library(library):
+        for members in (library.pool, library.not_reusable):
+            if old_id in members:
+                members.remove(old_id)
+                members.add(new_id)
+        if old_id in library.topics:
+            library.topics[new_id] = library.topics.pop(old_id)
+        library.different_on_purpose = {
+            (frozenset(new_id if i == old_id else i for i in ids), fingerprint)
+            for ids, fingerprint in library.different_on_purpose}
+    library_data.update(ctx, rename_library)
+
     slide_ids.append_slide_id(ctx, new_id)
     deck_headers.regenerate_headers(ctx)
     regenerate_translation_links(ctx)
@@ -458,7 +462,7 @@ def deck_names_referencing(ctx: ProjectContext, id_slug: str) -> list[str]:
     to lose a reference before confirming, not just a bare count."""
     pattern = _reference_pattern(id_slug)
     names: list[str] = []
-    deck_paths = _reference_decks(ctx)
+    deck_paths = deck_language.call_files(ctx)
     for deck_path in deck_paths:
         text = read_text_exact(deck_path)
         if pattern.search(text):
@@ -540,7 +544,7 @@ def delete_slide_id(ctx: ProjectContext, id_slug: str, remove_deck_references: b
 
     deck_refs_removed = 0
     if remove_deck_references:
-        deck_paths = _reference_decks(ctx)
+        deck_paths = deck_language.call_files(ctx)
         for deck_path in deck_paths:
             deck_refs_removed += _remove_references_in_file(deck_path, id_slug)
 
@@ -568,4 +572,5 @@ def delete_slide_id(ctx: ProjectContext, id_slug: str, remove_deck_references: b
 
     deck_headers.regenerate_headers(ctx)
     regenerate_translation_links(ctx)
+    library_data.update(ctx, lambda _data: None)
     return {"files_removed": len(files), "deck_references_removed": deck_refs_removed}

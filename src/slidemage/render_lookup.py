@@ -57,7 +57,7 @@ def instructor_reference(request: dict, *, strict=False) -> dict | None:
     suffix = f":{unit.id_slug}:instructor:{unit.language}"
     store = resolver.store
     with store.lock:
-        rows = store.db.execute("SELECT name FROM renders WHERE substr(unit, -?)=? ORDER BY rendered_at DESC, name DESC",
+        rows = store.db.execute("SELECT key FROM renders WHERE substr(unit, -?)=? ORDER BY rendered_at DESC, key DESC",
                                 (len(suffix), suffix)).fetchall()
     for (key,) in rows:
         record = store.find(key)

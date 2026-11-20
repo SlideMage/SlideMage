@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from fnmatch import fnmatchcase
 import hashlib
 from io import BytesIO
 import json
@@ -13,7 +14,7 @@ import shutil
 import threading
 import time
 
-from . import project
+from . import citations, project, themes
 from .preview_metrics import count
 
 # The slide list's thumbnail is 56x31.5 logical pixels (ui/workspace/slide_tree.THUMB_W): this is enough for a
@@ -21,6 +22,13 @@ from .preview_metrics import count
 # (2026-10-30, direct request; was 320x180, three times what any screen used).
 THUMBNAIL_MAX = (168, 95)
 _SKIP_DIRS = {'.git', '.build', '.previews', '.backups', '.slidemage', '.pytest_cache', '__pycache__', '.venv', 'node_modules'}
+# Names whose mere appearance, in any search folder, changes a compile: the framework's optional files, the .bib
+# fallback, latexmk's configuration, hyphenation patterns and image descriptions. Any other name matters only to a
+# render that reads a file of the same stem (search_inventory). The layout profile and citation format files are
+# not listed: a render reads the one it names, and one that lacks it fails with an error naming the file, which
+# the failure records (preview_build). tests/test_framework_probes.py audits this list.
+PROBES = ('SlideMage_project_macros.tex', '*.bib',
+          '.latexmkrc', 'latexmkrc', 'hyphenation/hyph-*', 'hyph-*', 'media/alt-text.*')
 
 
 def digest(value) -> str:
@@ -92,7 +100,7 @@ TOOL_SECONDS = 30
 
 def find_tool(name: str, path: str | None):
     """shutil.which(name, path=path), looked up again at most every TOOL_SECONDS for the same PATH (a scan of
-    PATH is slow on Windows; the preview asks for six tools several times a render)."""
+    PATH is slow on Windows; the preview asks for tools several times a render)."""
     now = time.monotonic()
     known = _TOOLS.get((name, path))
     if known is None or now - known[1] >= TOOL_SECONDS:
@@ -104,21 +112,18 @@ def input_state(paths) -> dict:
     return {str(Path(path).absolute()): file_state(Path(path)) for path in sorted(set(map(str, paths)))}
 
 
-def thumbnail_png(png: bytes) -> bytes | None:
-    """Derive a small, aspect-preserving PNG from the final-page pixels."""
-    try:
-        from PIL import Image
+def webp(image: bytes, size: tuple[int, int] | None = None) -> bytes:
+    """A stored page image as lossless WebP (the rasteriser's exact pixels, about half a PNG's bytes;
+    docs/plans/render-store-fixes.md, D9), shrunk to fit `size` for the thumbnail."""
+    from PIL import Image
 
-        with Image.open(BytesIO(png)) as original:
-            original.load()
-            if original.width <= THUMBNAIL_MAX[0] and original.height <= THUMBNAIL_MAX[1]:
-                return png
-            original.thumbnail(THUMBNAIL_MAX, Image.Resampling.LANCZOS)
-            output = BytesIO()
-            original.save(output, format='PNG')
-            return output.getvalue()
-    except Exception:  # noqa: BLE001 -- malformed image data is a cacheable full-size fallback
-        return None  # Invalid legacy/test pixels keep using the full blob.
+    with Image.open(BytesIO(image)) as picture:
+        picture.load()
+        if size is not None:
+            picture.thumbnail(size, Image.Resampling.LANCZOS)
+        output = BytesIO()
+        picture.save(output, format='WEBP', lossless=True, exact=True)
+        return output.getvalue()
 
 
 def search_roots(project_root: Path, env: dict) -> tuple[Path, ...]:
@@ -140,35 +145,43 @@ def search_roots(project_root: Path, env: dict) -> tuple[Path, ...]:
 BUNDLED = '<bundled framework>'
 
 
+_BUNDLED_CACHE: dict = {}
+
+
+def _bundled_framework():
+    """(absolute folder, normalised prefix to compare names with) of the bundled framework, or (None, None). Looked up
+    once: project.template_dir stats the disk, and _place asks for every file of every unit while the sweep plans (a
+    scan of 4800 units spent about two minutes there, 2026-11-19). It does not change while the program runs."""
+    lookup = project.template_dir
+    if _BUNDLED_CACHE.get('lookup') is not lookup:
+        folder = lookup('latex')
+        folder = folder.absolute() if folder is not None else None
+        _BUNDLED_CACHE.update(lookup=lookup, folder=folder,
+                              prefix=os.path.join(os.path.normcase(str(folder)), '') if folder is not None else None)
+    return _BUNDLED_CACHE['folder'], _BUNDLED_CACHE['prefix']
+
+
 def _label(folder) -> str:
     """A search folder as evidence. SlideMage's own framework is named, not located: a one-file build unpacks it into
     a new temporary folder at every start, and a moved install would otherwise make every render stale."""
-    bundled = project.template_dir('latex')
-    return BUNDLED if bundled is not None and Path(folder).absolute() == bundled.absolute() else str(folder)
+    bundled, _prefix = _bundled_framework()
+    return BUNDLED if bundled is not None and Path(folder).absolute() == bundled else str(folder)
 
 
-def search_state(project_root: Path, env: dict) -> dict:
-    """Inventory search candidates for the precompiled format."""
-    inventories = {}
-    for root in search_roots(project_root, env):
-        entries = []
-        if not root.exists():
-            inventories[str(root)] = None
-            continue
-        for directory, dirs, files in os.walk(root, followlinks=False, onerror=lambda error: (_ for _ in ()).throw(error)):
-            dirs[:] = sorted(name for name in dirs if name not in _SKIP_DIRS)
-            parent = Path(directory)
-            # Directory symlinks could introduce an unbounded search tree.
-            if any((parent / name).is_symlink() for name in dirs):
-                raise ValueError('Unsupported symlinked TeX search directory')
-            for name in sorted(files):
-                if name.startswith(('_slidemage_', '_snapshot_')):
-                    continue
-                path = parent / name
-                relative = path.relative_to(root).as_posix()
-                entries.append([relative, str(path.resolve()) if path.is_symlink() else None])
-        inventories[str(root)] = entries
-    return inventories
+def _place(path: Path) -> str:
+    """A file's location as evidence, the bundled framework named by _label's rule."""
+    bundled, prefix = _bundled_framework()
+    if bundled is not None and os.path.normcase(str(path)).startswith(prefix) and path.is_relative_to(bundled):
+        return f'{BUNDLED}/{path.relative_to(bundled).as_posix()}'
+    return str(path)
+
+
+def without_package_dirs(texinputs: str) -> str:
+    """TEXINPUTS without the folders of installed theme and citation packages, which compiler.build_env adds. They
+    stay search roots (their files are recorded inputs), but the key must not change with the set of packages: a
+    render depends on a package only through the files it reads from it (2026-11-19, issue #251)."""
+    parents = {themes.themes_dir(), citations.citations_dir()}
+    return os.pathsep.join(value for value in texinputs.split(os.pathsep) if Path(value).parent not in parents)
 
 
 _INVENTORY_DIRS = {}
@@ -181,15 +194,18 @@ def search_inventory(project_root: Path, env: dict, *, force=False, inputs=()) -
     A listing taken within MEMO_RACY_SECONDS of its directory's mtime is taken again: a name added in the same
     clock tick (about 16 ms on Windows) leaves the mtime unchanged.
 
-    Sweep planning forces a full re-list; strict checks re-list the directories of
-    recorded inputs. The precompiled format uses whole-tree search_state instead.
+    Sweep planning forces a full re-list; strict checks, and the precompiled format's, re-list the directories of
+    recorded inputs.
+
+    `conservative` covers only the roots that hold probe names: a search root with none, or none at all (a package
+    folder that was just installed or removed), changes no render.
     """
     relist = {Path(path).absolute().parent for path in inputs}
     conservative, stems = {}, {}
     project_root = project_root.absolute()
     for root in search_roots(project_root, env):
         label = _label(root)
-        names = conservative[label] = []
+        names = []
         pending = [root]
         while pending:
             directory = pending.pop()
@@ -198,7 +214,6 @@ def search_inventory(project_root: Path, env: dict, *, force=False, inputs=()) -
             except FileNotFoundError:
                 if directory != root:
                     raise
-                conservative[label] = None
                 continue
             with _INVENTORY_LOCK:
                 known = _INVENTORY_DIRS.get(directory)
@@ -220,13 +235,13 @@ def search_inventory(project_root: Path, env: dict, *, force=False, inputs=()) -
             pending.extend(directory / name for name in known[1])
             for name in known[2]:
                 path = directory / name
-                relative = path.relative_to(project_root) if path.is_relative_to(project_root) else None
-                if (relative is not None and relative.parts[0] in {'slides', 'media', 'snippets'}
-                        and relative.as_posix() not in {'media/alt-text.csv', 'media/alt-text.json'}):
-                    stems.setdefault(path.stem, set()).add(str(path))
+                found = path.relative_to(root).as_posix()
+                if any(fnmatchcase(found.removeprefix('decks/'), pattern) for pattern in PROBES):
+                    names.append(found)
                 else:
-                    names.append(path.relative_to(root).as_posix())
-        names.sort()
+                    stems.setdefault(path.stem, set()).add(_place(path))
+        if names:
+            conservative[label] = sorted(names)
     return {'conservative': digest(conservative),
             'stems': {stem: sorted(paths) for stem, paths in stems.items()}}
 
@@ -236,7 +251,7 @@ def inventory_state(inventory: dict, inputs) -> dict:
     stems = set()
     for name in inputs:
         path = Path(name)
-        if not path.is_absolute() or str(path) in inventory['stems'].get(path.stem, ()):
+        if not path.is_absolute() or _place(path) in inventory['stems'].get(path.stem, ()):
             stems.add(path.stem)
     return {'conservative': inventory['conservative'],
             'stems': {stem: inventory['stems'].get(stem, []) for stem in sorted(stems)}}
@@ -251,7 +266,7 @@ def configuration_state(project_root: Path, env: dict) -> dict:
         rc.append(Path(env['LATEXMKRCSYS']))
     states = FileStates(search_roots(project_root, env))
     tools = {}
-    for name in ('latexmk', 'lualatex', 'pdflatex', 'xelatex', 'biber', 'bibtex'):
+    for name in ('latexmk', 'lualatex', 'biber'):
         executable = find_tool(name, env.get('PATH'))
         tools[name] = states(Path(executable)) if executable else None
     # Desktop and terminal PATHs differ; resolved tools above cover the relevant changes (2026-11-09).
@@ -261,6 +276,8 @@ def configuration_state(project_root: Path, env: dict) -> dict:
          'VARTEXFONTS', 'SLIDEMAGE_PREVIEW_FORMAT')}
     if 'SLIDEMAGE_LATEX' in relevant:
         relevant['SLIDEMAGE_LATEX'] = _label(relevant['SLIDEMAGE_LATEX'])
+    if 'TEXINPUTS' in relevant and (texinputs := without_package_dirs(relevant.pop('TEXINPUTS'))):
+        relevant['TEXINPUTS'] = texinputs  # an empty value is the same as none
     return {'environment': relevant, 'tools': tools, 'rc': input_state(rc)}
 
 
@@ -276,6 +293,7 @@ class ValidationPass:
         self.tex = {}
         self._configuration = {}
         self._inventories = {}
+        self._frameworks = {}
         self.hashed_bytes = 0
         self.dependency_seconds = 0.0
         self.configuration_seconds = 0.0
@@ -286,6 +304,13 @@ class ValidationPass:
         if ctx.root not in self._env:
             self._env[ctx.root] = compiler.build_env(ctx)
         return self._env[ctx.root]
+
+    def framework_dirs(self, root):
+        from . import slide_templates
+
+        if root not in self._frameworks:
+            self._frameworks[root] = slide_templates.framework_dirs(root)
+        return self._frameworks[root]
 
     def inputs(self, paths, states=None):
         states = states or file_state

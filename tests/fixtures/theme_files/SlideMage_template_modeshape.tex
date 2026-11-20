@@ -1,0 +1,73 @@
+% SlideMage template name: Mode shape (test only)
+% SlideMage modes: light, dark=Dark slides
+% A TEST theme with the shape of an installed institution theme after v0.16.0 (no institution's
+% colours): header lines without SPDX lines, a footnote marker command, a palette in mixed case
+% with trailing comments, colours of its own, colour-mode data lines with comments, and an
+% \input after the base. tests/test_theme_file.py reads and edits it.
+
+\input{SlideMage_setup}
+
+% Footnote markers: the number in a thin rounded box.
+\SMSetFootnoteMarkers{boxed}
+
+% Palette.
+\definecolor{c_primary_dark}{HTML}{101010}
+\definecolor{c_primary_highlight}{HTML}{e0a000}
+\definecolor{c_primary_gray}{HTML}{b0b0b0}
+\definecolor{c_primary_white}{HTML}{FFFFFF}
+\definecolor{c_secondary_violet}{HTML}{8070b0}
+\definecolor{c_tertiary_violet}{HTML}{c0b8d8}
+\definecolor{c_secondary_blue}{HTML}{5080c0}
+\definecolor{c_tertiary_blue}{HTML}{a8c0e0}
+\definecolor{c_secondary_green}{HTML}{80b060}
+\definecolor{c_tertiary_green}{HTML}{c0d8b0}
+\definecolor{c_secondary_red}{HTML}{d06040}
+\definecolor{c_tertiary_red}{HTML}{e8b0a0}
+\definecolor{c_secondary_orange}{HTML}{e09050}
+\definecolor{c_tertiary_orange}{HTML}{f0c8a8}
+\definecolor{c_secondary_yellow}{HTML}{f0d050}
+\definecolor{c_tertiary_yellow}{HTML}{f8e8a8}
+\definecolor{c_tertiary_gray}{HTML}{dddddd}
+% A supporting grey, darker than the text (hyperlinks, quote attribution).
+\definecolor{c_custom_gray}{HTML}{303030}
+\definecolor{c_custom_red}{HTML}{B00000}
+\definecolor{c_custom_green}{HTML}{00A040}
+\definecolor{c_custom_brown}{HTML}{805020} % supporting brown
+
+% Logo + calibration.
+\renewcommand{\SMInstituteLogoPath}{schemes/scheme_test/logo.pdf}
+\setlength{\SMLogoHeight}{3ex}
+\setlength{\SMFrametitleRightPadding}{0.28cm}
+
+\renewcommand{\SMBulletColor}{c_primary_highlight}
+\renewcommand{\SMTitleBoxColor}{c_primary_highlight}
+\renewcommand{\SMTitleTextColor}{c_primary_dark}
+\renewcommand{\SMFooterBoxColorDefault}{c_primary_highlight}
+\renewcommand{\SMFooterTextColor}{c_primary_dark}
+\renewcommand{\SMStandoutTextColor}{c_true_black}
+
+% Code panels.
+\definecolor{SMCodeKeywordColor}{HTML}{1f5c99}
+\definecolor{SMCodeCommentColor}{HTML}{5f5f5f}
+\colorlet{SMCodeBackgroundColor}{c_tertiary_gray}
+
+% Colour modes: dark starts from the preset and sets what this theme does differently.
+\definecolor{c_test_dark_canvas}{HTML}{2A2A2A}
+\definecolor{c_test_dark_card}{HTML}{393939}
+\SMDeclareMode{light}{}
+\SMDeclareMode{dark}{dark}
+\SMSetRole{canvas}{dark}{c_test_dark_canvas}
+\SMSetRole{card}{dark}{c_test_dark_card}
+\SMSetRole{block_body_text}{dark}{c_true_white}
+\SMSetColor{c_tertiary_violet}{dark}{HTML}{393939}
+\SMSetColor{c_tertiary_gray}{dark}{HTML}{393939}
+\SMSetColor{c_custom_gray}{dark}{HTML}{C6C6C6}  % hyperlinks, buttons, quote attribution
+\SMSetColor{c_custom_red}{dark}{HTML}{FF6B6B}   % 5.1:1; also the markers
+\SMSetRole{link}{dark}{c_custom_gray}
+\SMSetRole{code_panel}{dark}{c_primary_gray}
+\SMSetRole{inline_code}{dark}{c_primary_highlight}
+\SMSetRole{standout_text}{dark}{c_primary_highlight}
+
+\input{SlideMage_base}
+
+\input{SlideMage_bibliography_default}

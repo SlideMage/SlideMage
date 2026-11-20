@@ -20,6 +20,7 @@ from ... import (
     compile_status,
     deck_editor,
     deck_headers,
+    deck_language,
     deck_outline,
     deck_scan,
     languages,
@@ -77,9 +78,13 @@ def _insertion(ctx: ToolContext, deck: Deck, after: str) -> tuple[int, str, str]
     if ctx.workspace.is_dirty(deck.path):
         raise ToolError(f"{deck.path.name} has unsaved edits in the editor; ask the user to save it first.")
     if after:
-        anchor = next((c for c in deck_editor.parse_slide_calls(deck) if after in (c.id, c.id_slug)), None)
+        anchor = next((c for c in deck_language.active_calls(deck) if after in (c.id, c.id_slug)), None)
         if anchor is None:
             raise ToolError(f"The deck has no slide '{after}'. list_slides shows the ids.")
+        if anchor.source != deck.path:
+            # Expanded spans belong to the include line: insertion stays outside the block.
+            return (anchor.line_end, deck.text[anchor.line_start:anchor.call_start],
+                    f"after topic block {anchor.block or anchor.source.stem} in {deck.name}")
         return anchor.line_end, anchor.indent, f"after {anchor.id} in {deck.name}"
     insert_at, indent = deck_editor.append_position(deck)
     return insert_at, indent, f"at the end of {deck.name}"
@@ -174,7 +179,7 @@ PREVIEW_VIEW = {"type": "string", "enum": [*VIEWS, "all"],
 
 
 @tool("render_preview",
-      "Typeset a slide and return labelled images for visual inspection: check layout, overflow and overlaps. "
+      "Typeset a slide and return labeled images for visual inspection: check layout, overflow and overlaps. "
       "view may be instructor, during-course, after-course, or all. Omitted view uses the selected workspace "
       "view. Includes unsaved editor source. Hidden views have no image; successful views survive partial "
       "failures. Publishes the current view when still current, without changing slide/view selection.",
@@ -222,7 +227,7 @@ def preview_batch_output(ctx: ToolContext, path: Path, view: str | None, *, save
                   'failed': f"publication failed: {result.error}"}.get(publication, publication)
         image = result.secondary_png or result.display_png
         if not saved:
-            renderer = ctx.workspace.preview_service()._renderer(ctx.project)
+            renderer = ctx.workspace.preview_service().renderer(ctx.project)
             state, record = render_lookup.select(dict(resolver=renderer.resolver, unit=spec.unit, spec=spec), strict=True)
             if state == 'current':
                 image = renderer.store.page(record, record['pages']) or image
@@ -447,7 +452,7 @@ def insert_slide(ctx: ToolContext, args: dict) -> str:
         raise ToolError(f"'{slide}' is not an existing live slide; pass its id or slides/*-current.tex path.")
     created = slide_add.CreatedSlide(path.name.removesuffix(slide_language.CURRENT_SUFFIX), path)
     deck = open_deck(ctx)
-    if any(c.source_filename == path.name for c in deck_editor.parse_slide_calls(deck)):
+    if any(c.source_filename == path.name for c in deck_language.active_calls(deck)):
         return f"Slide {created.id_slug} ({relative(ctx.root, path)}) is already in {deck.name}; no change."
     source = slide_language.TRANSLATION_OF_RE.search(current_text(ctx.workspace, path))
     after, spec = _translation_placement(deck, source.group(1) if source else "", (args.get("after") or "").strip())

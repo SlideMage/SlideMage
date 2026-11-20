@@ -131,7 +131,7 @@ carries nothing beyond the slide text.
 
 Rules:
 - Do NOT describe visual furniture. No tick-mark spacing, no gridlines, no \
-shading, no legend inventories, no "the axis is labelled X" phrasing. Axis \
+shading, no legend inventories, no "the axis is labeled X" phrasing. Axis \
 variable, unit and range are content and stay; the marks used to draw the \
 axis are not.
 - The exception is a visual property that IS the point of the slide -- if \

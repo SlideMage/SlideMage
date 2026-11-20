@@ -31,7 +31,7 @@ from .project import ProjectContext
 from .fileio import StaleFileError as StaleFileError, read_text_exact, write_text_exact
 from .deck_scan import DOCUMENT_BEGIN_LINE_RE, DOCUMENT_END_RE, Chapter, Deck, parse_chapters, SECTION_RE, find_decktags
 from .slide_language import FROZEN_RE, current_name, frozen_name
-from .tex_source import COMMENT_RE, is_commented
+from .tex_source import COMMENT_RE, INPUT_RE, is_commented
 
 
 # Macros that take a pinned version as a second brace argument.
@@ -59,6 +59,7 @@ DEFAULT_CONDITIONS = list(VIEWS)
 # add_slide_dialog.py) -- the four macros with no separate version file.
 BASE_MACROS = ["slide", "slidefinal", "omitslide", "conditionalslide", "slidestep"]
 
+BLOCK_KEY_RE = re.compile(r"[A-Za-z0-9_-]+")   # a topic block's file stem and its \slideblock key
 SLIDE_CALL_RE = re.compile(
     r"\\slideversion\s*\{(?P<sv_idslug>[^}]+)\}\s*\{(?P<sv_version>[^}]+)\}"
     r"|\\omitslideversion\s*\{(?P<osv_idslug>[^}]+)\}\s*\{(?P<osv_version>[^}]+)\}"
@@ -70,6 +71,13 @@ SLIDE_CALL_RE = re.compile(
 )
 
 _LEADING_BLANK_RE = re.compile(r"^[ \t]*$")
+# \SMReview[note]{<call>}: the deck-side mark "this slide is under review in this deck" (SlideMage_base.tex). The
+# wrapper and its call share one line, so every line edit below moves and removes them together, and an edit of the
+# call's own token leaves the wrapper in place. For LaTeX it is a no-op; the app draws the watermark.
+REVIEW_MACRO = "SMReview"
+REVIEW_OPEN_RE = re.compile(r"\\SMReview[ \t]*(?:\[(?P<note>[^\]\r\n]*)\])?[ \t]*\{[ \t]*$")
+_REVIEW_CLOSE_RE = re.compile(r"[ \t]*\}")
+_REVIEW_NOTE_BAD_RE = re.compile(r"[\\{}\[\]%#&$^_~\r\n]")
 _TRAILING_OK_RE = re.compile(r"^[ \t]*(%.*)?$")
 
 
@@ -89,6 +97,17 @@ class SlideCall:
     editable: bool
     readonly_reason: Optional[str]
     chapter: Optional[Chapter]
+    review: bool = False          # wrapped in \SMReview{...}: under review in this deck
+    review_note: str = ""         # the wrapper's optional [note]
+    outer_start: Optional[int] = None   # the wrapper's own span, when there is one
+    outer_end: Optional[int] = None
+    source: Optional[Path] = None   # the file physically holding the call, for a call a block put in the deck
+    block: Optional[str] = None     # the topic block's name, when that file is one
+    index: Optional[int] = None     # the call's number within its block's occurrence
+
+    @property
+    def identity(self) -> tuple[int, int | None]:
+        return self.call_start, self.index
 
     @property
     def id_slug(self) -> str:
@@ -129,7 +148,19 @@ def line_span(text: str, call_start: int, call_end: int) -> tuple[int, int]:
     return line_start, line_end
 
 
+def review_wrapper(text: str, line_start: int, call_start: int, call_end: int, line_end: int) -> Optional[tuple[int, int, str]]:
+    """The \\SMReview[note]{...} around the call at call_start:call_end, as (start, end, note), or None."""
+    opened = REVIEW_OPEN_RE.search(text[line_start:call_start])
+    closed = _REVIEW_CLOSE_RE.match(text, call_end, line_end)
+    if opened is None or closed is None or is_commented(text, line_start + opened.start()):
+        return None
+    return line_start + opened.start(), closed.end(), (opened.group("note") or "").strip()
+
+
 def _editability(text: str, line_start: int, call_start: int, call_end: int, line_end: int) -> tuple[bool, Optional[str]]:
+    wrapper = review_wrapper(text, line_start, call_start, call_end, line_end)
+    if wrapper is not None:
+        call_start, call_end = wrapper[0], wrapper[1]
     leading = text[line_start:call_start]
     trailing_raw = text[call_end:line_end]
     # Strip the line's own terminator (bare \n, or \r\n for this project's
@@ -182,6 +213,8 @@ def parse_slide_calls(deck: Deck) -> list[SlideCall]:
         slide_id, _, slug = idslug.partition("-")
         line_start, line_end = line_span(deck.text, m.start(), m.end())
         editable, readonly_reason = _editability(deck.text, line_start, m.start(), m.end(), line_end)
+        wrapper = review_wrapper(deck.text, line_start, m.start(), m.end(), line_end)
+        outer_start = wrapper[0] if wrapper else m.start()
 
         calls.append(SlideCall(
             macro=macro,
@@ -194,10 +227,14 @@ def parse_slide_calls(deck: Deck) -> list[SlideCall]:
             call_end=m.end(),
             line_start=line_start,
             line_end=line_end,
-            indent=deck.text[line_start:m.start()] if editable else "",
+            indent=deck.text[line_start:outer_start] if editable else "",
             editable=editable,
             readonly_reason=readonly_reason,
             chapter=_find_chapter(deck.chapters, m.start()),
+            review=wrapper is not None,
+            review_note=wrapper[2] if wrapper else "",
+            outer_start=wrapper[0] if wrapper else None,
+            outer_end=wrapper[1] if wrapper else None,
         ))
     return calls
 
@@ -362,6 +399,35 @@ def remove_slide_calls(deck_path: Path, expected_text: str, calls: list[SlideCal
     return apply(deck_path, expected_text, mutate)
 
 
+def _block_marker(path: Path, text: str, call: SlideCall) -> tuple[int, int]:
+    """Check the deck's block marker, rather than the expanded slide's editability."""
+    marker = INPUT_RE.fullmatch(text[call.call_start:call.call_end])
+    if not call.block or marker is None or Path(marker.group(1)).stem != call.block:
+        raise ValueError("This block marker changed; reload the deck and retry.")
+    start, end = line_span(text, call.call_start, call.call_end)
+    editable, reason = _editability(text, start, call.call_start, call.call_end, end)
+    if not editable:
+        raise ValueError(f"can't edit this block marker -- {reason}")
+    return start, end
+
+
+def unlink_block(path: Path, text: str, call: SlideCall, block_text: str) -> str:
+    """Replace one block marker with its body, leaving the section heading in place."""
+    start, end = _block_marker(path, text, call)
+    newline = eol(text)
+    indent = text[start:call.call_start]
+    body = "".join((indent + line if line else "") + newline for line in block_text.splitlines()
+                   if not line.startswith("%%"))   # the block's own metadata stays in the block
+    replacement = f"{indent}% from block {call.block}{newline}{body}"
+    return apply(path, text, lambda current: current[:start] + replacement + current[end:])
+
+
+def remove_block(path: Path, text: str, call: SlideCall) -> str:
+    """Remove one block marker, keeping its section and the block file."""
+    start, end = _block_marker(path, text, call)
+    return apply(path, text, lambda current: current[:start] + current[end:])
+
+
 def _refuse_blocked(calls: list[SlideCall]) -> None:
     blocked = [c for c in calls if not c.editable]
     if blocked:
@@ -483,6 +549,38 @@ def set_calls_visibility(
     return apply(deck_path, expected_text, mutate)
 
 
+def review_open(note: str = "") -> str:
+    """The wrapper's opening text, up to and including its brace."""
+    note = " ".join((note or "").split())
+    if _REVIEW_NOTE_BAD_RE.search(note):
+        raise ValueError("A review note is plain text: it can't contain \\ { } [ ] % # & $ ^ _ or ~.")
+    return f"\\{REVIEW_MACRO}[{note}]{{" if note else f"\\{REVIEW_MACRO}{{"
+
+
+def set_calls_review(deck_path: Path, expected_text: str, calls: list[SlideCall], review: bool,
+                     note: Optional[str] = None) -> str:
+    """Mark `calls` as under review in this deck (\\SMReview[note]{call}) or clear the mark, as one edit. `note`
+    None keeps the note of a call that is marked already; the slide files are not touched."""
+    edits: list[tuple[int, int, str]] = []
+    for call in calls:
+        if not call.editable:
+            raise ValueError(f"can't change {call.id_slug} -- {call.readonly_reason}")
+        token = expected_text[call.call_start:call.call_end]
+        if review:
+            opening = review_open(call.review_note if note is None else note)
+            start, end = (call.outer_start, call.outer_end) if call.review else (call.call_start, call.call_end)
+            edits.append((start, end, opening + token + "}"))
+        elif call.review:
+            edits.append((call.outer_start, call.outer_end, token))
+
+    def mutate(text: str) -> str:
+        for start, end, new in sorted(edits, reverse=True):
+            text = text[:start] + new + text[end:]
+        return text
+
+    return apply(deck_path, expected_text, mutate)
+
+
 # -- reveal steps per deck version (docs/plans/reveal-step-slider.md, 4c) ---------------------------------
 
 STEP_EDIT_MACROS = {"slide", "conditionalslide", "slidestep"}
@@ -498,6 +596,8 @@ def step_block(text: str, calls: list[SlideCall], call: SlideCall) -> list[Slide
     r"""The calls that together decide which versions typeset which steps at `call`'s place: for a \slidestep, the
     run of \slidestep calls of the same slide next to each other (alternatives: each version has one of them), with
     only blank or comment lines between; any other call stands alone."""
+    if call.index is not None:
+        raise ValueError("Edit reveal steps in the topic block's source file.")
     if call.macro != "slidestep":
         return [call]
     index = next(i for i, c in enumerate(calls) if c.call_start == call.call_start)
@@ -505,6 +605,7 @@ def step_block(text: str, calls: list[SlideCall], call: SlideCall) -> list[Slide
     def joined(first: SlideCall, second: SlideCall) -> bool:
         between = text[first.line_end:second.line_start]
         return (first.macro == second.macro == "slidestep" and first.id_slug == second.id_slug == call.id_slug
+                and first.index is None and second.index is None
                 and all(_BLANK_OR_COMMENT_RE.match(line) for line in between.split("\n")))
 
     low = index
@@ -518,6 +619,8 @@ def step_block(text: str, calls: list[SlideCall], call: SlideCall) -> list[Slide
 
 def step_edit_problem(call: SlideCall, view: str) -> Optional[str]:
     r"""Why the steps of `call` cannot be changed for `view` from the step bar, or None when they can."""
+    if call.index is not None:
+        return "Edit reveal steps in the topic block's source file."
     if not call.editable:
         return call.readonly_reason or "This call cannot be edited."
     if call.macro not in STEP_EDIT_MACROS:
@@ -715,9 +818,9 @@ def section_append_point(deck: Deck, chapter: Optional[Chapter]) -> int:
     """Where a slide goes to become the last one of a section (None: the slides
     before the first one): after its last call, or below its marker line
     when it has none."""
-    last = next((c for c in reversed(parse_slide_calls(deck)) if c.chapter == chapter), None)
+    last = next((p for p in reversed(_call_placements(deck)) if _find_chapter(deck.chapters, p[1] - 1) == chapter), None)
     if last is not None:
-        return last.line_end
+        return last[1]
     if chapter is None:
         raise ValueError("there are no slides before the first section")
     return section_line_span(deck.text, chapter)[1]
@@ -862,6 +965,20 @@ def insert_slide_call(
     return apply(deck_path, expected_text, mutate)
 
 
+def insert_block(deck_path: Path, expected_text: str, insert_at: int, indent: str, key: str, title: str) -> str:
+    """Insert a block and its section heading together, as one undoable edit."""
+    if not BLOCK_KEY_RE.fullmatch(key):
+        raise ValueError("Invalid topic block key.")
+    title = _section_title(title)
+
+    def mutate(text: str) -> str:
+        newline = eol(text)
+        return _splice(text, insert_at,
+                       f"{indent}\\section{{{title}}}{newline}{indent}\\slideblock{{{key}}}{newline}")
+
+    return apply(deck_path, expected_text, mutate)
+
+
 def insert_slide_calls(
     deck_path: Path, expected_text: str, insert_at: int, indent: str, id_slugs: list[str],
 ) -> str:
@@ -959,21 +1076,34 @@ class InsertPosition:
     indent: str
 
 
+def _call_placements(deck: Deck) -> list[tuple[int, int, str, str]]:
+    """Physical lines holding calls or includes, without reading any fragments."""
+    from .deck_language import masked
+
+    calls = parse_slide_calls(deck)
+    places = [(c.line_start, c.line_end, c.indent, f"{i}. {c.id_slug}")
+              for i, c in enumerate(calls, 1)]
+    text = masked(deck.text)
+    # Plugins pass their own deck objects (plugin_api.Deck), which need not carry preamble_end.
+    begin = getattr(deck, "preamble_end", None) or 0
+    for match in INPUT_RE.finditer(text, begin):
+        start, end = line_span(deck.text, match.start(), match.end())
+        indent = deck.text[start:match.start()]
+        places.append((start, end, indent if not indent.strip() else "", match.group().strip()))
+    return sorted(places)
+
+
 def slide_insert_positions(deck: Deck) -> list[InsertPosition]:
     """Places for inserting a slide before the first or after each existing call."""
-    calls = parse_slide_calls(deck)
-    if not calls:
+    places = _call_placements(deck)
+    if not places:
         return [InsertPosition("At the end of the deck", end_insert_point(deck.text), "")]
-    return [InsertPosition("At the beginning", calls[0].line_start, calls[0].indent)] + [
-        InsertPosition(f"After {number}. {call.id_slug}", call.line_end, call.indent)
-        for number, call in enumerate(calls, start=1)
+    return [InsertPosition("At the beginning", places[0][0], places[0][2])] + [
+        InsertPosition(f"After {label}", end, indent) for _, end, indent, label in places
     ]
 
 
 def append_position(deck: Deck) -> tuple[int, str]:
-    """(insert_at, indent) for a call appended after the last slide."""
-    calls = parse_slide_calls(deck)
-    if not calls:
-        return end_insert_point(deck.text), ""
-    last = calls[-1]
-    return last.line_end, last.indent
+    """(insert_at, indent) for a call appended after the last slide or include."""
+    places = _call_placements(deck)
+    return (places[-1][1], places[-1][2]) if places else (end_insert_point(deck.text), "")

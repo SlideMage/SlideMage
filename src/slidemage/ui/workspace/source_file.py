@@ -26,14 +26,16 @@ from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout
 
 from ...ai import routes
-from ... import app_settings, timing
+from ... import app_settings, latex_help, timing
 from ... import (
     latex_edit,
     latex_lint,
     slide_language,
     slide_source,
+    slide_templates,
     slide_versioning,
 )
+from ...deck_scan import is_generated_wrapper
 from ...slide_language import bare_id
 from .. import layout_settings
 from ..kit.tokens import SPACE
@@ -42,6 +44,7 @@ from ..kit.widgets import Button, Chip, PopoverMenu, Surface
 from ..text import plural
 from .ai_fix import AiFixPanel
 from .source_editor import FindBar, LatexPlainTextEdit
+from .theme_form import theme_key
 
 LINT_DELAY_MS = 300     # after the last keystroke
 AUTOSAVE_DELAY_MS = 1500    # after the last keystroke
@@ -118,11 +121,16 @@ class SourceFile(Surface):
             self.id_slug = ""
         self.bare_id = bare_id(self.id_slug)
         self.is_bib = path == self.app.project.bibliography_path
+        self.is_deck = (not self.is_slide and path.suffix.lower() == ".tex"
+                        and path.parent in self.app.project.deck_folders and not is_generated_wrapper(path.name))
         self.lint: Optional[latex_lint.CheckResult] = None     # of the buffer; None for a .bib
+        self.spell_check = None      # a slide's SpellCheck (spell_check.py), from attach_spell_check()
 
         self.text, self.eol = slide_source.read_slide_source(path)
         tab_width = app_settings.get(app.project, latex_edit.TAB_WIDTH_SETTING_KEY, latex_edit.DEFAULT_TAB_WIDTH_CHARS)
-        self.editor = LatexPlainTextEdit(app.theme, tab_width)
+        hover_help = bool(app_settings.get(app.project, latex_help.HOVER_HELP_SETTING_KEY, True))
+        self.editor = LatexPlainTextEdit(app.theme, tab_width, hover_help)
+        self.editor.set_help_provider(lambda: slide_templates.template_help(app.project))
         self.editor.set_text(self.text)
         self.editor.modified_changed.connect(self.modified_changed)
         self.editor.escape_pressed.connect(self._abort_ai_fix)
@@ -142,7 +150,19 @@ class SourceFile(Surface):
         layout.addWidget(self.fix_panel)
         layout.addWidget(self.find_bar)
         layout.addWidget(self.fold_button, 0, Qt.AlignmentFlag.AlignLeft)
-        layout.addWidget(self.editor, 1)
+        # A theme (SlideMage_template_<key>.tex) gets the theme form beside its source, both on this buffer, and the
+        # sample slides rendered with it above the form.
+        self.theme_form = self.theme_sample = self.theme_side = None
+        if not self.is_slide and theme_key(path):
+            from ... import theme_fields
+            from .theme_workspace import ThemeWorkspace
+            # The theme tab: mode bar, Form / Split / Source, the sample slides and the form (theme_workspace).
+            self.theme_side = ThemeWorkspace(self.editor, path, app.project,
+                                             theme_fields.setup_file(app.project.root))
+            self.theme_form, self.theme_sample = self.theme_side.form, self.theme_side.sample
+            layout.addWidget(self.theme_side, 1)
+        else:
+            layout.addWidget(self.editor, 1)
         self._update_fold_button()
         # Linted a moment after the last keystroke: a lexical check of the buffer, no LaTeX run.
         self._lint_timer = QTimer(self)
@@ -171,6 +191,11 @@ class SourceFile(Surface):
             shortcut = QShortcut(sequence, self)
             shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
             shortcut.activated.connect(action)
+
+    @property
+    def reindent_kind(self) -> Optional[str]:
+        """Which reindent rules fit this file (latex_edit.REINDENTERS), None for a file Reindent does not offer."""
+        return "slide" if self.is_slide else "deck" if self.is_deck else "bib" if self.is_bib else None
 
     @property
     def dirty(self) -> bool:
@@ -208,6 +233,11 @@ class SourceFile(Surface):
         self.lint_chip = Chip("", "muted")
         self.lint_chip.clicked.connect(self._show_issues)
         row.addWidget(self.lint_chip)
+        # The spell check's news: a dictionary being downloaded, or why some text is not checked (click: again).
+        self.spelling_chip = Chip("", "muted")
+        self.spelling_chip.clicked.connect(lambda: self.spell_check is not None and self.spell_check.check_now())
+        self.spelling_chip.hide()
+        row.addWidget(self.spelling_chip)
         row.addStretch(1)
         self.ask_ai_button = Button("Ask AI to fix", "ghost", compact=True)
         self.ask_ai_button.setToolTip(
@@ -218,6 +248,26 @@ class SourceFile(Surface):
         if self.is_bib:
             line.hide()     # never setVisible(True) here: the line has no parent yet, so it would open as a window
         return line
+
+    def attach_spell_check(self, session, enabled: bool) -> None:
+        """Check a slide's spelling as you type, with the window's SpellingSession (`session()` gives it). Only
+        slides: a deck's source and SlideMage.bib have next to no regular text."""
+        if not self.is_slide or self.spell_check is not None:
+            return
+        from .spell_check import SpellCheck, file_language
+        self.spell_check = SpellCheck(self.editor, session, lambda: file_language(self.app.project, self.id_slug),
+                                      enabled)
+        self.spell_check.status_changed.connect(self._show_spelling_status)
+        if enabled:
+            self.spell_check.check_now()
+
+    def _show_spelling_status(self) -> None:
+        status = self.spell_check.status if self.spell_check is not None else ""
+        busy = status.startswith(("Downloading", "Loading"))
+        self.spelling_chip.set_text(status if len(status) <= 60 else status[:57] + "…")
+        self.spelling_chip.setToolTip(status if busy else f"{status}\nClick to check again.")
+        self.spelling_chip.set_tone("muted" if busy else "warning")
+        self.spelling_chip.setVisible(bool(status))
 
     def _build_conflict_bar(self) -> Surface:
         """The notice for a file that changed on disk while the buffer has unsaved edits."""

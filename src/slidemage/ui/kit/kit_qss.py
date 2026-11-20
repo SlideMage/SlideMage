@@ -359,6 +359,10 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         QDateTimeEdit:focus, QComboBox:focus, QComboBox:on {{
             border-color: {t.info};
         }}
+        QLineEdit[edited="true"] {{
+            border-left: 3px solid {t.info};
+            font-weight: 600;
+        }}
         QLineEdit:disabled, QPlainTextEdit:disabled, QTextEdit:disabled, QSpinBox:disabled,
         QDoubleSpinBox:disabled, QDateTimeEdit:disabled, QComboBox:disabled {{
             color: {t.text_4};
@@ -491,16 +495,6 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             background-color: {t.inverse};
             border-radius: {RADIUS_XS}px;
         }}
-        /* A bar that prints its percent (the update download's QProgressDialog)
-           cannot use the strong inverse fill: it is the text colour, so the
-           percent vanished once the fill reached it. A translucent wash of
-           the text colour stays readable under the text on both parts. */
-        QProgressDialog QProgressBar {{
-            color: {t.text};
-        }}
-        QProgressDialog QProgressBar::chunk {{
-            background-color: {with_alpha(t.text, 0.3)};
-        }}
         QSplitter#{SURFACE}::handle:horizontal {{
             background: {t.line};
             margin: 0 4px;
@@ -605,9 +599,12 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             color: {t.text};
             background-color: transparent;
         }}
-        QPushButton[kitSegment="true"]:disabled {{
+        QPushButton[kitSegment="true"]:disabled, QPushButton[kitSegment="true"][unavailable="true"] {{
             color: {t.text_4};
             background-color: transparent;
+        }}
+        QPushButton[kitSegment="true"][unavailable="true"]:hover {{
+            color: {t.text_3};
         }}
         QPushButton[kitSegment="true"]:checked {{
             background-color: {t.surface};
@@ -701,6 +698,13 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         QPushButton[kind="secondary"]:hover {{
             background-color: {t.hover};
             color: {t.text};
+        }}
+        /* A switched-on toggle (a checkable secondary button, such as the slide list's "Not reviewed" filter) takes the
+           inverse fill, so it is plain that it is on. */
+        QPushButton[kind="secondary"]:checked, QPushButton[kind="secondary"]:checked:hover {{
+            background-color: {t.inverse};
+            color: {t.on_inverse};
+            border: 1px solid {t.inverse};
         }}
         QPushButton[kind="ghost"] {{
             background-color: transparent;
@@ -1144,8 +1148,11 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             background-color: transparent;
             border: none;
             border-right: 1px solid {t.line};
+            border-top: 3px solid transparent;
             border-bottom: 2px solid transparent;
         }}
+        /* A deck's tabs carry its stripe along the top edge (tab-contexts.md E7), one of six hues in the order the decks were opened. */
+        {"".join(f'QFrame#{TAB}[deckColour="{i}"] {{ border-top: 3px solid {c}; }}' + chr(10) for i, c in enumerate((*t.steps[1:6], t.warning)))}
         QFrame#{TAB}:hover {{ background-color: {t.hover}; }}
         QFrame#{TAB}:focus {{ border-bottom: 2px solid {t.focus}; }}
         QFrame#{TAB}[active="true"] {{ border-bottom: 2px solid {t.inverse}; }}

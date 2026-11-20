@@ -9,6 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from slidemage.ui.workspace.menus import VIEW_LABELS
 from PySide6.QtCore import QPoint, QRect, QSize, Qt
 from PySide6.QtGui import QIcon, QKeySequence, QShortcut, QTextLayout
 from PySide6.QtSvg import QSvgRenderer
@@ -150,6 +151,20 @@ def test_picking_a_deck_updates_the_state_the_label_and_the_page(window):
     assert window.stack.currentWidget() is window.centre
 
 
+def test_a_deck_picked_in_the_menu_asks_the_slide_list_to_focus_its_first_slide():
+    from types import SimpleNamespace
+    from slidemage.ui.workspace.topbar import TopBar
+
+    asked = []
+    switches = iter([True, False])
+    stub = SimpleNamespace(_decks=[WORK, MANUAL], _state=SimpleNamespace(set_deck=lambda deck: next(switches)),
+                           _window=SimpleNamespace(slide_list=SimpleNamespace(focus_first_slide=lambda: asked.append(1))))
+    TopBar._on_deck_picked(stub, deck_key(MANUAL))
+    assert asked == [1]
+    TopBar._on_deck_picked(stub, deck_key(MANUAL))                  # the deck already open: no switch, no focus
+    assert asked == [1]
+
+
 def test_the_slide_list_follows_the_deck_and_the_stack_starts_on_the_hint(qapp, monkeypatch):
     decks = [WORK, COURSE]
     monkeypatch.setattr(window_module, "scan_decks", lambda _ctx: decks)
@@ -218,7 +233,7 @@ def test_top_bar_densities_fit_the_available_width_and_grow_back(topbar, window,
         assert bar._view_as.isHidden() == short
         assert bar._images.isHidden()            # only while the Images page is open
         assert bar._save.text() == ("●" if density == "tiny" else "Saved")
-        assert bar._compile.text() == ("Compile" if short else "Compile PDF · Instructor")
+        assert bar._compile.text() == ("Compile" if short else "Compile deck PDF · Instructor")
         assert bar._deck_button.text() == MANUAL.name or (density == "tiny" and bar._deck_button.text().endswith("…"))
         assert bar._deck_button.toolTip() == MANUAL.name
         assert [button.text() for button in bar._views._buttons.values()] == (
@@ -250,7 +265,7 @@ def test_narrow_top_bar_keeps_hidden_text_and_images_reachable(topbar, window, q
     assert bar._save.text() == "●" and bar._save.toolTip() == "Unsaved changes"
     window.state.set_dirty(False)
     assert bar._save.text() == "●" and bar._save.toolTip() == "Saved"
-    assert bar._compile.toolTip() == "Compile PDF · Instructor"
+    assert bar._compile.toolTip() == "Compile deck PDF · Instructor"
     assert ("compile:instructor", "Compile PDF · Instructor", True) in entries(bar._compile_menu)
     monkeypatch.setattr(window.images_page, "ensure_loaded", lambda: None)
     images = menu_actions(filled_menu(window, "View"))["images"]     # Images is in the menu bar at every width
@@ -280,7 +295,7 @@ def test_narrow_top_bar_controls_and_lint_badge_survive_relabeling(topbar, windo
     bar._languages._buttons["DE"].click()
     buttons["source"].click()
     assert (window.state.view, window.state.language, window.state.mode) == ("during-course", "DE", "source")
-    assert bar._compile.toolTip() == "Compile PDF · During course"
+    assert bar._compile.toolTip() == "Compile deck PDF · During course"
     jobs = compiled(window, monkeypatch)
     bar._compile._main.click()
     assert describe(jobs[0][0])[:2] == ("course", "during-course")
@@ -290,7 +305,7 @@ def test_narrow_top_bar_controls_and_lint_badge_survive_relabeling(topbar, windo
     assert (bar._views.current(), bar._languages.current(), bar._modes.current()) == ("after-course", "EN", "details")
     bar.resize(1700, bar.height())
     qapp.processEvents()
-    assert bar._density == "full" and bar._compile.text() == "Compile PDF · After"
+    assert bar._density == "full" and bar._compile.text() == "Compile deck PDF · After"
     assert bar._modes._buttons == buttons
     assert badge.isVisible() and badge.geometry().right() < buttons["source"].width()
     window.state.set_lint_errors(0)
@@ -357,7 +372,7 @@ def test_the_view_comes_back_with_the_deck(window):
     assert window.topbar._views.current() == "instructor"
     window.state.set_deck(COURSE)
     assert window.topbar._views.current() == "after-course"
-    assert window.topbar._compile.text() == "Compile PDF · After"
+    assert window.topbar._compile.text() == "Compile deck PDF · After"
 
 
 # -- compile -------------------------------------------------------------------
@@ -417,13 +432,13 @@ def test_selected_pages_compile_the_current_view(window, monkeypatch):
 def test_compile_menu_offers_only_what_the_deck_can_do(qapp):
     full = items(build_compile_menu(None, command_context(COURSE)))
     assert list(full) == [
-        "compile:instructor", "compile:during-course", "compile:after-course", "compile:all",
+        "compile:instructor", "compile:during-course", "compile:after-course", "compile:all", "compile:mode",
         "compile:chapters", "compile:presenter", "compile:slides", "compile:pages", "compile:several",
         "compile:everything", "transcript:during-course", "transcript:after-course", "present", "present_here", "stop", "build_options"]
     assert full["compile:chapters"] and not full["stop"] and not full["compile:slides"]   # no slide selected
     assert items(build_compile_menu(None, command_context(COURSE, selected=('aaa', 'bbb'))))["compile:slides"]
     plain = items(build_compile_menu(None, command_context(make_deck("plain", versions=False))))
-    assert list(plain) == ["compile:instructor", "compile:all", "compile:chapters", "compile:presenter",
+    assert list(plain) == ["compile:instructor", "compile:all", "compile:mode", "compile:chapters", "compile:presenter",
                            "compile:slides", "compile:pages", "compile:several", "compile:everything",
                            "present", "present_here", "stop", "build_options"]
     assert not plain["compile:chapters"]                              # no \section chapters
@@ -617,10 +632,10 @@ def test_an_edit_rescans_and_the_slide_list_keeps_what_it_takes_to_undo_it(windo
     monkeypatch.setattr(window, "resync_deck", rescans.append)
     window.after_deck_edit(WORK.path, "Removed x", previous_text="the text before")
     assert rescans == [WORK.path]
-    assert window.slide_list._undo[WORK.path] == ["the text before"]
+    assert window.slide_list._undo == [(WORK.path, "the text before")]
     assert not window.slide_list.toast.isHidden()
     window.after_deck_edit(WORK.path, "Undid last change")        # an undo has nothing to undo itself
-    assert window.slide_list._undo[WORK.path] == ["the text before"]
+    assert window.slide_list._undo == [(WORK.path, "the text before")]
 
 
 def test_the_slide_lists_slides_are_compiled_as_the_frames_they_have_in_the_last_pdf(ctx, window, monkeypatch):
@@ -679,15 +694,40 @@ def test_the_menu_bar_has_its_nine_menus_and_runs_the_choice(window, monkeypatch
     assert window.stack.currentWidget() is window.images_page
 
 
+def _auto_dialog(monkeypatch, untick=()):
+    """Accepts the All views dialog at once, after unticking the views named in `untick`."""
+    from PySide6.QtWidgets import QCheckBox, QDialog
+    def run(dialog):
+        for box in dialog.findChildren(QCheckBox):
+            if box.text() in untick:
+                box.setChecked(False)
+        return True
+    monkeypatch.setattr(QDialog, "exec", run)
+    from slidemage.ui.workspace import deck_actions
+    monkeypatch.setattr(deck_actions, "generate_deck_transcript", lambda *a, **k: True)
+
+
+def test_all_views_dialog_remembers_unticked_views(window, monkeypatch):
+    jobs = compiled(window, monkeypatch)
+    window.state.set_deck(COURSE)
+    _auto_dialog(monkeypatch, untick=(VIEW_LABELS["during-course"],))
+    window.topbar.command.emit("compile:all")
+    _auto_dialog(monkeypatch)                                            # second time: ticks as left last time
+    window.topbar.command.emit("compile:all")
+    expected = [("course", "instructor"), ("course", "after-course"), ("course", "instructor")]
+    assert [[describe(j)[:2] for j in batch] for batch in jobs] == [expected, expected]
+
+
 def test_all_views_compiles_every_view_the_deck_has(window, monkeypatch):
+    _auto_dialog(monkeypatch)
     jobs = compiled(window, monkeypatch)
     window.state.set_deck(COURSE)
     window.topbar.command.emit("compile:all")
     window.state.set_deck(WORK)
     window.topbar.command.emit("compile:all")
     assert [[describe(j)[:2] for j in batch] for batch in jobs] == [
-        [("course", "instructor"), ("course", "during-course"), ("course", "after-course")],
-        [("#workdeck", None)],
+        [("course", "instructor"), ("course", "during-course"), ("course", "after-course"), ("course", "instructor")],
+        [("#workdeck", None), ("#workdeck", None)],
     ]
 
 
@@ -1483,21 +1523,29 @@ def tabbed(window, tmp_path, monkeypatch):
     return SimpleNamespace(deck=deck_path, bib=bib, edits=edits)
 
 
-def test_the_mode_switch_shows_preview_split_and_details_disabled_with_a_reason_on_a_file_that_is_no_slide(window, tabbed):
+def test_the_mode_switch_shows_preview_split_and_details_as_the_way_back_on_a_file_that_is_no_slide(window, tabbed):
+    """v0.16.32: the three look unavailable and say why, but a click returns to the slide tab in that view (a segment
+    that did nothing left no visible way back from a deck's source or a theme file)."""
     modes = window.topbar._modes
     assert window.state.mode == "source" and modes.current() == "source"
     for mode in ("preview", "split", "details"):
         button = modes._buttons[mode]
-        assert not button.isEnabled() and "no slide" in button.toolTip() and "slide tab" in button.toolTip()
-        button.click()                                              # a disabled segment does nothing
-    assert window.state.mode == "source" and modes._buttons["source"].isEnabled()
-    window.centre.show_slide_tab()
-    assert all(modes._buttons[m].isEnabled() for m in ("preview", "split", "details"))
+        assert button.property("unavailable") and "no slide" in button.toolTip() and "go back" in button.toolTip()
+    assert window.centre.source_only
+    modes._buttons["split"].click()                                 # the way back: the slide tab, in Split
+    assert not window.centre.source_only and window.state.mode == "split"
+    assert all(modes._buttons[m].isEnabled() and not modes._buttons[m].property("unavailable")
+               for m in ("preview", "split", "details"))
     assert all("no slide" not in modes._buttons[m].toolTip() for m in modes._buttons)
     window.centre.tabs.activate(window.centre.tabs.tab_for(tabbed.bib))
-    assert not modes._buttons["preview"].isEnabled()                    # and again for the next file tab
-    window.topbar._apply_density("narrow")                              # relabelling keeps the reason
-    assert not modes._buttons["split"].isEnabled() and "no slide" in modes._buttons["split"].toolTip()
+    assert modes._buttons["preview"].property("unavailable")        # and again for the next file tab
+    modes._buttons["details"].click()
+    assert not window.centre.source_only and window.state.mode == "details"
+    window.centre.tabs.activate(window.centre.tabs.tab_for(tabbed.bib))
+    window.topbar._apply_density("narrow")                          # relabelling keeps the reason
+    assert modes._buttons["split"].property("unavailable") and "no slide" in modes._buttons["split"].toolTip()
+    modes._buttons["source"].click()                                # Source on a source-only tab stays where it is
+    assert window.centre.source_only and window.state.mode == "source"
 
 
 def test_no_command_gets_around_the_source_alone_rule(window, tabbed):

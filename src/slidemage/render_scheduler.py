@@ -2,10 +2,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The one queue behind every render that is not the user waiting for it (docs/plans/idle-background-rendering.md, 5.1).
 
-Three priority classes, strictly in this order:
+Two priority classes, strictly in this order:
 
 * P_FOREGROUND: the user asked (the Preview's own render);
-* P_NEIGHBOURS: the reveal slider's renders of the selected slide and its neighbours;
 * P_IDLE: the sweep over the decks, only while the machine is idle.
 
 A job of a better class never waits for a worse one, not even for one with the same key: the running job is
@@ -33,8 +32,7 @@ from . import busy
 from .compiler import CancelToken
 from .parallel_runs import RenderBudget
 
-P_FOREGROUND, P_NEIGHBOURS, P_IDLE = 0, 1, 2
-PRIORITY_NAMES = {P_FOREGROUND: "foreground", P_NEIGHBOURS: "neighbours", P_IDLE: "idle"}
+P_FOREGROUND, P_IDLE = 0, 2
 REST_CAP = 5.0
 GATE_POLL = 0.5
 
@@ -61,12 +59,12 @@ class RenderScheduler:
                  can_start: Callable[[Job], bool] = lambda job: True,
                  on_change: Callable[[], None] = lambda: None,
                  on_error: Callable[[Job, BaseException], None] = lambda job, exc: None,
-                 workers: int = 1, duty: float = 0.0, grace: float = 20.0,
+                 workers: int = 1, duty: float = 0.0,
                  may_add: Callable[[], bool] = lambda: True, budget: Optional[RenderBudget] = None,
                  clock: Callable[[], float] = time.monotonic, sleep: Optional[Callable[[float], None]] = None) -> None:
         self._work, self._can_start, self._on_change, self._on_error = work, can_start, on_change, on_error
         self._may_add, self._budget = may_add, budget
-        self.workers, self.duty, self.grace = workers, duty, grace
+        self.workers, self.duty = workers, duty
         self._clock = clock
         self._cond = threading.Condition()
         self._queue: dict[str, Job] = {}
@@ -143,10 +141,6 @@ class RenderScheduler:
             self._on_change()
         return stopped
 
-    def user_active(self) -> None:
-        """The user did something. Nothing running is stopped (only a job of a better class does that, in submit());
-        the gate (`can_start`) decides whether the next idle job starts."""
-
     # -- state -------------------------------------------------------------------------
 
     def pending(self, priority: Optional[int] = None) -> int:
@@ -158,14 +152,6 @@ class RenderScheduler:
         """The jobs of class `priority` that are queued or running (one that is stopping to be requeued counts once)."""
         with self._cond:
             return [j for j in {**self._running, **self._queue}.values() if j.priority == priority]
-
-    def queued_keys(self) -> list[str]:
-        with self._cond:
-            return [j.key for j in sorted(self._queue.values(), key=Job.order)]
-
-    def running_keys(self) -> list[str]:
-        with self._cond:
-            return list(self._running)
 
     def running_jobs(self) -> list[Job]:
         """The jobs running now, the longest-running first (cancelled ones that are still stopping left out)."""

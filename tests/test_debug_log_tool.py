@@ -77,3 +77,17 @@ def test_it_reads_what_diagnostics_writes(tmp_path, monkeypatch):
     assert records[1].message == "job started deck=micro-01" and records[1].level == "DEBUG"
     assert records[2].more[-1] == "    KeyError: 'x'" and records[0].more[0].startswith("    SlideMage v")
     assert tool.main([str(tmp_path / diagnostics.DEBUG_DIR), "--area", "compile", "--level", "error"]) == 0
+
+
+STALLS = """\
+2026-11-01 10:00:00.000 +1.000s DEBUG    timing             app:10 MainThread  stall late=0.300 cpu=10% samples=1 threads=[GUI@app.py:62 main; render-3@background_renders.py:88 scan < planner.py:12 run; list-thumbnails_0@thread.py:90 _worker]
+2026-11-01 10:00:01.000 +2.000s DEBUG    timing             app:10 MainThread  stall late=0.200 samples=2 threads=[GUI@deck_outline.py:87 _source_facts < deck_outline.py:108 _row; render-4@background_renders.py:88 scan < planner.py:12 run || GUI@deck_outline.py:87 _source_facts; render-4@background_renders.py:88 scan < planner.py:12 run]
+"""
+
+
+def test_stall_report_ranks_gui_frames_and_busy_workers_once_per_stall(tmp_path):
+    (tmp_path / "app.log").write_text(STALLS, encoding="utf-8")
+    lines = [" ".join(line.split()) for line in tool.stall_report(tool.read([tmp_path]))]
+    assert "1 0.30 GUI idle, worker busy" in lines and "1 0.20 deck_outline.py _source_facts" in lines
+    assert lines[-2:] == ["2 0.50 render- background_renders.py scan", "2 stalls, 0.50 s late, GUI idle in 1"]
+    assert not any("list-thumbnails" in line for line in lines)

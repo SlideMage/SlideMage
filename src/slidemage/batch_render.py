@@ -11,7 +11,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import busy, deck_context, deck_outline, preview_build, preview_raster_client, preview_target, render_key, slide_language, slide_preview, slide_snapshot, slide_templates, view_themes
+from . import busy, deck_context, deck_language, deck_outline, preview_build, preview_raster_client, preview_target, render_key, slide_language, slide_preview, slide_snapshot, slide_templates, view_themes
 from .deck_editor import VIEWS
 from .preview_requests import PrebuiltRender, PreviewRequest, PreviewResult, RenderOptions, SourceRevision
 
@@ -32,7 +32,7 @@ def groups(service, candidates, size: int) -> list[list]:
             continue
         try:
             if not spec.options.force:
-                resolver = service._renderer(spec.target.context).resolver
+                resolver = service.renderer(spec.target.context).resolver
                 found = resolver.lookup(spec.unit, resolver.fast_key(spec.unit, spec.revision.text), strict=True)
                 if found.final:
                     continue
@@ -57,7 +57,7 @@ def build(service, batch: list, cancel=None, log=None) -> dict:
     pages are not those of its slides."""
     first = batch[0][1]
     ctx, target = first.target.context, first.target
-    renderer = service._renderer(ctx)
+    renderer = service.renderer(ctx)
     evidence = {key: renderer.resolver.capture(spec.unit, spec.revision.text) for key, spec in batch}
     slides = [(spec.target.id_slug, spec.revision.text, spec.target.frame_number, None if spec.options.all_steps else spec.target.steps, spec.target.version,
                spec.target.macro in ('omitslide', 'omitslideversion'), spec.target.macro == 'slidefinal' and not spec.options.all_steps)
@@ -137,7 +137,7 @@ def render_batch(service, requests, *, cancel=None, progress=None, publish=None,
                 if spec.target.hidden and not spec.options.presenter:
                     result = PreviewResult(spec, status='hidden')
                 elif cancel is not None and cancel.is_set():
-                    result = PreviewResult(spec, status='cancelled', error='Preview cancelled')
+                    result = PreviewResult(spec, status='cancelled', error='Preview canceled')
                 elif spec.capture_error is not None:
                     result = PreviewResult(spec, status='failed', error=spec.capture_error)
                 else:
@@ -195,7 +195,7 @@ def render_batch(service, requests, *, cancel=None, progress=None, publish=None,
         parallel_runs.run_all(tasks, may_add=parallel_runs.cpu_has_room, cancel=cancel)
     for index, original in enumerate(requests, 1):          # a unit that never started (cancelled first)
         if results[index - 1] is None:
-            results[index - 1] = PreviewResult(original, status='cancelled', error='Preview cancelled')
+            results[index - 1] = PreviewResult(original, status='cancelled', error='Preview canceled')
     return tuple(results)
 
 
@@ -242,10 +242,11 @@ def plan_project(renderer) -> tuple:
     requests = []
     templates = set(slide_templates.available_templates(renderer.ctx.root))
     for deck in renderer.ordered_decks():
+        resolution = deck_language.resolve(deck)
         for language in renderer.languages_for(deck):
             for view in renderer.versions_for(deck):
                 ready = background_renders._Once(lambda: deck_context.in_deck_ready(renderer.ctx, deck, view, language))
-                units = background_renders.deck_units(renderer.ctx, deck, view, language, context_ready=ready)
+                units = background_renders.deck_units(renderer.ctx, deck, view, language, context_ready=ready, resolution=resolution)
                 requests.extend(renderer.request_for(unit) for unit in units if unit.template in templates)
     return tuple(requests)
 
@@ -259,9 +260,11 @@ def plan_deck(ctx, deck, *, scope='all', selected_view='instructor', language='E
         raise ValueError(f'Unknown course view: {selected_view}')
     views = VIEWS if scope == 'all' else (selected_view,)
     links = slide_language.links_for(ctx)
-    slots = {view: deck_outline.resolve_slots(ctx, deck, view, language, links=links) for view in views}
+    resolution = deck_language.resolve(deck)
+    slots = {view: deck_outline.resolve_slots(ctx, deck, view, language, links=links, resolution=resolution)
+             for view in views}
     instructor_frames = {row.key: row.frame_number for row in
-                         deck_outline.resolve_slots(ctx, deck, 'instructor', language, links=links)}
+                         deck_outline.resolve_slots(ctx, deck, 'instructor', language, links=links, resolution=resolution)}
     revisions: dict[Path, SourceRevision] = {}
     errors: dict[Path, str] = {}
     requests = []
@@ -272,7 +275,7 @@ def plan_deck(ctx, deck, *, scope='all', selected_view='instructor', language='E
             row = slots[view][index]
             call = row.slot.call  # translated/pinned call chosen for this language
             target = preview_target.for_call(ctx, deck, call, row.position, frame_number=row.frame_number,
-                                             hidden=row.hidden)
+                                             hidden=row.hidden, resolution=resolution)
             target = replace(target, occurrence_key=row.key, presenter_frame_number=instructor_frames.get(row.key))
             source = target.source_path.resolve()
             if source not in revisions:
@@ -294,12 +297,20 @@ def plan_slide(ctx, deck, path, view, language, *, selected_view="instructor",
     `read_source` may return an editor buffer; pinned calls always use their own source path.
     """
     revisions, capture_errors, result = {}, {}, []
+    resolution = deck_language.resolve(deck) if deck is not None else None
+    links = slide_language.links_for(ctx) if deck is not None else None
+    instructor = (deck_outline.resolve_slots(ctx, deck, 'instructor', 'EN', links=links, resolution=resolution)
+                  if resolution else ())
+    frames = {r.key: r.frame_number for r in instructor}
     for canonical in preview_target.requested_views(view, selected_view):
-        row = (deck_outline.slide_row(ctx, deck, slide_language.bare_id(path.name), canonical, language,
-                                      occurrence_key=occurrence_key) if deck is not None else None)
-        if row is not None and (row.call.source_filename == path.name or '-current.tex' in path.name):
-            target = preview_target.for_call(ctx, deck, row.call, row.position, frame_number=row.frame_number,
-                                             occurrence_key=row.key, hidden=row.hidden)
+        rows = (deck_outline.resolve_slots(ctx, deck, canonical, language, links=links, resolution=resolution)
+                if resolution else ())
+        matches = [r for r in rows if r.slot.matches(slide_language.bare_id(path.name))]
+        row = next((r for r in matches if r.key == occurrence_key), matches[0] if matches else None)
+        if row is not None and (row.slot.call.source_filename == path.name or '-current.tex' in path.name):
+            target = preview_target.for_call(ctx, deck, row.slot.call, row.position, frame_number=row.frame_number,
+                                             hidden=row.hidden, resolution=resolution)
+            target = replace(target, occurrence_key=row.key, presenter_frame_number=frames.get(row.key))
         else:
             target = preview_target.for_path(ctx, path)
         if target is None:

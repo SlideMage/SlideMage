@@ -15,9 +15,9 @@ Qt reports count UTF-16 code units, latex_edit's count characters;
 from __future__ import annotations
 
 import re
-from typing import Any, Protocol
+from typing import Any, Callable, Optional, Protocol
 
-from PySide6.QtCore import QEvent, QRect, QSize, Qt, Signal
+from PySide6.QtCore import QEvent, QPoint, QRect, QSize, Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QFont,
@@ -30,9 +30,9 @@ from PySide6.QtGui import (
     QTextCursor,
     QTextDocument,
 )
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit, QTextEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit, QTextEdit, QToolTip, QVBoxLayout, QWidget
 
-from ... import latex_edit
+from ... import latex_edit, latex_help
 from ...latex_edit import DEFAULT_TAB_WIDTH_CHARS, Edit, Insert, utf16_len, utf16_units
 from ...tex_source import COMMENT_RE
 from ..kit.tokens import SPACE
@@ -92,8 +92,8 @@ class SourceEditor(Protocol):
     def apply_insert(self, insert: Insert) -> bool:
         """False if `insert` needs the user's input first (a hyperlink)."""
     def toggle_comment(self) -> None: ...
-    def reindent(self) -> bool:
-        """False if the indentation was already right."""
+    def reindent(self, kind: str = "slide") -> bool:
+        """False if the indentation was already right. `kind`: "slide", "deck" or "bib"."""
     # header comment
     def header_line_count(self) -> int: ...
     def is_header_folded(self) -> bool: ...
@@ -105,7 +105,49 @@ class SourceEditor(Protocol):
         """Replace every match (case-insensitive, literal) as one undo step."""
     # settings
     def set_tab_width(self, chars: int) -> None: ...
+    def set_hover_help(self, on: bool) -> None:
+        """Show the help of a LaTeX command under the pointer (latex_help.py); Shift+F1 works either way."""
     def refresh_colors(self) -> None: ...
+
+
+def spelling_selections(edit: QPlainTextEdit, marks: list[tuple[int, int]], color: str) -> list:
+    """Red wavy underlines (ExtraSelections) of `edit` on the character ranges `marks` (offsets into its plain text;
+    Qt counts UTF-16 code units, so a character outside the BMP counts twice there)."""
+    text = edit.toPlainText()
+    fmt = QTextCharFormat()
+    # The platform's spell-check underline is a hairline that is easy to overlook; a wavy line plus a faint
+    # tint behind the word makes an unknown word visible at a glance.
+    fmt.setUnderlineStyle(QTextCharFormat.UnderlineStyle.WaveUnderline)
+    fmt.setUnderlineColor(QColor(color))
+    tint = QColor(color)
+    tint.setAlpha(45)
+    fmt.setBackground(tint)
+    selections, done, position = [], 0, 0
+    for start, end in sorted(marks):
+        if not done <= start < end <= len(text):
+            continue
+        position += utf16_len(text[done:start])
+        length = utf16_len(text[start:end])
+        selection = QTextEdit.ExtraSelection()
+        selection.format = fmt
+        selection.cursor = QTextCursor(edit.document())
+        selection.cursor.setPosition(position)
+        selection.cursor.setPosition(position + length, QTextCursor.MoveMode.KeepAnchor)
+        selections.append(selection)
+        position += length
+        done = end
+    return selections
+
+
+def char_offset_at(edit: QPlainTextEdit, pos: QPoint) -> int:
+    """The character offset into `edit`'s plain text under `pos` (viewport coordinates), on the character the
+    pointer is over."""
+    cursor = edit.cursorForPosition(pos)
+    position = cursor.position()
+    if edit.cursorRect(cursor).x() > pos.x() and cursor.positionInBlock() > 0:
+        position -= 1
+    units = utf16_units(edit.toPlainText())
+    return position - sum("\ud800" <= unit <= "\udbff" for unit in units[:position])
 
 
 def source_font() -> QFont:
@@ -198,11 +240,19 @@ class LatexPlainTextEdit(QPlainTextEdit):
     modified_changed = Signal(bool)
     text_changed = Signal()
     escape_pressed = Signal()
+    # Ctrl+. : the spelling menu for the word at the text cursor (character offset, global position for it).
+    spelling_menu_requested = Signal(int, QPoint)
 
-    def __init__(self, theme: ThemeManager, tab_width: int = DEFAULT_TAB_WIDTH_CHARS) -> None:
+    def __init__(self, theme: ThemeManager, tab_width: int = DEFAULT_TAB_WIDTH_CHARS,
+                 hover_help: bool = True) -> None:
         super().__init__()
+        self._brace_selections: list[QTextEdit.ExtraSelection] = []
+        self._spell_selections: list[QTextEdit.ExtraSelection] = []
+        self._spelling_marks: list[tuple[int, int]] = []
         self.setObjectName(q.SOURCE)
         self._theme = theme
+        self._hover_help = hover_help
+        self._help_provider: Optional[Callable[[], latex_help.HelpSet]] = None
         self._header_lines = 0
         self._header_folded = True
         self.setFont(source_font())
@@ -416,9 +466,10 @@ class LatexPlainTextEdit(QPlainTextEdit):
                 return True
         return super().event(event)
 
-    def reindent(self) -> bool:
+    def reindent(self, kind: str = "slide") -> bool:
+        """`kind` picks the rules (latex_edit.REINDENTERS): "slide", "deck" or "bib"."""
         old = self.toPlainText()
-        new = latex_edit.reindent_latex(old)
+        new = latex_edit.REINDENTERS[kind](old)
         if new == old:
             return False
         self.replace_all_text(new)
@@ -496,9 +547,48 @@ class LatexPlainTextEdit(QPlainTextEdit):
         self._tab_chars = chars
         self.setTabStopDistance(QFontMetricsF(self.font()).horizontalAdvance(" ") * chars)
 
+    def set_help_provider(self, provider: Optional[Callable[[], latex_help.HelpSet]]) -> None:
+        """`provider()` gives the current theme's help (a help.toml), asked at each tooltip."""
+        self._help_provider = provider
+
+    def _extra_help(self) -> latex_help.HelpSet:
+        try:
+            return self._help_provider() if self._help_provider is not None else latex_help.NO_EXTRA
+        except Exception:                      # a tooltip must never raise
+            return latex_help.NO_EXTRA
+
+    def set_hover_help(self, on: bool) -> None:
+        self._hover_help = on
+        if not on:
+            QToolTip.hideText()
+
     def refresh_colors(self) -> None:
         self.highlighter.refresh_colors()
+        self.set_spelling_marks(self._spelling_marks)
         self.viewport().update()
+
+    # -- spelling marks (spell_check.py decides which words) -----------------------------
+
+    def char_offset(self, position: int) -> int:
+        """The character offset into text() of a Qt position (which counts UTF-16 code units)."""
+        units = utf16_units(self.toPlainText())
+        return position - sum("\ud800" <= unit <= "\udbff" for unit in units[:position])
+
+    def offset_at(self, pos: QPoint) -> int:
+        """The character offset under `pos` (viewport coordinates), on the character the pointer is over."""
+        return char_offset_at(self, pos)
+
+    def spelling_marks(self) -> list[tuple[int, int]]:
+        return list(self._spelling_marks)
+
+    def set_spelling_marks(self, marks: list[tuple[int, int]]) -> None:
+        """Underline the character ranges `marks` (offsets into text()) with a red wavy line; [] clears them."""
+        self._spelling_marks = list(marks)
+        self._spell_selections = spelling_selections(self, self._spelling_marks, self._theme.tokens.error)
+        self._apply_extra_selections()
+
+    def _apply_extra_selections(self) -> None:
+        self.setExtraSelections(self._spell_selections + self._brace_selections)
 
     # -- line numbers ------------------------------------------------------------------
 
@@ -550,6 +640,14 @@ class LatexPlainTextEdit(QPlainTextEdit):
     # -- keys and braces ---------------------------------------------------------------
 
     def keyPressEvent(self, event) -> None:
+        if event.key() == Qt.Key.Key_F1 and event.modifiers() == Qt.KeyboardModifier.ShiftModifier:
+            self.show_help_at_cursor()
+            return
+        if event.key() == Qt.Key.Key_Period and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            caret = self.cursorRect()
+            self.spelling_menu_requested.emit(self.char_offset(self.textCursor().position()),
+                                              self.viewport().mapToGlobal(caret.bottomLeft()))
+            return
         if event.key() == Qt.Key.Key_Escape:
             self.escape_pressed.emit()
         elif event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and not self.isReadOnly() \
@@ -558,6 +656,61 @@ class LatexPlainTextEdit(QPlainTextEdit):
             self._insert(latex_edit.smart_return(cursor.block().text(), cursor.atBlockEnd(), self.toPlainText()))
             return
         super().keyPressEvent(event)
+
+    # -- help for LaTeX commands (latex_help.py) ---------------------------------------
+
+    def viewportEvent(self, event) -> bool:  # noqa: N802 -- Qt's name
+        # A QPlainTextEdit's ToolTip events arrive at its viewport.
+        if event.type() == QEvent.Type.ToolTip:
+            found = self.help_at_point(event.pos()) if self._hover_help else None
+            if found is None:
+                QToolTip.hideText()
+                event.ignore()
+            else:
+                hit, rect = found
+                QToolTip.showText(event.globalPos(), latex_help.help_html(hit, FONT_MONO), self.viewport(), rect)
+            return True
+        return super().viewportEvent(event)
+
+    def help_at_point(self, pos: QPoint) -> Optional[tuple[latex_help.HelpHit, QRect]]:
+        """The help for the character under `pos` (viewport coordinates), with the hovered token's rectangle:
+        the tooltip goes away once the pointer leaves it."""
+        cursor = self.cursorForPosition(pos)
+        caret = self.cursorRect(cursor)
+        if not caret.top() <= pos.y() <= caret.bottom():
+            return None                         # below the last line
+        position = cursor.position()
+        # cursorForPosition gives the gap nearest to the pointer: a gap right of the pointer means the pointer is
+        # on the character before it.
+        if caret.x() > pos.x() and cursor.positionInBlock() > 0:
+            position -= 1
+        hit = latex_help.help_at(utf16_units(self.toPlainText()), position, self._extra_help())
+        if hit is None:
+            return None
+        return hit, self._token_rect(hit, caret)
+
+    def _token_rect(self, hit: latex_help.HelpHit, line: QRect) -> QRect:
+        start, end = QTextCursor(self.document()), QTextCursor(self.document())
+        start.setPosition(hit.start)
+        end.setPosition(hit.end)
+        left, right = self.cursorRect(start), self.cursorRect(end)
+        if left.top() != right.top():           # an entry that wraps: the hovered line
+            return QRect(0, line.top(), self.viewport().width(), line.height())
+        return QRect(left.x(), left.top(), max(1, right.x() - left.x()), left.height())
+
+    def show_help_at_cursor(self) -> bool:
+        """Shift+F1: the help for the command at the text cursor (on it, or right after it)."""
+        text = utf16_units(self.toPlainText())
+        position = self.textCursor().position()
+        extra = self._extra_help()
+        hit = latex_help.help_at(text, position, extra) or latex_help.help_at(text, position - 1, extra)
+        if hit is None:
+            QToolTip.hideText()
+            return False
+        caret = self.cursorRect()
+        QToolTip.showText(self.viewport().mapToGlobal(caret.bottomLeft()), latex_help.help_html(hit, FONT_MONO),
+                          self.viewport())
+        return True
 
     def _highlight_matching_brace(self) -> None:
         """Mark the brace pair the cursor touches, so a deeply nested
@@ -574,7 +727,8 @@ class LatexPlainTextEdit(QPlainTextEdit):
                 selection.cursor.setPosition(pos)
                 selection.cursor.setPosition(pos + 1, QTextCursor.MoveMode.KeepAnchor)
                 selections.append(selection)
-        self.setExtraSelections(selections)
+        self._brace_selections = selections
+        self._apply_extra_selections()
 
 
 class FindBar(QWidget):

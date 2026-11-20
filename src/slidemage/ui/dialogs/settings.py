@@ -44,9 +44,10 @@ from ... import app_settings, diagnostics, preview_build, slide_preview, slide_t
 from ...ai import ai_profile, routes
 from ...plugins import session
 from ...latex_edit import DEFAULT_TAB_WIDTH_CHARS, TAB_WIDTH_SETTING_KEY
-from .. import layout_settings
+from ...latex_help import HOVER_HELP_SETTING_KEY
+from .. import background, layout_settings
 from ..ai_models import add_route_badge
-from ..kit.widgets import Button, Field, ModalSheet, Page, SegmentedControl, action_row, caption, columns, row
+from ..kit.widgets import BusyIndicator, Button, Field, ModalSheet, Page, SegmentedControl, action_row, caption, columns, row
 from ..workspace import debug_log_ui
 from ..workspace.centre import RESUME_TABS_SETTING
 from ..workspace.source_file import autosave_on
@@ -90,6 +91,35 @@ class GeneralTab(Page):
         self.tab_width_spin.setValue(app_settings.get(app.project, TAB_WIDTH_SETTING_KEY, DEFAULT_TAB_WIDTH_CHARS))
         self.tab_width_spin.valueChanged.connect(app.set_tab_width_chars)
         layout.addWidget(columns(Field("Appearance", self.dark_check), Field("Source editor tab width (characters)", self.tab_width_spin)))
+
+        self.hover_help_check = QCheckBox("Show help for LaTeX commands on hover")
+        self.hover_help_check.setChecked(bool(app_settings.get(app.project, HOVER_HELP_SETTING_KEY, True)))
+        self.hover_help_check.toggled.connect(app.set_hover_help)
+        layout.addWidget(Field("Source editor help", self.hover_help_check))
+        layout.addWidget(caption("Pointing at a SlideMage command such as \\cornerfigure, or at one of its keys, shows "
+                                 "how to use it. Shift+F1 shows the same for the command at the text cursor, also "
+                                 "when this is off."))
+
+        from ...spelling import settings as spelling_settings
+
+        def spelling_combo(language: str, choices) -> QComboBox:
+            combo = QComboBox()
+            for value, name in choices:
+                combo.addItem(name, value)
+            combo.setCurrentIndex(max(0, combo.findData(spelling_settings.variant(language))))
+            combo.currentIndexChanged.connect(lambda _i: app.set_spelling_variant(language, combo.currentData()))
+            return combo
+
+        self.english_spelling_combo = spelling_combo("en", (("US", "American (color, analyze)"),
+                                                            ("GB", "British (colour, analyse)")))
+        self.german_spelling_combo = spelling_combo("de", (("AT", "Austria (Jänner, Straße)"),
+                                                           ("DE", "Germany (Januar, Straße)"),
+                                                           ("CH", "Switzerland (Januar, Strasse)")))
+        layout.addWidget(columns(Field("English spelling", self.english_spelling_combo),
+                                 Field("German spelling", self.german_spelling_combo)))
+        layout.addWidget(caption("The dictionaries slide text is checked against; the spell check is switched on and "
+                                 "off in the Source view's toolbar. Each dictionary is downloaded the first time it "
+                                 "is used (English about 1 MB, German about 4 MB)."))
 
         self.autosave_check = QCheckBox("Save edits as you type (AutoSave)")
         self.autosave_check.setChecked(autosave_on())
@@ -137,6 +167,18 @@ class GeneralTab(Page):
             "snapshot or PowerPoint export shows that last version, and the changes stay in the slide until you "
             "use Update version. On, it shows the slide as it is now. The slide's own Preview always shows "
             "it as it is now."))
+
+        self.ask_saved_versions_check = QCheckBox("Ask before a deck compiles slides from their last version")
+        self.ask_saved_versions_check.setChecked(
+            bool(app_settings.get(app.project, slide_versioning.ASK_SAVED_VERSIONS_SETTING_KEY, True)))
+        self.ask_saved_versions_check.toggled.connect(
+            lambda on: app_settings.set(app.project, slide_versioning.ASK_SAVED_VERSIONS_SETTING_KEY, bool(on)))
+        self.render_changes_check.toggled.connect(lambda on: self.ask_saved_versions_check.setEnabled(not on))
+        self.ask_saved_versions_check.setEnabled(not self.render_changes_check.isChecked())
+        layout.addWidget(Field("Last versions in decks", self.ask_saved_versions_check))
+        layout.addWidget(caption(
+            "With the setting above off, a deck compile lists the slides it takes from their last version, and you "
+            "can compile them with the edits this time, or update their versions first. Off, the Log lists them."))
 
         self.resume_tabs_check = QCheckBox("Reopen the tabs a project had open, when it opens again")
         self.resume_tabs_check.setChecked(bool(layout_settings.get(RESUME_TABS_SETTING, True)))
@@ -239,6 +281,8 @@ class GeneralTab(Page):
         layout.addWidget(Field("Background previews", row(self.bg_check, self.bg_mains_check)))
         layout.addWidget(columns(Field("Speed", self.bg_profile), Field("Disk limit", self.bg_limit)))
         layout.addWidget(row(self.bg_clear))
+        self.bg_busy = BusyIndicator()
+        layout.addWidget(self.bg_busy)
         self.bg_caption = caption("")
         layout.addWidget(self.bg_caption)
         layout.addWidget(caption(
@@ -271,9 +315,23 @@ class GeneralTab(Page):
         if QMessageBox.question(self, "Clear background previews", "Delete all prepared previews? They are rendered again "
                                 "when SlideMage is idle.") != QMessageBox.StandardButton.Yes:
             return
-        controller.store.clear()
-        controller.renderer.replan()
+        store, renderer = controller.store, controller.renderer
+        store.clear()
         self._background_size()
+        self.bg_clear.setEnabled(False)
+        self.bg_busy.start("Clearing background previews…")
+        workspace = store.work_dir
+
+        def purge() -> None:
+            store.purge_trash()
+            preview_build.prune_unused(workspace, workspace / "build", 0)
+
+        def done(_result, _error) -> None:
+            renderer.replan()                       # also when the sheet has closed meanwhile
+            if shiboken6.isValid(self):
+                self.bg_busy.finish()
+                self.bg_clear.setEnabled(True)
+        background.run_in_background(purge, done, busy_reason="clearing previews")
 
     def _on_cleanup(self, index: int) -> None:
         hours = self.cleanup_combo.itemData(index)

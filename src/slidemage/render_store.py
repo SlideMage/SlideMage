@@ -6,19 +6,21 @@ Everything lives on this computer, in the user's cache folder (`project.cache_di
 never in the project: projects live in cloud-synced folders and the renders can be gigabytes. The project id is a
 hash of the project's folder, so two projects (or two copies of one) never share a store.
 
-**Objects** are folders, `objects/<ab>/<key>/`, holding `slide.pdf`, one 1920 px `pNNN.png` per
-page (every reveal step), `thumb.png` shrunk from the last page, and `meta.json`, written last with the
-sizes of the other files. Publication replaces the previous object of the key under the store lock.
-An object without a complete `meta.json` is ignored.
+**Objects** are folders, `objects/<ab>/<key>/`, holding `slide.pdf`, one 1920 px `pNNN.webp` per
+page (every reveal step), `thumb.webp` shrunk from the last page, and `meta.json`, written last with the
+sizes of the other files. Older objects keep their PNG files. Publication replaces the previous object of the key
+under the store lock. An object without a complete `meta.json` is ignored.
 
-The **index** is a SQLite file beside them: a cache of the `meta.json` files (rebuilt by rescan()), the file hashes
+The **index** is a SQLite file beside them: the records of published objects, the file hashes
 (dep_hash), the failures the sweep remembers and the decks' usage. `work/` holds what the renders' LaTeX runs
-need outside the project: their wrapper files, build caches and precompiled preamble formats.
+need outside the project: their wrapper files, build caches and precompiled preamble formats. What is deleted in
+bulk (`clear`, `drop_deck`) is first moved into a `trash-*` folder under the lock, one rename each, and deleted by
+`purge_trash` with no lock held: a store of thousands of folders takes seconds to delete.
 Free of Qt.
 """
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 import json
 import os
 import shutil
@@ -32,28 +34,21 @@ from typing import Callable, Iterable, Optional
 
 from . import project
 from .fileio import write_json
-from .render_evidence import thumbnail_png
+from .render_evidence import THUMBNAIL_MAX, webp
 
 STORE_FORMAT = 2
-ORIGIN_BACKGROUND = "background"
-ORIGIN_REVEAL = "reveal"
-ORIGIN_COMPILE = "compile"
 DEFAULT_LIMIT_BYTES = 2 * 1024 ** 3
-DEFAULT_KEEP_DAYS = 30
-LEFTOVERS_CLEARED = "stale renders cleared"     # the one clearing of drop_stale(None, ...) ran in this store
+LEFTOVERS_CLEARED = "stale renders cleared"     # the one clearing of legacy stale renders ran in this store
 FAILURE_INPUTS_TRACKED = "failures track their own inputs"
-THUMB_NAME = "thumb.png"        # the last page at THUMBNAIL_MAX, for the slide list (2026-10-30, direct request)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS renders (
-    name TEXT PRIMARY KEY, fast_key TEXT NOT NULL, origin TEXT NOT NULL, unit TEXT NOT NULL,
+    key TEXT PRIMARY KEY, unit TEXT NOT NULL,
     bytes INTEGER NOT NULL, rendered_at REAL NOT NULL, last_used REAL NOT NULL, decks TEXT NOT NULL, meta TEXT NOT NULL);
-CREATE INDEX IF NOT EXISTS renders_key ON renders(fast_key);
 CREATE INDEX IF NOT EXISTS renders_unit ON renders(unit);
 CREATE TABLE IF NOT EXISTS failures (
     fast_key TEXT PRIMARY KEY, kind TEXT NOT NULL, attempts INTEGER NOT NULL, error TEXT NOT NULL,
-    first_at REAL NOT NULL, next_try_at REAL NOT NULL, manifest TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS last_tries (fast_key TEXT PRIMARY KEY, tried_at REAL NOT NULL);
+    first_at REAL NOT NULL, next_try_at REAL NOT NULL, manifest TEXT NOT NULL, last_try REAL);
 CREATE TABLE IF NOT EXISTS texsets (digest TEXT PRIMARY KEY, files TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS deck_usage (
     deck TEXT PRIMARY KEY, last_opened REAL NOT NULL, open_count INTEGER NOT NULL,
@@ -72,29 +67,35 @@ def project_copy(ctx: project.ProjectContext) -> Path:
     return ctx.root / ".previews" / "render-store"
 
 
-def object_dir(root: Path, name: str) -> Path:
-    return root / "objects" / name[:2] / name
+def object_dir(root: Path, key: str) -> Path:
+    return root / "objects" / key[:2] / key
 
 
 class RenderStore:
     def __init__(self, ctx: project.ProjectContext, local_dir: Optional[Path] = None,
                  clock: Callable[[], float] = time.time) -> None:
         self.ctx = ctx
-        self.local_dir = Path(local_dir) if local_dir is not None else project.cache_dir() / "render-store" / project_id(ctx.root)
-        self.root = self.local_dir
-        self.work_dir = self.local_dir / "work"
+        self.root = Path(local_dir) if local_dir is not None else project.cache_dir() / "render-store" / project_id(ctx.root)
+        self.work_dir = self.root / "work"
         self.forget_project_copy(ctx)
         shutil.rmtree(project.preview_cache_dir(ctx.root) / "render-results", ignore_errors=True)
         self._clock = clock
-        self._lock = threading.RLock()
-        self.local_dir.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(str(self.local_dir / "index.sqlite"), check_same_thread=False, timeout=30)
-        with self._lock:
+        self._touched: dict[str, float] = {}
+        self.lock = threading.RLock()
+        self.root.mkdir(parents=True, exist_ok=True)
+        self.db = sqlite3.connect(str(self.root / "index.sqlite"), check_same_thread=False, timeout=30)
+        with self.lock:
             self.db.executescript(SCHEMA)
+            if "origin" in {row[1] for row in self.db.execute("PRAGMA table_info(renders)")}:
+                self.db.execute("DROP INDEX IF EXISTS renders_key")
+                self.db.execute("ALTER TABLE renders DROP COLUMN origin")
+                self.db.execute("ALTER TABLE renders DROP COLUMN fast_key")
+                self.db.execute("ALTER TABLE renders RENAME COLUMN name TO key")
+                self.db.execute("ALTER TABLE failures ADD COLUMN last_try REAL")
+                self.db.execute("DROP TABLE IF EXISTS last_tries")
             self.db.commit()
-        self.lock = self._lock
         self.current_keys: frozenset[str] = frozenset()
-        with self._lock:
+        with self.lock:
             if self.db.execute("PRAGMA user_version").fetchone()[0] != STORE_FORMAT:
                 self.db.execute("DELETE FROM renders")
                 self.db.execute("DROP TABLE IF EXISTS filehash")
@@ -106,6 +107,7 @@ class RenderStore:
         if not self.flag(FAILURE_INPUTS_TRACKED):
             self.forget_failure()
             self.set_flag(FAILURE_INPUTS_TRACKED)
+        (self.root / "project.txt").write_text(str(ctx.root.resolve()), encoding="utf-8")
 
     @staticmethod
     def forget_project_copy(ctx: project.ProjectContext) -> None:
@@ -114,20 +116,21 @@ class RenderStore:
         shutil.rmtree(project_copy(ctx), ignore_errors=True)
 
     def close(self) -> None:
-        with self._lock:
+        with self.lock:
             self.db.close()
 
     # -- objects -----------------------------------------------------------------
 
-    def put(self, key: str, origin: str, pdf: Path, pages: list[bytes], meta: dict, *,
+    def put(self, key: str, pdf: Path, pages: list[bytes], meta: dict, *,
             decks: Iterable[str] = ()) -> str:
         """Publish a complete render, replacing the object of this key and obsolete keys of its unit."""
-        small = thumbnail_png(pages[-1]) if pages else None
-        if small is None:
-            raise ValueError("a render needs page images and a thumbnail")
-        with self._lock:
+        if not pages:
+            raise ValueError("a render needs page images")
+        encoded = [webp(page) for page in pages]        # before the lock: about 0.3 s a page
+        small = webp(pages[-1], THUMBNAIL_MAX)
+        with self.lock:
             decks = set(decks)
-            row = self.db.execute("SELECT decks FROM renders WHERE name=?", (key,)).fetchone()
+            row = self.db.execute("SELECT decks FROM renders WHERE key=?", (key,)).fetchone()
             if row:
                 decks.update(json.loads(row[0]))
             target = object_dir(self.root, key)
@@ -136,80 +139,84 @@ class RenderStore:
             try:
                 shutil.copyfile(pdf, tmp / "slide.pdf")
                 sizes = {"slide.pdf": (tmp / "slide.pdf").stat().st_size}
-                for number, data in enumerate(pages, start=1):
-                    (tmp / f"p{number:03d}.png").write_bytes(data)
-                    sizes[f"p{number:03d}.png"] = len(data)
-                (tmp / THUMB_NAME).write_bytes(small)
-                sizes[THUMB_NAME] = len(small)
+                for number, data in enumerate(encoded, start=1):
+                    (tmp / f"p{number:03d}.webp").write_bytes(data)
+                    sizes[f"p{number:03d}.webp"] = len(data)
+                (tmp / "thumb.webp").write_bytes(small)
+                sizes["thumb.webp"] = len(small)
                 meta = dict(meta)
                 tex_files = meta.pop("tex_files", None)
-                meta.update(format=STORE_FORMAT, key=key, origin=origin, pages=len(pages), files=sizes,
+                meta.update(format=STORE_FORMAT, key=key, pages=len(pages), files=sizes,
                             bytes=sum(sizes.values()), decks=sorted(set(decks)))
                 write_json(tmp / "meta.json", meta, indent=0)       # last: the object is complete only now
                 target.parent.mkdir(parents=True, exist_ok=True)
-                self.delete(key)
+                self._remove(key)
                 os.replace(tmp, target)
                 self._index(key, meta, tex_files)
-                for (name,) in self.db.execute("SELECT name FROM renders WHERE unit=? AND name!=?", (meta["unit"], key)).fetchall():
-                    if name not in self.current_keys:
-                        self.delete(name)
+                for (old_key,) in self.db.execute("SELECT key FROM renders WHERE unit=? AND key!=?", (meta["unit"], key)).fetchall():
+                    if old_key not in self.current_keys:
+                        self._remove(old_key)
             finally:
                 shutil.rmtree(tmp, ignore_errors=True)
+            self.db.commit()
             return key
 
-    def _exists(self, name: str) -> bool:
-        return (object_dir(self.root, name) / "meta.json").is_file()
+    def _exists(self, key: str) -> bool:
+        return (object_dir(self.root, key) / "meta.json").is_file()
 
-    def _index(self, name: str, meta: dict, tex_files: Optional[list] = None) -> None:
+    def _index(self, key: str, meta: dict, tex_files: Optional[list] = None) -> None:
         now = self._clock()
         self.db.execute(
-            "INSERT OR REPLACE INTO renders VALUES (?,?,?,?,?,?,?,?,?)",
-            (name, meta["key"], meta["origin"], meta.get("unit", ""), int(meta.get("bytes", 0)),
+            "INSERT OR REPLACE INTO renders VALUES (?,?,?,?,?,?,?)",
+            (key, meta.get("unit", ""), int(meta.get("bytes", 0)),
              float(meta.get("rendered_at", now)), now, json.dumps(meta.get("decks", [])), json.dumps(meta)))
         if meta.get("tex_digest") and tex_files:
             self.db.execute("INSERT OR IGNORE INTO texsets VALUES (?,?)", (meta["tex_digest"], json.dumps(tex_files)))
-        self.db.commit()
 
     def find(self, key: str) -> Optional[dict]:
         """The current-format object of `key`, if present on disk."""
-        with self._lock:
-            row = self.db.execute("SELECT meta FROM renders WHERE name=?", (key,)).fetchone()
+        with self.lock:
+            row = self.db.execute("SELECT meta FROM renders WHERE key=?", (key,)).fetchone()
             record = self._checked_meta(str(object_dir(self.root, key)), row[0]) if row else None
             if record is not None:
-                record["name"], record["dir"] = key, str(object_dir(self.root, key))
+                record["dir"] = str(object_dir(self.root, key))
             return record
 
     def latest_for_unit(self, unit: str) -> Optional[dict]:
-        with self._lock:
-            rows = self.db.execute("SELECT fast_key FROM renders WHERE unit=? ORDER BY rendered_at DESC, name DESC", (unit,)).fetchall()
+        with self.lock:
+            rows = self.db.execute("SELECT key FROM renders WHERE unit=? ORDER BY rendered_at DESC, key DESC", (unit,)).fetchall()
             for (key,) in rows:
                 if found := self.find(key):
                     return found
         return None
 
     def page(self, record: dict, number: int) -> Optional[bytes]:
-        """The PNG of page `number` (1-based), read under the publication lock."""
-        with self._lock:
+        """The image of page `number` (1-based), read under the publication lock."""
+        with self.lock:
             if self.find(record["key"]) != record:
                 return None
+            name = next((name for name in record["files"] if Path(name).stem == f"p{number:03d}"), None)
+            if name is None:
+                return None
             try:
-                data = (Path(record["dir"]) / f"p{number:03d}.png").read_bytes()
+                data = (Path(record["dir"]) / name).read_bytes()
             except OSError:
                 return None
-            self.touch(record["name"])
+            self.touch(record["key"])
             return data
 
     def pages(self, record: dict) -> Optional[list[bytes]]:
         """Every page from one publication, or a miss if the object was replaced or evicted."""
-        with self._lock:
+        with self.lock:
             if self.find(record["key"]) != record:
                 return None
             try:
-                pages = [(Path(record["dir"]) / f"p{number:03d}.png").read_bytes()
-                         for number in range(1, record["pages"] + 1)]
+                pages = [(Path(record["dir"]) / name).read_bytes()
+                         for name in sorted((name for name in record["files"] if name.startswith("p")),
+                                            key=lambda name: int(Path(name).stem[1:]))]
             except OSError:
                 return None
-            self.touch(record["name"])
+            self.touch(record["key"])
             return pages if pages and all(pages) else None
 
     @contextmanager
@@ -217,7 +224,7 @@ class RenderStore:
         """A temporary PDF, independent of replacement/eviction, for the caller's context lifetime."""
         with tempfile.TemporaryDirectory(prefix="slidemage-render-") as tmp:
             pdf = Path(tmp) / "slide.pdf"
-            with self._lock:
+            with self.lock:
                 if self.find(record["key"]) != record:
                     pdf = None
                 else:
@@ -226,70 +233,80 @@ class RenderStore:
                     except OSError:
                         pdf = None
                     else:
-                        self.touch(record["name"])
+                        self.touch(record["key"])
             yield pdf
 
     def thumbnail_path(self, record: dict) -> Optional[Path]:
         """The slide list's small copy of the last page; eviction may remove it after this returns."""
-        with self._lock:
+        with self.lock:
             if self.find(record["key"]) != record:
                 return None
-            path = Path(record["dir"]) / THUMB_NAME
-            self.touch(record["name"])
+            name = next((name for name in record["files"] if Path(name).stem == "thumb"), None)
+            if name is None:
+                return None
+            path = Path(record["dir"]) / name
+            self.touch(record["key"])
             return path if path.is_file() else None
 
-    def touch(self, name: str) -> None:
-        with self._lock:
-            self.db.execute("UPDATE renders SET last_used=? WHERE name=?", (self._clock(), name))
+    def touch(self, key: str) -> None:
+        with self.lock:
+            now = self._clock()
+            if now - self._touched.get(key, float("-inf")) < 3600:
+                return
+            self.db.execute("UPDATE renders SET last_used=? WHERE key=?", (now, key))
             self.db.commit()
+            self._touched[key] = now
 
     def tex_files(self, digest: str) -> Optional[list]:
-        with self._lock:
+        with self.lock:
             row = self.db.execute("SELECT files FROM texsets WHERE digest=?", (digest,)).fetchone()
         return json.loads(row[0]) if row else None
 
-    def link_decks(self, name: str, decks: Iterable[str]) -> None:
+    def link_decks(self, key: str, decks: Iterable[str]) -> None:
         decks = set(decks)
         if not decks:
             return
-        with self._lock:
-            row = self.db.execute("SELECT decks FROM renders WHERE name=?", (name,)).fetchone()
+        with self.lock:
+            row = self.db.execute("SELECT decks FROM renders WHERE key=?", (key,)).fetchone()
             if row is None:
                 return
             merged = sorted(set(json.loads(row[0])) | decks)
-            self.db.execute("UPDATE renders SET decks=? WHERE name=?", (json.dumps(merged), name))
+            self.db.execute("UPDATE renders SET decks=? WHERE key=?", (json.dumps(merged), key))
             self.db.commit()
 
-    def delete(self, name: str) -> None:
-        with self._lock:
-            shutil.rmtree(object_dir(self.root, name), ignore_errors=True)
-            self.db.execute("DELETE FROM renders WHERE name=?", (name,))
+    def _remove(self, key: str) -> None:
+        shutil.rmtree(object_dir(self.root, key), ignore_errors=True)
+        self.db.execute("DELETE FROM renders WHERE key=?", (key,))
+
+    def delete(self, key: str) -> None:
+        with self.lock:
+            self._remove(key)
             self.db.commit()
 
     def drop_deck(self, deck: str) -> int:
-        """A deck was archived: forget it in every render, deleting the renders only it used."""
-        removed = 0
-        with self._lock:
-            rows = self.db.execute("SELECT name, decks FROM renders").fetchall()
-            for name, decks in rows:
+        """A deck was archived: forget it in every render, moving the renders only it used to the trash (the
+        caller runs purge_trash off the GUI thread)."""
+        unused = []
+        with self.lock:
+            rows = self.db.execute("SELECT key, decks FROM renders").fetchall()
+            for key, decks in rows:
                 names = json.loads(decks)
                 if deck not in names:
                     continue
                 names.remove(deck)
                 if names:
-                    self.db.execute("UPDATE renders SET decks=? WHERE name=?", (json.dumps(names), name))
+                    self.db.execute("UPDATE renders SET decks=? WHERE key=?", (json.dumps(names), key))
                 else:
-                    shutil.rmtree(object_dir(self.root, name), ignore_errors=True)
-                    self.db.execute("DELETE FROM renders WHERE name=?", (name,))
-                    removed += 1
+                    unused.append(key)
+            self.db.executemany("DELETE FROM renders WHERE key=?", [(key,) for key in unused])
+            self._trash(*(object_dir(self.root, key) for key in unused))
             self.db.execute("DELETE FROM deck_usage WHERE deck=?", (deck,))
             self.db.commit()
-        return removed
+        return len(unused)
 
-    def drop_stale(self, in_scope: Callable[[str], bool], keep_keys: set, clean_decks: set, before: float,
-                   label: Optional[str] = None) -> int:
+    def drop_stale(self, in_scope: Callable[[str], bool], keep_keys: set, clean_decks: set, before: float) -> int:
         """Delete the renders whose key no deck uses any more (docs/plans/render-store-cleanup.md, step 2), of the units
-        `in_scope(label)` says the caller knows every current key of (`label`: only that unit's). `keep_keys` are the keys
+        `in_scope(label)` says the caller knows every current key of. `keep_keys` are the keys
         the last scan found for every unit of the decks in `clean_decks`, the decks it read in full. A render is deleted
         only when its key is not in `keep_keys`, it was rendered before `before` (the scan's start: a render stored after
         it may be of a key the scan did not see yet), and every deck it belongs to is in `clean_decks` (a deck that could
@@ -298,11 +315,9 @@ class RenderStore:
         Never by label alone: a slide called twice in a deck in two ways has one label and two current keys, and both
         are in `keep_keys`. Returns how many were deleted."""
         deleted = 0
-        with self._lock:
-            columns = "SELECT name, fast_key, unit, rendered_at, decks FROM renders"
-            rows = (self.db.execute(columns + " WHERE unit=?", (label,)) if label is not None
-                    else self.db.execute(columns)).fetchall()
-            for name, key, unit, rendered_at, decks in rows:
+        with self.lock:
+            rows = self.db.execute("SELECT key, unit, rendered_at, decks FROM renders").fetchall()
+            for key, unit, rendered_at, decks in rows:
                 if key in keep_keys or rendered_at >= before or not in_scope(unit):
                     continue
                 try:
@@ -311,55 +326,75 @@ class RenderStore:
                     continue
                 if not deck_list or not set(deck_list) <= clean_decks:
                     continue
-                shutil.rmtree(object_dir(self.root, name), ignore_errors=True)
-                self.db.execute("DELETE FROM renders WHERE name=?", (name,))
+                self._remove(key)
                 deleted += 1
-            if deleted:
-                self.db.commit()
+            self.db.commit()
         return deleted
+
+    def prune_index(self, keep_failures: Iterable[str], before: float) -> None:
+        """Forget old failures no current key uses and TeX file sets no render refers to."""
+        with self.lock:
+            self.db.execute("DELETE FROM failures WHERE first_at < ? "
+                            "AND fast_key NOT IN (SELECT value FROM json_each(?))",
+                            (before, json.dumps(list(keep_failures))))
+            self.db.execute("DELETE FROM texsets WHERE digest NOT IN "
+                            "(SELECT json_extract(meta, '$.tex_digest') FROM renders "
+                            "WHERE json_extract(meta, '$.tex_digest') IS NOT NULL)")
+            self.db.commit()
 
     def flag(self, name: str) -> bool:
         """Whether the one-off task `name` ran in this store (set_flag)."""
-        with self._lock:
+        with self.lock:
             return self.db.execute("SELECT 1 FROM store_flags WHERE name=?", (name,)).fetchone() is not None
 
     def set_flag(self, name: str) -> None:
-        with self._lock:
+        with self.lock:
             self.db.execute("INSERT OR REPLACE INTO store_flags VALUES (?,?)", (name, self._clock()))
             self.db.commit()
 
     def clear(self) -> None:
-        with self._lock:
-            shutil.rmtree(self.root / "objects", ignore_errors=True)
-            shutil.rmtree(self.root / "tmp", ignore_errors=True)
+        """Forget every render at once; the files go to the trash (purge_trash). put() recreates the folders."""
+        with self.lock:
+            self._trash(self.root / "objects", self.root / "tmp")
             self.db.execute("DELETE FROM renders")
             self.db.commit()
 
+    def _trash(self, *folders: Path) -> None:
+        """Move `folders` into a new `trash-*` folder, one rename each. A folder that cannot move (open on Windows)
+        stays; rescan() removes the objects no row knows."""
+        if not folders:
+            return
+        trash = self.root / f"trash-{uuid.uuid4().hex}"
+        trash.mkdir()
+        for folder in folders:
+            with suppress(OSError):
+                os.replace(folder, trash / folder.name)
+
+    def purge_trash(self) -> None:
+        """Delete what clear() and drop_deck() moved away. Without the lock: nothing refers to it any more."""
+        for trash in self.root.glob("trash-*"):
+            shutil.rmtree(trash, ignore_errors=True)
+
     def total_bytes(self) -> int:
-        with self._lock:
+        with self.lock:
             return self.db.execute("SELECT COALESCE(SUM(bytes), 0) FROM renders").fetchone()[0]
 
     def count(self) -> int:
-        with self._lock:
+        with self.lock:
             return self.db.execute("SELECT COUNT(*) FROM renders").fetchone()[0]
 
-    def rescan(self, should_stop: Callable[[], bool] = lambda: False) -> int:
-        """Bring the index in line with the objects on disk: adopt complete objects it does not know (arrived
-        by sync, or the index was lost), forget those that are gone, clear unfinished writes. Returns how
-        many objects were adopted.
+    def rescan(self, should_stop: Callable[[], bool] = lambda: False) -> None:
+        """Clear unfinished writes, incomplete or missing indexed objects, and folders without an index row.
 
-        Made to run on a thread of its own while the app uses the store (2026-10-29, direct request: SlideMage took
-        about a minute to open): the lock is held per shard, not for the whole walk, and every change to the index is
-        checked again under it, so a render stored meanwhile is never lost and an object deleted meanwhile is not
-        brought back. `should_stop()` is asked between two shards; a walk that was stopped forgets nothing, because it
-        did not see every object. Of an object the index knows, meta.json is not read again: the index holds what it
-        said, and the sizes it lists are compared with the folder's listing (os.scandir gives them without one stat
-        call per file)."""
-        with self._lock:
+        Hold the lock per shard so publication can continue between shards. Check the current row under the lock
+        before removing an object, so a render stored during the walk is kept. A stopped walk leaves rows of unseen
+        objects alone. Indexed meta supplies the expected file sizes without reading meta.json again.
+        """
+        self.purge_trash()                                              # what a crash left of clear()
+        with self.lock:
             shutil.rmtree(self.root / "tmp", ignore_errors=True)       # under the lock: put() writes there
-            indexed = dict(self.db.execute("SELECT name, meta FROM renders").fetchall())
+            indexed = {row[0] for row in self.db.execute("SELECT key FROM renders")}
         known = set()
-        adopted = 0
         objects = self.root / "objects"
         shards = []
         if objects.is_dir():
@@ -367,39 +402,32 @@ class RenderStore:
                 shards = [e.path for e in listing if e.is_dir()]
         for shard in shards:
             if should_stop():
-                return adopted
-            fresh: list[tuple[str, dict]] = []
-            try:
-                with os.scandir(shard) as listing:
-                    folders = [e for e in listing if e.is_dir()]
-            except OSError:
-                continue
-            for folder in folders:
-                meta = self._checked_meta(folder.path, indexed.get(folder.name))
-                if meta is None:
-                    with self._lock:
-                        if self._checked_meta(folder.path, None) is None:
-                            self.delete(folder.name)
+                with self.lock:
+                    self.db.commit()
+                return
+            with self.lock:
+                try:
+                    with os.scandir(shard) as listing:
+                        folders = [e for e in listing if e.is_dir()]
+                except OSError:
                     continue
-                known.add(folder.name)
-                if folder.name not in indexed:
-                    fresh.append((folder.name, meta))
-            if fresh:
-                with self._lock:
-                    for name, meta in fresh:
-                        if self.db.execute("SELECT 1 FROM renders WHERE name=?", (name,)).fetchone() is None and self._exists(name):
-                            self._index(name, meta)
-                            adopted += 1
-        gone = [name for name in indexed if name not in known]
+                for folder in folders:
+                    row = self.db.execute("SELECT meta FROM renders WHERE key=?", (folder.name,)).fetchone()
+                    if row is None or self._checked_meta(folder.path, row[0]) is None:
+                        self._remove(folder.name)
+                    known.add(folder.name)
+        gone = list(indexed - known)
         for start in range(0, len(gone), 500):
             if should_stop():
-                return adopted
-            with self._lock:
-                for name in gone[start:start + 500]:
-                    if not self._exists(name):              # not stored again since the walk began
-                        self.db.execute("DELETE FROM renders WHERE name=?", (name,))
-                self.db.commit()
-        return adopted
+                with self.lock:
+                    self.db.commit()
+                return
+            with self.lock:
+                for key in gone[start:start + 500]:
+                    if not self._exists(key):              # not stored again since the walk began
+                        self._remove(key)
+        with self.lock:
+            self.db.commit()
 
     @staticmethod
     def _checked_meta(folder: str, indexed: Optional[str]) -> Optional[dict]:
@@ -433,22 +461,18 @@ class RenderStore:
     # -- eviction ----------------------------------------------------------------
 
     def enforce_limit(self, limit_bytes: int, *, protected_decks: Iterable[str] = (),
-                      keep_days: int = DEFAULT_KEEP_DAYS, is_orphan: Callable[[list], bool] = lambda decks: False) -> int:
-        """Delete renders until the store fits `limit_bytes`: renders older than `keep_days`, renders of nothing
-        that exists any more (`is_orphan(decks)`), then the least recently used outside `protected_decks`; the protected ones only when the store is still more
-        than twice over. Returns how many were deleted."""
+                      is_orphan: Callable[[list], bool] = lambda decks: False) -> int:
+        """Delete orphans (`is_orphan(decks)`), then the least recently used outside `protected_decks` while over
+        `limit_bytes`; the protected ones only above twice the limit. Returns how many were deleted."""
         protected = set(protected_decks)
         deleted = 0
-        with self._lock:
-            rows = self.db.execute("SELECT name, bytes, last_used, decks FROM renders").fetchall()
+        with self.lock:
+            rows = self.db.execute("SELECT key, bytes, last_used, decks FROM renders").fetchall()
             total = sum(r[1] for r in rows)
             order: list[tuple] = []
-            cutoff = self._clock() - keep_days * 86400
             for name, size, used, decks in rows:
                 deck_list = json.loads(decks)
-                if used < cutoff and not set(deck_list) & protected:
-                    rank = 1
-                elif is_orphan(deck_list):
+                if is_orphan(deck_list):
                     rank = 2
                 elif not set(deck_list) & protected:
                     rank = 3
@@ -456,9 +480,8 @@ class RenderStore:
                     rank = 4
                 order.append((rank, used, name, size))
             for rank, _used, name, size in sorted(order):
-                if rank <= 2 or total > limit_bytes and (rank == 3 or total > 2 * limit_bytes):
-                    shutil.rmtree(object_dir(self.root, name), ignore_errors=True)
-                    self.db.execute("DELETE FROM renders WHERE name=?", (name,))
+                if rank == 2 or total > limit_bytes and (rank == 3 or total > 2 * limit_bytes):
+                    self._remove(name)
                     total -= size
                     deleted += 1
             self.db.commit()
@@ -468,16 +491,16 @@ class RenderStore:
 
     def record_failure(self, key: str, kind: str, error: str, manifest: list) -> None:
         now = self._clock()
-        with self._lock:
-            row = self.db.execute("SELECT attempts, first_at FROM failures WHERE fast_key=?", (key,)).fetchone()
+        with self.lock:
+            row = self.db.execute("SELECT attempts, first_at, last_try FROM failures WHERE fast_key=?", (key,)).fetchone()
             attempts = (row[0] if row else 0) + 1
             wait = BACKOFF_SECONDS[min(attempts, len(BACKOFF_SECONDS)) - 1]
-            self.db.execute("INSERT OR REPLACE INTO failures VALUES (?,?,?,?,?,?,?)",
-                            (key, kind, attempts, error[-2000:], row[1] if row else now, now + wait, json.dumps(manifest)))
+            self.db.execute("INSERT OR REPLACE INTO failures VALUES (?,?,?,?,?,?,?,?)",
+                            (key, kind, attempts, error[-2000:], row[1] if row else now, now + wait, json.dumps(manifest), row[2] if row else None))
             self.db.commit()
 
     def failure(self, key: str) -> Optional[dict]:
-        with self._lock:
+        with self.lock:
             row = self.db.execute("SELECT kind, attempts, error, first_at, next_try_at, manifest FROM failures WHERE fast_key=?",
                                   (key,)).fetchone()
         if row is None:
@@ -492,26 +515,24 @@ class RenderStore:
 
     def tried_last(self, key: str) -> bool:
         """Whether the failed unit of `key` had its try after everything else was rendered (note_last_try)."""
-        with self._lock:
-            return self.db.execute("SELECT 1 FROM last_tries WHERE fast_key=?", (key,)).fetchone() is not None
+        with self.lock:
+            return self.db.execute("SELECT 1 FROM failures WHERE fast_key=? AND last_try IS NOT NULL", (key,)).fetchone() is not None
 
     def note_last_try(self, key: str) -> None:
-        with self._lock:
-            self.db.execute("INSERT OR REPLACE INTO last_tries VALUES (?,?)", (key, self._clock()))
+        with self.lock:
+            self.db.execute("UPDATE failures SET last_try=? WHERE fast_key=?", (self._clock(), key))
             self.db.commit()
 
     def forget_failure(self, key: Optional[str] = None) -> None:
-        with self._lock:
+        with self.lock:
             if key is None:
                 self.db.execute("DELETE FROM failures")
-                self.db.execute("DELETE FROM last_tries")
             else:
                 self.db.execute("DELETE FROM failures WHERE fast_key=?", (key,))
-                self.db.execute("DELETE FROM last_tries WHERE fast_key=?", (key,))
             self.db.commit()
 
     def failures(self) -> list[dict]:
-        with self._lock:
+        with self.lock:
             rows = self.db.execute("SELECT fast_key, kind, attempts, error FROM failures ORDER BY first_at").fetchall()
         return [dict(key=r[0], kind=r[1], attempts=r[2], error=r[3]) for r in rows]
 
@@ -520,7 +541,7 @@ class RenderStore:
     def touch_deck(self, deck: str, slide: Optional[str] = None, view: Optional[str] = None,
                    language: Optional[str] = None, *, opened: bool = False) -> None:
         now = self._clock()
-        with self._lock:
+        with self.lock:
             row = self.db.execute("SELECT open_count, last_opened, last_slide, last_view, last_language FROM deck_usage WHERE deck=?",
                                   (deck,)).fetchone()
             if row is None:
@@ -534,7 +555,7 @@ class RenderStore:
 
     def deck_usage(self) -> list[dict]:
         """Decks opened on this machine, most recently opened first."""
-        with self._lock:
+        with self.lock:
             rows = self.db.execute("SELECT deck, last_opened, open_count, last_slide, last_view, last_language "
                                    "FROM deck_usage ORDER BY last_opened DESC").fetchall()
         return [dict(deck=r[0], last_opened=r[1], open_count=r[2], last_slide=r[3], last_view=r[4], last_language=r[5]) for r in rows]

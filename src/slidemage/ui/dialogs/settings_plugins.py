@@ -23,8 +23,8 @@ close together; each section's actions sit on its heading line.
   takes a .smcite; citation_sources.py). Also at once, no restart.
 * Install from file…: a .smplugin that is not from the catalogue. It is read first (installer.peek) and the user is
   asked, with the plugin's name, version and network lines, because the plugin runs with their rights. Themes' and
-  citation formats' "Add from file…" take a .smtheme (install_theme_file: its theme.toml is shown first, then
-  themes.install_file checks it) and a .smcite.
+  citation formats' "Add from file…" take a .smtheme (prepare_theme_file: its theme.toml is shown first, then
+  themes.install_file checks it) and a .smcite. Every install unpacks on a worker (_start), after the questions.
 
 Every change takes effect after a restart (the plugins load once, before the window exists), so the tab says so and
 offers "Restart now". Failures are captions, never exceptions: InstallError and CatalogueError have sentences meant
@@ -33,18 +33,22 @@ for the user, and anything else a worker raises is shown the same way.
 from __future__ import annotations
 
 import logging
+import re
 import shutil
 import tempfile
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
+from typing import NamedTuple, Optional
 
-from PySide6.QtCore import QThread, QUrl, Signal
+from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import (QCheckBox, QFileDialog, QInputDialog, QLabel, QLineEdit, QMessageBox, QPlainTextEdit,
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QHBoxLayout,
+                               QInputDialog, QLabel, QLineEdit, QMessageBox, QPlainTextEdit,
                                QScrollArea, QSizePolicy, QVBoxLayout, QWidget)
 
-from ... import citation_sources, citations, open_path, packages, slide_templates, theme_sources, themes
+from ... import (citation_sources, citations, open_path, packages, slide_templates, theme_export, theme_source_folder,
+                 theme_sources, themes, updater)
 from ...plugins import catalogue, installer, loader, session, updates
 from ...plugins.catalogue import (Catalogue, CatalogueCitation, CataloguePlugin, CatalogueError, CatalogueTooNew,
                                   CitationRelease, Release)
@@ -53,7 +57,7 @@ from ...plugins.manifest import Manifest, parse_version
 from .. import background
 from ..kit import kit_qss as q
 from ..kit.tokens import SPACE
-from ..kit.widgets import Button, Card, Chip, ModalSheet, Page, Surface, caption, clear_layout, row
+from ..kit.widgets import BusyIndicator, Button, Card, Chip, ModalSheet, Page, Surface, caption, clear_layout, row
 
 log = logging.getLogger(__name__)
 
@@ -66,24 +70,6 @@ CITATION_FILES = "SlideMage citation formats (*.smcite)"
 SECTION_GAP = SPACE.lg    # px above a section's heading, on top of the page's own spacing
 LIST_GAP = SPACE.xs        # px between the rows of a list
 LONG_STATE = 28     # characters: a longer state chip gets a line of its own, so the title line keeps its buttons
-
-
-class Job(QThread):
-    """`work()` on a thread; `done(result, error)` arrives on the GUI thread."""
-
-    done = Signal(object, object)
-
-    def __init__(self, work: Callable[[], object]) -> None:
-        super().__init__()
-        self._work = work
-
-    def run(self) -> None:
-        try:
-            result = self._work()
-        except Exception as exc:        # shown as a caption; a worker must not end the thread with a traceback
-            self.done.emit(None, exc)
-        else:
-            self.done.emit(result, None)
 
 
 class TextSheet(ModalSheet):
@@ -125,6 +111,11 @@ def download_citation(release: CitationRelease) -> Path:
     return folder
 
 
+def download_and_install(release: Release) -> Manifest:
+    """download_release, then install_downloaded: a worker thread's job. Raises InstallError."""
+    return install_downloaded(download_release(release), release)
+
+
 def install_downloaded(folder: Path, release: Release) -> Manifest:
     """Install what download_release fetched when its SHA-256 is the one the catalogue promised, then delete the
     folder. Raises InstallError."""
@@ -134,30 +125,41 @@ def install_downloaded(folder: Path, release: Release) -> Manifest:
         shutil.rmtree(folder, ignore_errors=True)
 
 
-def install_file(parent: QWidget, path: Path, say: Callable[[str, bool], None]) -> bool:
-    """Install the .smplugin `path` after the user has seen what it is (the plugin is not from the catalogue and
-    runs with their rights), or the .smtheme `path` (install_theme_file). `say(text, error)` receives what to tell
-    the user. Whether it was installed."""
+class FileInstall(NamedTuple):
+    """A package file the user has seen and accepted: `work()` unpacks and installs it (a worker's job), `text`
+    says it is done."""
+    manifest: object
+    work: Callable[[], object]
+    text: str
+
+    def end(self, error: Exception | None, say: Callable[[str, bool], None]) -> bool:
+        """Say how `work` ended, in the caller's `say(text, error)`. Whether it installed."""
+        if error is not None and not isinstance(error, (installer.InstallError, themes.ThemeError,
+                                                        citations.CitationError)):
+            log.error("install failed", exc_info=error)
+        say(str(error) if error is not None else self.text, error is not None)
+        return error is None
+
+
+def prepare_file(parent: QWidget, path: Path, say: Callable[[str, bool], None]) -> FileInstall | None:
+    """What installing the .smplugin, .smtheme or .smcite `path` would do, after the user has seen what it is (a
+    plugin from a file is not from the catalogue and runs with their rights). `say(text, error)` receives what to tell
+    the user when there is nothing to install (a refusal or a "no")."""
     if path.suffix.lower() == themes.PACKAGE_SUFFIX:
-        return install_theme_file(parent, path, say)
+        return prepare_theme_file(parent, path, say)
     if path.suffix.lower() == citations.PACKAGE_SUFFIX:
-        return install_citation_file(parent, path, say)
+        return prepare_citation_file(parent, path, say)
     try:
         manifest = installer.peek(path)
         expected = _sidecar_sha256(path)
     except (installer.InstallError, OSError) as exc:
         say(str(exc), True)
-        return False
+        return None
     if not _confirm_file(parent, manifest):
         say("", False)
-        return False
-    try:
-        installer.install(path, expected_sha256=expected)
-    except installer.InstallError as exc:
-        say(str(exc), True)
-        return False
-    say(f"{manifest.name} {manifest.version} is installed. It starts after a restart.", False)
-    return True
+        return None
+    return FileInstall(manifest, partial(installer.install, path, expected_sha256=expected),
+                       f"{manifest.name} {manifest.version} is installed. It starts after a restart.")
 
 
 def _confirm_file(parent: QWidget, manifest: Manifest) -> bool:
@@ -182,26 +184,20 @@ def _sidecar_sha256(path: Path) -> str | None:
     return expected
 
 
-def install_theme_file(parent: QWidget, path: Path, say: Callable[[str, bool], None]) -> bool:
-    """Install the theme package `path` (a .smtheme) after the user has seen its theme.toml. Whether it was
-    installed."""
+def prepare_theme_file(parent: QWidget, path: Path, say: Callable[[str, bool], None]) -> FileInstall | None:
+    """The install of the theme package `path` (a .smtheme) after the user has seen its theme.toml."""
     try:
         manifest = themes.peek(path)
         expected = _sidecar_sha256(path)
     except (themes.ThemeError, installer.InstallError, OSError) as exc:
         say(str(exc), True)
-        return False
+        return None
     if not _confirm_theme(parent, manifest):
         say("", False)
-        return False
-    try:
-        themes.install_file(path, expected_sha256=expected)
-    except themes.ThemeError as exc:
-        say(str(exc), True)
-        return False
-    say(f"The theme {manifest.name} {manifest.version} is installed. Choose the template {manifest.id!r} in a "
-        "deck's settings to use it.", False)
-    return True
+        return None
+    return FileInstall(manifest, partial(themes.install_file, path, expected_sha256=expected),
+                       f"The theme {manifest.name} {manifest.version} is installed. Choose the template "
+                       f"{manifest.id!r} in a deck's settings to use it.")
 
 
 def _confirm_package(parent: QWidget, manifest: packages.PackageManifest, kind: packages.PackageKind,
@@ -223,25 +219,19 @@ def _confirm_theme(parent: QWidget, manifest: themes.ThemeManifest) -> bool:
                             "template still wins.")
 
 
-def install_citation_file(parent: QWidget, path: Path, say: Callable[[str, bool], None]) -> bool:
-    """Install the citation package `path` (a .smcite) after the user has seen its citation.toml. Whether it was
-    installed."""
+def prepare_citation_file(parent: QWidget, path: Path, say: Callable[[str, bool], None]) -> FileInstall | None:
+    """The install of the citation package `path` (a .smcite) after the user has seen its citation.toml."""
     try:
         manifest = citations.peek(path)
         expected = _sidecar_sha256(path)
     except (citations.CitationError, installer.InstallError, OSError) as exc:
         say(str(exc), True)
-        return False
+        return None
     if not _confirm_citation(parent, manifest):
         say("", False)
-        return False
-    try:
-        citations.install_file(path, expected_sha256=expected)
-    except citations.CitationError as exc:
-        say(str(exc), True)
-        return False
-    say(_citation_installed(manifest), False)
-    return True
+        return None
+    return FileInstall(manifest, partial(citations.install_file, path, expected_sha256=expected),
+                       _citation_installed(manifest))
 
 
 def _citation_installed(manifest: citations.CitationManifest, repository: str = "") -> str:
@@ -257,6 +247,8 @@ def _confirm_citation(parent: QWidget, manifest: citations.CitationManifest, rep
 
 
 NOTES_LIMIT = 1500       # characters of a release's notes in the update offer
+AUTO_UPDATE_TIP = ("Install new versions when SlideMage finds them at a start, without asking. Off: SlideMage "
+                   "asks each time (Install now, Not now, Skip this version).")
 
 
 def _ask_package_update(parent: QWidget, offer: theme_sources.Offer, kind: packages.PackageKind,
@@ -279,6 +271,36 @@ def _ask_package_update(parent: QWidget, offer: theme_sources.Offer, kind: packa
     box.setEscapeButton(later)
     box.exec()
     return {install: "install", skip: "skip"}.get(box.clickedButton(), "later")
+
+
+def ask_plugin_update(parent: QWidget, name: str, installed_version: str, release: Release) -> str:
+    """"install", "later" or "skip": the offer of a newer catalogue release of the plugin `name` (2026-11-16: the
+    short notice of before was easy to miss, and an outdated Claude plugin kept telling Claude that \\vbox to 0pt
+    blocks were protected long after SlideMage had stopped protecting them). It stays until it is answered."""
+    box = QMessageBox(parent)
+    box.setIcon(QMessageBox.Icon.Question)
+    box.setWindowTitle("Plugin update available")
+    box.setText(f"{name} {release.version} is available (you have {installed_version}).")
+    notes = f"What changed: {release.notes_url}\n\n" if release.notes_url else ""
+    box.setInformativeText(f"{notes}The update is checked against the plugin list's SHA-256 and takes effect after a "
+                           "restart. Settings → Extensions can install updates of this plugin automatically.")
+    install = box.addButton("Install now", QMessageBox.ButtonRole.AcceptRole)
+    later = box.addButton("Not now", QMessageBox.ButtonRole.RejectRole)
+    skip = box.addButton("Skip this version", QMessageBox.ButtonRole.ActionRole)
+    box.setDefaultButton(install)
+    box.setEscapeButton(later)
+    box.exec()
+    return {install: "install", skip: "skip"}.get(box.clickedButton(), "later")
+
+
+def ask_auto_update(parent: QWidget, what: str) -> bool:
+    """After an install: should later releases of `what` ("the plugin Claude") be installed without asking?"""
+    return QMessageBox.question(
+        parent, "Update automatically?",
+        f"Install new versions of {what} automatically when SlideMage finds them at a start?\n\n"
+        "With No, SlideMage asks each time. You can change this on its row in Settings → Extensions.",
+        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes
 
 
 def ask_theme_update(parent: QWidget, offer: theme_sources.Offer) -> str:
@@ -355,8 +377,11 @@ class _ListRow(Card):
 
     def add_title_line(self, left: list[QWidget], buttons: list[QWidget]) -> None:
         """`left` at the left, `buttons` at the right, the width between them empty. The buttons are the line's
-        tallest: what is on its left keeps its own height, centred (a chip would stretch)."""
+        tallest: what is on its left keeps its own height, centred (a chip would stretch), on one line (a wrapping
+        caption squeezed by the buttons was cut to an unreadable sliver)."""
         for widget in left:
+            if isinstance(widget, QLabel):
+                widget.setWordWrap(False)
             widget.setSizePolicy(widget.sizePolicy().horizontalPolicy(), QSizePolicy.Policy.Fixed)
         self.layout().addWidget(row(*left, Surface(), *buttons, stretch=len(left)))
 
@@ -374,6 +399,7 @@ class InstalledRow(_ListRow):
         self.remove_button: Button | None = None
         self.update_button: Button | None = None
         self.details_button: Button | None = None
+        self.auto_check: QCheckBox | None = None
         layout = self.layout()
 
         title = QLabel(f"{manifest.name}  {manifest.version}" if manifest else self.plugin_id)
@@ -403,6 +429,13 @@ class InstalledRow(_ListRow):
             self.update_button = Button(f"Update to {release.version}", compact=True)
             self.update_button.clicked.connect(partial(tab.install_release, catalogue_plugin, release))
             buttons.append(self.update_button)
+        if source == "installed" and manifest is not None:
+            # A plugin installed through SlideMage is updated from the plugin list, whatever it came from.
+            self.auto_check = QCheckBox("Update automatically")
+            self.auto_check.setToolTip(AUTO_UPDATE_TIP)
+            self.auto_check.setChecked(updates.wants_auto_update(self.plugin_id, updater.get_update_mode()))
+            self.auto_check.toggled.connect(partial(tab.set_plugin_auto_update, self.plugin_id))
+            buttons.append(self.auto_check)
         if source == "installed":
             self.remove_button = Button("Remove", compact=True)
             self.remove_button.clicked.connect(partial(tab.remove_plugin, self.plugin_id,
@@ -452,7 +485,7 @@ class AvailableRow(_ListRow):
             self.install_button.setEnabled(False)
             layout.addWidget(caption("No release of this plugin works with this SlideMage."))
         else:
-            self.install_button.clicked.connect(partial(tab.install_release, plugin, release))
+            self.install_button.clicked.connect(partial(tab.install_release, plugin, release, ask_auto=True))
 
 
 class ThemeRow(_ListRow):
@@ -470,10 +503,16 @@ class ThemeRow(_ListRow):
         self.check_error_label: QLabel | None = None
         self.update_button: Button | None = None
         buttons: list[QWidget] = []
-        if self.source is not None and manifest is not None and not theme.problem:
+        self.auto_check: QCheckBox | None = None
+        if self.source is not None and manifest is not None and (not theme.problem or theme.needs_update):
             self.update_button = Button("Check for update", compact=True)
             self.update_button.clicked.connect(partial(tab.check_theme_update, theme.key))
             buttons.append(self.update_button)
+            self.auto_check = QCheckBox("Update automatically")
+            self.auto_check.setToolTip(AUTO_UPDATE_TIP)
+            self.auto_check.setChecked(self.source.auto_update)
+            self.auto_check.toggled.connect(partial(tab.set_theme_auto_update, theme.key))
+            buttons.append(self.auto_check)
         self.copy_button: Button | None = None
         if not theme.problem:
             self.copy_button = Button("Copy to my project and edit", compact=True)
@@ -481,6 +520,31 @@ class ThemeRow(_ListRow):
                                         "The copy is used instead of the installed theme, which stays as it is.")
             self.copy_button.clicked.connect(partial(tab.copy_theme_to_project, theme.key))
             buttons.append(self.copy_button)
+        # The theme's source folder (its repository), for its author: Edit source opens the template there.
+        self.source_folder = theme_source_folder.folder(theme.key)
+        self.edit_source_button: Button | None = None
+        self.export_source_button: Button | None = None
+        self.source_folder_button: Button | None = None
+        self.forget_folder_button: Button | None = None
+        if not theme.problem:
+            if self.source_folder is not None:
+                self.edit_source_button = Button("Edit source", compact=True)
+                self.edit_source_button.setToolTip("Open the theme's template in its source folder, with the theme "
+                                                   "form. Decks keep using the installed theme until you release the "
+                                                   "changed one and update.")
+                self.edit_source_button.clicked.connect(partial(tab.edit_theme_source, theme.key))
+                buttons.append(self.edit_source_button)
+                self.export_source_button = Button("Export package…", compact=True)
+                self.export_source_button.setToolTip("Pack the source folder as a .smtheme (with its .sha256), the "
+                                                     "file a release attaches; checked like \"Add from file…\".")
+                self.export_source_button.clicked.connect(partial(tab.export_theme_source, theme.key))
+                buttons.append(self.export_source_button)
+            else:
+                self.source_folder_button = Button("Source folder…", compact=True)
+                self.source_folder_button.setToolTip("For the theme's author: say where its source is kept (its "
+                                                     "repository), to edit it there.")
+                self.source_folder_button.clicked.connect(partial(tab.choose_theme_source_folder, theme.key))
+                buttons.append(self.source_folder_button)
         self.remove_button = Button("Remove", compact=True)
         self.remove_button.clicked.connect(partial(tab.remove_theme, theme.key,
                                                    manifest.name if manifest else theme.key))
@@ -498,6 +562,21 @@ class ThemeRow(_ListRow):
                 self.check_error_label = caption(f"The last update check failed: {self.source.check_error} "
                                                  "The installed version keeps working.", "error")
                 layout.addWidget(self.check_error_label)
+        self.source_folder_label: QLabel | None = None
+        if self.source_folder is not None and not theme.problem:
+            here = theme_source_folder.version(self.source_folder)
+            self.source_folder_label = caption(f"Source folder: {self.source_folder}"
+                                               + (f" (version {here})" if here else ""))
+            change = Button("Change…", "ghost", compact=True)
+            change.clicked.connect(partial(tab.choose_theme_source_folder, theme.key))
+            self.forget_folder_button = Button("Forget", "ghost", compact=True)
+            self.forget_folder_button.setToolTip("Forget the folder; nothing in it is changed.")
+            self.forget_folder_button.clicked.connect(partial(tab.forget_theme_source_folder, theme.key))
+            line = QHBoxLayout()
+            line.addWidget(self.source_folder_label, 1)
+            line.addWidget(change)
+            line.addWidget(self.forget_folder_button)
+            layout.addLayout(line)
         if theme.problem:
             layout.addWidget(caption(_sentence(f"not usable: {theme.problem}"), "error"))
 
@@ -517,8 +596,12 @@ class PersonalThemeRow(_ListRow):
         self.edit_button.clicked.connect(partial(tab.edit_personal_theme, theme.path))
         self.reveal_button = Button("Reveal in Explorer", compact=True)
         self.reveal_button.clicked.connect(partial(tab.reveal_personal_theme, theme.path))
+        self.export_button = Button("Export…", compact=True)
+        self.export_button.setToolTip("Save this theme as a .smtheme package, which others install with "
+                                      "\"Add from file…\"")
+        self.export_button.clicked.connect(partial(tab.export_personal_theme, theme.key, theme.path))
         self.add_title_line([title, caption(f"template {theme.key}"), Chip("Personal (project folder)", "info")],
-                            [self.edit_button, self.reveal_button])
+                            [self.edit_button, self.export_button, self.reveal_button])
         self.location_label = caption(str(theme.path))
         layout.addWidget(self.location_label)
         if theme.replaces:
@@ -541,10 +624,16 @@ class CitationRow(_ListRow):
         self.check_error_label: QLabel | None = None
         self.update_button: Button | None = None
         buttons: list[QWidget] = []
+        self.auto_check: QCheckBox | None = None
         if self.source is not None and manifest is not None and not item.problem:
             self.update_button = Button("Check for update", compact=True)
             self.update_button.clicked.connect(partial(tab.check_citation_update, item.key))
             buttons.append(self.update_button)
+            self.auto_check = QCheckBox("Update automatically")
+            self.auto_check.setToolTip(AUTO_UPDATE_TIP)
+            self.auto_check.setChecked(self.source.auto_update)
+            self.auto_check.toggled.connect(partial(tab.set_citation_auto_update, item.key))
+            buttons.append(self.auto_check)
         self.remove_button = Button("Remove", compact=True)
         self.remove_button.clicked.connect(partial(tab.remove_citation, item.key,
                                                    manifest.name if manifest else item.key))
@@ -597,7 +686,7 @@ class PluginsTab(Page):
         self.app = app
         self._leave = leave
         self.catalogue: Catalogue | None = catalogue.cached()      # never fetched while the tab is built
-        self._job: QThread | None = None
+        self._job: background.Handle | None = None
         self.rows: dict[str, InstalledRow] = {}
         self.available: dict[str, AvailableRow] = {}
         self.theme_rows: dict[str, ThemeRow] = {}
@@ -616,12 +705,19 @@ class PluginsTab(Page):
         self.status = caption("")
         self.status.hide()
         layout.addWidget(self.status)
+        self.busy = BusyIndicator()
+        layout.addWidget(self.busy)
 
         self.theme_file_button = Button("Add from file…", compact=True)
         self.theme_file_button.clicked.connect(self.add_theme_file_from_dialog)
         self.github_button = Button("Add from GitHub…", compact=True)
         self.github_button.clicked.connect(self.add_theme_from_dialog)
-        layout.addWidget(row(self._heading("Themes"), self.theme_file_button, self.github_button))
+        self.new_theme_button = Button("New theme…", compact=True)
+        self.new_theme_button.setToolTip("Make a theme of your own in this project from one SlideMage ships, and open "
+                                         "it with the theme form")
+        self.new_theme_button.clicked.connect(self.new_theme_from_dialog)
+        layout.addWidget(row(self._heading("Themes"), self.new_theme_button, self.theme_file_button,
+                             self.github_button))
         self._themes_box = QVBoxLayout()
         self._themes_box.setSpacing(LIST_GAP)
         layout.addLayout(self._themes_box)
@@ -754,6 +850,61 @@ class PluginsTab(Page):
         else:
             action()
 
+    def new_theme_from_dialog(self) -> None:
+        """Ask for a key, a name and a starting point, then make the theme and open it (the sheet closes first)."""
+        values = self.ask_new_theme()
+        maker = getattr(self.app, "new_theme", None)
+        if values is None or maker is None:
+            return
+        action = partial(maker, *values)
+        if self._leave is not None:
+            self._leave(action)
+        else:
+            action()
+
+    def ask_new_theme(self) -> Optional[tuple[str, str, str]]:
+        """(key, name, start) from a small dialog that checks the key as it is typed; None when cancelled."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("New theme")
+        form = QFormLayout(dialog)
+        name = QLineEdit()
+        name.setMaxLength(40)
+        name.setPlaceholderText("My University")
+        key = QLineEdit()
+        key.setMaxLength(32)
+        key.setPlaceholderText("my-university")
+        start = QComboBox()
+        for value, label in themes.SHIPPED_STARTS:
+            start.addItem(label, value)
+        problem = caption("", "error")
+        form.addRow("Name", name)
+        form.addRow("Key (file name)", key)
+        form.addRow("Start from", start)
+        form.addRow(problem)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        form.addRow(buttons)
+        typed = {"key": False}
+
+        def name_changed(text: str) -> None:
+            if not typed["key"]:
+                key.setText(re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:32])
+
+        def check() -> None:
+            why = themes.check_new_key(key.text().strip(), self.app.project.root) if key.text().strip() else ""
+            problem.setText(why)
+            buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(bool(key.text().strip()) and not why)
+
+        name.textEdited.connect(name_changed)
+        key.textEdited.connect(lambda _t: typed.__setitem__("key", True))
+        key.textChanged.connect(lambda _t: check())
+        check()
+        self._new_theme_dialog = dialog         # for tests
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+        return key.text().strip(), name.text().strip(), start.currentData()
+
     def copy_theme_to_project(self, key: str) -> None:
         """Copy the installed theme into the project folder and open the copy in a tab (the sheet closes first)."""
         copier = getattr(self.app, "copy_theme_to_project", None)
@@ -764,6 +915,124 @@ class PluginsTab(Page):
             self._leave(action)
         else:
             action()
+
+    def choose_theme_source_folder(self, key: str) -> None:
+        """Ask for the folder the installed theme `key` has its source in, and remember it (theme_source_folder)."""
+        current = theme_source_folder.folder(key)
+        chosen = QFileDialog.getExistingDirectory(self, f"The source folder of the theme {key}",
+                                                  str(current or Path.home()))
+        if not chosen:
+            return
+        try:
+            theme_source_folder.set_folder(key, Path(chosen))
+        except themes.ThemeError as exc:
+            QMessageBox.warning(self, "Theme source folder", str(exc))
+            return
+        self.refresh_themes()
+
+    def forget_theme_source_folder(self, key: str) -> None:
+        theme_source_folder.set_folder(key, None)
+        self.refresh_themes()
+
+    def edit_theme_source(self, key: str) -> None:
+        """Open the theme's template in its source folder in a tab (the sheet closes first)."""
+        path = theme_source_folder.template(key)
+        if path is None:
+            QMessageBox.warning(self, "Edit the theme's source",
+                                f"{themes.template_file(key)} is not in the source folder any more. Pick the folder "
+                                "again.")
+            self.refresh_themes()
+            return
+        self.edit_personal_theme(path)
+
+    def export_personal_theme(self, key: str, path: Path) -> None:
+        """Ask for the package's details and a folder, then write <key>-<version>.smtheme there (theme_export)."""
+        values = self.ask_export(key, theme_export.defaults(path.parent, key),
+                                 theme_export.layout_of(path.read_bytes().decode("utf-8", errors="replace")))
+        if values is None:
+            return
+        info, out_dir = values
+        try:
+            asset = theme_export.export(path.parent, key, info, out_dir)
+        except themes.ThemeError as exc:
+            QMessageBox.warning(self, "Export theme", str(exc))
+            return
+        self._exported(asset)
+
+    def export_theme_source(self, key: str) -> None:
+        """Pack the installed theme's source folder as it is (its theme.toml, README, CHANGELOG and LICENSE)."""
+        folder = theme_source_folder.folder(key)
+        if folder is None:
+            return
+        chosen = QFileDialog.getExistingDirectory(self, "Save the package in", str(folder.parent))
+        if not chosen:
+            return
+        try:
+            asset = theme_export.pack(folder, Path(chosen))
+        except themes.ThemeError as exc:
+            QMessageBox.warning(self, "Export package", str(exc))
+            return
+        self._exported(asset)
+
+    def _exported(self, asset: Path) -> None:
+        self.last_export = asset        # for tests
+        QMessageBox.information(self, "Theme exported",
+                                f"Saved {asset.name} and its checksum ({asset.name}.sha256) in {asset.parent}. "
+                                "Others install it with Settings → Extensions → \"Add from file…\".")
+
+    def ask_export(self, key: str, start: theme_export.ExportInfo,
+                   layout: str = "fira") -> Optional[tuple[theme_export.ExportInfo, Path]]:
+        """(info, folder) from a dialog that checks the fields as they are typed; None when cancelled."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Export the theme {key}")
+        form = QFormLayout(dialog)
+        fields = {}
+        for attr, label, hint in (("name", "Name", "My University"), ("version", "Version", "1.0.0"),
+                                  ("summary", "Summary", "One line: what the theme is for"),
+                                  ("author", "Author", "Who made it"),
+                                  ("homepage", "Homepage", "https://…"),
+                                  ("license", "License", theme_export.DEFAULT_LICENSE)):
+            edit = QLineEdit(getattr(start, attr))
+            edit.setPlaceholderText(hint)
+            form.addRow(label, edit)
+            fields[attr] = edit
+        fields["name"].setMaxLength(40)
+        fields["summary"].setMaxLength(120)
+        folder = QLineEdit(str(Path.home()))
+        browse = Button("Choose…", compact=True)
+        browse.clicked.connect(lambda: (chosen := QFileDialog.getExistingDirectory(dialog, "Save the package in",
+                                                                                   folder.text()))
+                               and folder.setText(chosen))
+        form.addRow("Save in", row(folder, browse, stretch=0))
+        form.addRow(caption("The package holds the template, its scheme folder (logos) and its own layout profile, "
+                            "with a theme.toml, README, CHANGELOG and LICENSE made from these fields. Nothing is "
+                            "written into the project."))
+        problem = caption("", "error")
+        form.addRow(problem)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Export")
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        form.addRow(buttons)
+
+        def info() -> theme_export.ExportInfo:
+            return theme_export.ExportInfo(**{attr: edit.text().strip() for attr, edit in fields.items()})
+
+        def check() -> None:
+            why = theme_export.check_info(key, info(), layout)
+            if not why and not Path(folder.text().strip() or ".").is_dir():
+                why = "Choose a folder that exists to save the package in."
+            problem.setText(why)
+            buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(not why)
+
+        for edit in [*fields.values(), folder]:
+            edit.textChanged.connect(lambda _t: check())
+        check()
+        self._export_dialog = dialog         # for tests
+        self._export_fields = {**fields, "folder": folder}
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+        return info(), Path(folder.text().strip())
 
     def reveal_personal_theme(self, path: Path) -> None:
         try:
@@ -817,7 +1086,7 @@ class PluginsTab(Page):
             if not _confirm_github_theme(self, fetched):
                 fetched.discard()
                 return self._say("")
-            self._install_fetched(fetched)
+            self._install_fetched(fetched, ask_auto=True)
 
         self._start(partial(theme_sources.newest_eligible, repo), done, f"Reading the releases of {repo}…")
 
@@ -847,18 +1116,22 @@ class PluginsTab(Page):
         self._start(partial(_check_package_update, theme_sources, key, source.repository, theme.manifest.version),
                     done, f"Checking {source.repository} for a newer release…")
 
-    def _install_fetched(self, fetched: theme_sources.Fetched) -> None:
-        try:
-            manifest = theme_sources.install(fetched)
-        except themes.ThemeError as exc:
-            self._say(str(exc), error=True)
-            return
-        self._say(f"The theme {manifest.name} {manifest.version} is installed from {fetched.release.repository}. "
-                  f"Choose the template {manifest.id!r} in a deck's settings to use it.")
-        self.refresh_themes()
-        installed = getattr(self.app, "theme_installed", None)
-        if installed is not None:
-            installed(manifest.id)
+    def _install_fetched(self, fetched: theme_sources.Fetched, *, ask_auto: bool = False) -> None:
+        """Install the fetched theme on a worker. A new one (`ask_auto`) asks whether later releases install by
+        themselves."""
+        def done(manifest: themes.ThemeManifest | None, error: Exception | None) -> None:
+            if error is not None:
+                return self._theme_failed(error)
+            self._say(f"The theme {manifest.name} {manifest.version} is installed from {fetched.release.repository}. "
+                      f"Choose the template {manifest.id!r} in a deck's settings to use it.")
+            if ask_auto:
+                self.set_theme_auto_update(manifest.id, ask_auto_update(self, f"the theme {manifest.name}"))
+            self.refresh_themes()
+            installed = getattr(self.app, "theme_installed", None)
+            if installed is not None:
+                installed(manifest.id)
+
+        self._start(partial(theme_sources.install, fetched), done, f"Installing {fetched.manifest.name}…")
 
     def _theme_failed(self, error: Exception) -> None:
         if not isinstance(error, (theme_sources.SourceError, themes.ThemeError)):
@@ -898,24 +1171,24 @@ class PluginsTab(Page):
     def install_citation_release(self, entry: CatalogueCitation, release: CitationRelease) -> None:
         """Download the catalogue's `release` of a citation format and install it when its SHA-256 is the one the
         catalogue promised (the catalogue vouches for it, as for plugins, so there is no question first)."""
-        def done(archive: Path | None, error: Exception | None) -> None:
+        def work() -> citations.CitationManifest:
+            folder = download_citation(release)
+            try:
+                return citations.install_file(folder / CATALOGUE_ARCHIVE, expected_sha256=release.sha256)
+            finally:
+                shutil.rmtree(folder, ignore_errors=True)
+
+        def done(manifest: citations.CitationManifest | None, error: Exception | None) -> None:
             if error is not None:
                 self._citation_failed(error)
-                return self.refresh_citations()
-            try:
-                manifest = citations.install_file(archive / CATALOGUE_ARCHIVE, expected_sha256=release.sha256)
-            except citations.CitationError as exc:
-                self._say(str(exc), error=True)
             else:
                 self._say(_citation_installed(manifest))
                 installed = getattr(self.app, "citation_installed", None)
                 if installed is not None:
                     installed(manifest.id)
-            finally:
-                shutil.rmtree(archive, ignore_errors=True)
             self.refresh_citations()
 
-        self._start(partial(download_citation, release), done, f"Downloading {entry.name}…")
+        self._start(work, done, f"Downloading {entry.name}…")
 
     def remove_citation(self, key: str, name: str) -> None:
         if QMessageBox.question(self, "Remove citation format", f"Remove the citation format {name}? Decks that "
@@ -961,7 +1234,7 @@ class PluginsTab(Page):
             if not _confirm_citation(self, fetched.manifest, fetched.release.repository):
                 fetched.discard()
                 return self._say("")
-            self._install_citation_fetched(fetched)
+            self._install_citation_fetched(fetched, ask_auto=True)
 
         self._start(partial(citation_sources.newest_eligible, repo), done, f"Reading the releases of {repo}…")
 
@@ -991,17 +1264,21 @@ class PluginsTab(Page):
         self._start(partial(_check_package_update, citation_sources, key, source.repository, item.manifest.version),
                     done, f"Checking {source.repository} for a newer release…")
 
-    def _install_citation_fetched(self, fetched: theme_sources.Fetched) -> None:
-        try:
-            manifest = citation_sources.install(fetched)
-        except citations.CitationError as exc:
-            self._say(str(exc), error=True)
-            return
-        self._say(_citation_installed(manifest, fetched.release.repository))
-        self.refresh_citations()
-        installed = getattr(self.app, "citation_installed", None)
-        if installed is not None:
-            installed(manifest.id)
+    def _install_citation_fetched(self, fetched: theme_sources.Fetched, *, ask_auto: bool = False) -> None:
+        """Install the fetched citation format on a worker; `ask_auto` as for _install_fetched."""
+        def done(manifest: citations.CitationManifest | None, error: Exception | None) -> None:
+            if error is not None:
+                return self._citation_failed(error)
+            self._say(_citation_installed(manifest, fetched.release.repository))
+            if ask_auto:
+                self.set_citation_auto_update(
+                    manifest.id, ask_auto_update(self, f"the citation format {manifest.name}"))
+            self.refresh_citations()
+            installed = getattr(self.app, "citation_installed", None)
+            if installed is not None:
+                installed(manifest.id)
+
+        self._start(partial(citation_sources.install, fetched), done, f"Installing {fetched.manifest.name}…")
 
     def _citation_failed(self, error: Exception) -> None:
         if not isinstance(error, (citation_sources.SourceError, citations.CitationError)):
@@ -1078,6 +1355,7 @@ class PluginsTab(Page):
         except installer.InstallError as exc:
             self._say(str(exc), error=True)
             return
+        updates.forget_choices(plugin_id)
         self._say(f"{name} is removed. It stops with the next start.")
         self.refresh()
 
@@ -1106,21 +1384,23 @@ class PluginsTab(Page):
         page = self.catalogue.plugins_page if self.catalogue else PLUGINS_PAGE
         QDesktopServices.openUrl(QUrl(page))
 
-    def install_release(self, plugin: CataloguePlugin, release: Release) -> None:
-        """Download `release`, then install it when its SHA-256 is the one the catalogue promised."""
-        def done(folder: Path | None, error: Exception | None) -> None:
+    def install_release(self, plugin: CataloguePlugin, release: Release, *, ask_auto: bool = False) -> None:
+        """Download `release`, then install it when its SHA-256 is the one the catalogue promised. A new install
+        (`ask_auto`, the Install button; not an update) asks whether later releases install automatically."""
+        def done(manifest: Manifest | None, error: Exception | None) -> None:
             if error is not None:
                 self._fail(error)
-                return self.refresh()
-            try:
-                manifest = install_downloaded(folder, release)
-            except installer.InstallError as exc:
-                self._say(str(exc), error=True)
             else:
                 self._say(f"{manifest.name} {manifest.version} is installed. It starts after a restart.")
+                if ask_auto:
+                    self.set_plugin_auto_update(manifest.id, ask_auto_update(self, f"the plugin {manifest.name}"))
+                pending = getattr(self.app, "plugin_updates_pending", None)
+                if pending is not None and pending.pop(manifest.id, None) is not None:
+                    from ..workspace.maintenance import plugin_updates_changed
+                    plugin_updates_changed(self.app)
             self.refresh()
 
-        self._start(partial(download_release, release), done, f"Downloading {plugin.name}…")
+        self._start(partial(download_and_install, release), done, f"Downloading {plugin.name}…")
 
     # -- a file
 
@@ -1129,12 +1409,42 @@ class PluginsTab(Page):
         if path is not None:
             self.install_from_file(path)
 
-    def install_from_file(self, path: Path) -> bool:
-        """Install `path` after the user has seen what it is. Whether it was installed."""
-        installed = install_file(self, path, lambda text, error: self._say(text, error))
-        if installed:
-            self.refresh()
-        return installed
+    def install_from_file(self, path: Path) -> None:
+        """Install `path` after the user has seen what it is. A plugin installed from a file is updated from the
+        plugin list like any other, so it is asked about automatic updates too; a theme or citation format from a
+        file is never updated, so nothing is asked."""
+        plan = prepare_file(self, path, self._say)
+        if plan is None:
+            return
+
+        def done(_result, error: Exception | None) -> None:
+            if plan.end(error, self._say):
+                if isinstance(plan.manifest, Manifest):
+                    self.set_plugin_auto_update(plan.manifest.id,
+                                                ask_auto_update(self, f"the plugin {plan.manifest.name}"))
+                self.refresh()
+
+        self._start(plan.work, done, f"Installing {plan.manifest.name}…")
+
+    # -- updates without asking
+
+    def set_plugin_auto_update(self, plugin_id: str, value: bool) -> None:
+        try:
+            updates.set_auto_update(plugin_id, value)
+        except OSError as exc:
+            self._say(f"Couldn't save the choice: {exc}", error=True)
+
+    def set_theme_auto_update(self, key: str, value: bool) -> None:
+        try:
+            theme_sources.set_auto_update(key, value)
+        except OSError as exc:
+            self._say(f"Couldn't save the choice: {exc}", error=True)
+
+    def set_citation_auto_update(self, key: str, value: bool) -> None:
+        try:
+            citation_sources.set_auto_update(key, value)
+        except OSError as exc:
+            self._say(f"Couldn't save the choice: {exc}", error=True)
 
     # -- restart
 
@@ -1150,19 +1460,26 @@ class PluginsTab(Page):
 
     def _start(self, work: Callable[[], object], on_done: Callable[[object, Exception | None], None],
                message: str) -> None:
+        """Run `work()` on a worker, one at a time: the BusyIndicator says `message` and the buttons that start
+        another job wait. `on_done(result, error)` runs on the GUI thread."""
         if self._job is not None:
             return
-        self._say(message)
-        job = Job(work)
-        self._job = job
+        self._say("")
+        self._show_top()
+        self.busy.start(message)
 
         def finished(result: object, error: Exception | None) -> None:
             self._job = None
-            on_done(result, error)
+            self.busy.finish()
+            try:
+                on_done(result, error)
+            finally:
+                # A job's handler does not always rebuild the tab (which resets the buttons), and it may have
+                # started the next job: the buttons wait only while one runs.
+                self._set_busy(self._job is not None)
 
-        job.done.connect(finished)
         self._set_busy(True)
-        background.start_detached(job)
+        self._job = background.run_in_background(work, finished, parent=self)
 
     def _fail(self, error: Exception) -> None:
         if not isinstance(error, installer.InstallError):

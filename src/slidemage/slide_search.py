@@ -6,8 +6,8 @@ files" group).
 
 Searched are every slide's `slides/<id>-<slug>-current.tex` (a slide's text is
 what one searches for, with or without an image), the decks `decks/*.tex` and
-`decks/archive/*.tex`, and `SlideMage.bib`. A plain case-insensitive substring
-match against the raw source, not a regex or a maintained index: ~665 slide
+`decks/archive/*.tex`, blocks holding slide calls, and `SlideMage.bib`. A plain
+case-insensitive substring match against the raw source, not a regex or a maintained index: ~665 slide
 files of a few KB each are re-read in well under a second, so there is nothing
 to keep in sync. Matching the raw source is deliberate too: it also finds a
 citation key, a macro name or an exact LaTeX fragment.
@@ -21,7 +21,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import alt_blocks, languages
+from . import alt_blocks, deck_language, languages
 from .project import ProjectContext
 from .slide_language import CURRENT_SUFFIX
 
@@ -42,9 +42,9 @@ class SearchHit:
 def project_files(root: Path) -> list[Path]:
     """The files that are searched, slides first."""
     files = sorted((root / "slides").glob(f"*{SLIDE_SUFFIX}"))
-    for folder in (root / "decks", root / "decks" / "archive"):
-        # "_slidemage_preview-*.tex" are the preview's throwaway wrappers
-        files += sorted(p for p in folder.glob("*.tex") if not p.name.startswith("_"))
+    # "_slidemage_preview-*.tex" are the preview's throwaway wrappers.
+    ctx = ProjectContext.at(root)
+    files += [p for p in deck_language.deck_files(ctx) if not p.name.startswith("_")] + deck_language.block_files(ctx)
     bib = root / BIB_NAME
     return files + ([bib] if bib.is_file() else [])
 

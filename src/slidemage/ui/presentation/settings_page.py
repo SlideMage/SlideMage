@@ -58,11 +58,11 @@ class PresentationTab(Page):
         self.eraser_size.setSuffix(" % of the slide height")
         self.eraser_size.setValue(values.eraser_size * 100)
         self.eraser_size.valueChanged.connect(lambda v: self._set("eraser_size", round(v / 100, 4)))
-        body.addWidget(columns(Field("Laser pointer colour", self.laser_button), Field("Laser pointer size", self.laser_size)))
-        body.addWidget(columns(Field("Pen colour", self.pen_button), Field("Pen width", self.pen_width)))
+        body.addWidget(columns(Field("Laser pointer color", self.laser_button), Field("Laser pointer size", self.laser_size)))
+        body.addWidget(columns(Field("Pen color", self.pen_button), Field("Pen width", self.pen_width)))
         body.addWidget(columns(Field("Eraser size (radius)", self.eraser_size)))
         body.addWidget(caption("The laser shows while you hold Ctrl and the left mouse button on the current slide. "
-                               "While presenting, the Pen, Laser and Eraser buttons change their colour and size for "
+                               "While presenting, the Pen, Laser and Eraser buttons change their color and size for "
                                "that presentation only; a circle shows the eraser's reach."))
 
         self.confirm_links = QCheckBox("Ask before opening a web link")
@@ -100,7 +100,7 @@ class PresentationTab(Page):
         stack.setSpacing(SPACE.xs)
         for check in (self.timer_start, self.timer_flash, self.timer_warn):
             stack.addWidget(check)
-        body.addWidget(Field("Timer behaviour", checks))
+        body.addWidget(Field("Timer behavior", checks))
         body.addWidget(caption(
             "The timer is optional: click it in the presenter window to set an end time or a duration. T starts or "
             "pauses it, Shift+T resets it."))
@@ -139,7 +139,7 @@ class PresentationTab(Page):
 
     def _pick(self, button: ColorSwatchButton, key: str, alpha: bool) -> None:
         options = QColorDialog.ColorDialogOption.ShowAlphaChannel if alpha else QColorDialog.ColorDialogOption(0)
-        color = QColorDialog.getColor(QColor(getattr(self.values, key)), self, "Colour", options)
+        color = QColorDialog.getColor(QColor(getattr(self.values, key)), self, "Color", options)
         if color.isValid():
             self._set(key, color.name(QColor.NameFormat.HexArgb) if alpha else color.name())
             self._show_color(button, getattr(self.values, key))

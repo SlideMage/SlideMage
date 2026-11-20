@@ -25,10 +25,10 @@ from functools import partial
 
 from PySide6.QtCore import QTimer, Signal
 from PySide6.QtGui import QHideEvent, QShowEvent
-from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from ... import deck_outline, slide_language
-from ...ai import ai_profile
+from ...ai import ai_profile, routes
 from ...ai.focus_scope import DECK, SLIDE
 from ..kit.tokens import SPACE
 from ..kit import kit_qss as q
@@ -105,6 +105,7 @@ class AssistantHeader(Surface):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(SPACE.md)
         layout.addLayout(self._build_route_row())
+        layout.addWidget(self._build_update_note())
         layout.addLayout(self._build_scope_row())
         self._actions = FlowLayout()
         layout.addLayout(self._actions)
@@ -124,6 +125,8 @@ class AssistantHeader(Surface):
             signal.connect(lambda _value: self.schedule())
         for signal in (state.focused_slide_changed, state.view_changed, state.language_changed):
             signal.connect(lambda _value: self._on_focus())
+        state.ai_route_changed.connect(lambda _route: self.refresh_update_note())
+        self.refresh_update_note()
 
     # -- building ---------------------------------------------------------------------------
 
@@ -143,6 +146,37 @@ class AssistantHeader(Surface):
         self.new_button.clicked.connect(self.new_conversation)
         row.addWidget(self.new_button)
         return row
+
+    def _build_update_note(self) -> Surface:
+        """A line under the switch while the plugin behind the active route has an update waiting (2026-11-16: an
+        outdated Claude plugin kept telling Claude Code that \\vbox to 0pt blocks were protected)."""
+        self.update_note = Surface()
+        row = QHBoxLayout(self.update_note)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(SPACE.md)
+        self.update_note_label = QLabel()
+        self.update_note_label.setObjectName(q.CHAT_NOTICE)
+        self.update_note_label.setProperty("tone", "warning")
+        self.update_note_label.setWordWrap(True)
+        row.addWidget(self.update_note_label, 1)
+        self.update_note_button = Button("Update…", "secondary", compact=True)
+        self.update_note_button.setToolTip("Settings → Extensions, at the plugins")
+        self.update_note_button.clicked.connect(lambda: self.app.open_plugins())
+        row.addWidget(self.update_note_button)
+        self.update_note.hide()
+        return self.update_note
+
+    def refresh_update_note(self) -> None:
+        """Show the note when the active route's plugin is in the window's pending updates (maintenance), else hide."""
+        pending = getattr(self.app, "plugin_updates_pending", None) or {}
+        found = pending.get(routes.owner_id(self.state.ai_route) or "")
+        if found is None:
+            self.update_note.hide()
+            return
+        name, have, release = found
+        self.update_note_label.setText(f"{name} {release.version} is available (you have {have}). Until it is "
+                                       "installed, this assistant may follow older rules.")
+        self.update_note.show()
 
     def resizeEvent(self, event) -> None:          # noqa: N802 -- Qt's name
         super().resizeEvent(event)
@@ -212,7 +246,8 @@ class AssistantHeader(Surface):
     def offers(self, scope: str) -> list[Bubble]:
         """The tasks that fit `scope` now, as task_bubbles.py finds them (kept until something changes)."""
         if scope not in self._offers:
-            self._offers[scope] = deck_bubbles(self.app) if scope == DECK else bubbles(self.app)
+            with slide_language.shared_links():
+                self._offers[scope] = deck_bubbles(self.app) if scope == DECK else bubbles(self.app)
         return self._offers[scope]
 
     def _task_buttons(self) -> list[QWidget]:

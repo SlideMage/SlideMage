@@ -262,6 +262,12 @@ class RevealBar(QWidget):
         self._rows_holder.setLayout(self._rows_box)
         self._rows_holder.setVisible(False)
         outer.addWidget(self._rows_holder)
+        # The bar keeps its room when a slide has no reveal steps, and so do the chip and the expand button when
+        # they are not needed: the slide above it stays put while one moves through a deck.
+        for widget in (self, self.deck_only, self.expand):
+            policy = widget.sizePolicy()
+            policy.setRetainSizeWhenHidden(True)
+            widget.setSizePolicy(policy)
         self.setVisible(False)
 
         self._previous.clicked.connect(lambda: self.move(-1))
@@ -332,8 +338,14 @@ class RevealBar(QWidget):
         self._previous.setEnabled(position > 1)
         self._next.setEnabled(0 < position < len(stops))
         self.expand.setVisible(bool(self._rows) and len(self._rows) > 1)
-        self._rows_holder.setVisible(self._expanded and not self._counting)
-        if self._expanded and not self._counting:
+        # Expanded, the version rows keep their room while a slide's steps are counted (and a hidden bar keeps it).
+        self._rows_holder.setVisible(self._expanded)
+        if self._expanded and self._counting:
+            self._rows_holder.setMinimumHeight(self._rows_holder.height())
+            clear_layout(self._rows_box)
+            self._rows_widgets.clear()
+        elif self._expanded:
+            self._rows_holder.setMinimumHeight(0)
             self._build_rows()
 
     def _build_rows(self) -> None:

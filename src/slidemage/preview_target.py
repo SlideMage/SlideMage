@@ -15,19 +15,19 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Optional
 
-from . import deck_context, project, slide_language, slide_preview, slide_templates, view_themes
+from . import deck_context, deck_language, project, slide_language, slide_preview, slide_templates, view_themes
 from .deck_editor import VIEW_INSTRUCTOR, VIEWS, SlideCall
-from .deck_scan import DECKTAGS_RE, OPEN_PDF_RE, OUTPUT_FOLDER_RE, Deck
+from .deck_scan import DECKTAGS_RE, OPEN_PDF_RE, OUTPUT_FOLDER_RE, REVIEW_TEXT_RE, Deck
 from .fileio import text_sha256
 
 
 def preamble_sha(text: Optional[str]) -> str:
     """The hash of a deck's preamble as TeX typesets it: without the lines only SlideMage reads (the inert
-    \\deckoutputfolder and \\decktags, the "%% SlideMage open PDF:" comment), so a deck's PDF output or tags
-    settings leave its slides' renders current."""
+    \\deckoutputfolder, \\decktags and \\SMReviewText, the "%% SlideMage open PDF:" comment), so a deck's PDF
+    output, tags or review settings leave its slides' renders current."""
     kept = []
     for line in (text or '').splitlines(keepends=True):
-        bare = OPEN_PDF_RE.sub('', DECKTAGS_RE.sub('', OUTPUT_FOLDER_RE.sub('', line)))
+        bare = REVIEW_TEXT_RE.sub('', OPEN_PDF_RE.sub('', DECKTAGS_RE.sub('', OUTPUT_FOLDER_RE.sub('', line))))
         if bare == line or bare.strip():
             kept.append(line)
     return text_sha256(''.join(kept))
@@ -92,11 +92,13 @@ class PreviewTarget:
 
 
 def for_call(ctx: project.ProjectContext, deck: Deck, call: SlideCall, position: int, language: Optional[str] = None, *, frame_number: Optional[int] = None,
-             occurrence_key: tuple = (), hidden: bool = False, outline=None) -> PreviewTarget:
+             occurrence_key: tuple = (), hidden: bool = False, outline=None,
+             resolution: deck_language.Resolution | None = None) -> PreviewTarget:
     """`call`, the `position`-th slide call of `deck`, as the deck typesets it. `outline` (deck_outline.Outline), when it
     describes `deck` in `language`, supplies the translation links and the Instructor frame numbers instead of
-    another scan of the slides folder and a resolution of every slot."""
-    shared = outline if outline is not None and outline.matches(ctx, deck, language or "EN") else None
+    another scan of the slides folder and a resolution of every slot. Batch callers pass the `resolution` of
+    the pass, keeping fragment reads outside the row loop."""
+    shared = outline if outline is not None and outline.matches(ctx, deck, language or "EN", resolution=resolution) else None
     if language is not None:
         from .deck_language import resolve_call
         call = resolve_call(call, language, shared.links if shared else slide_language.links_for(ctx))
@@ -116,7 +118,8 @@ def for_call(ctx: project.ProjectContext, deck: Deck, call: SlideCall, position:
     if not found:
         return target
     return replace(target, needs_context=found,
-                   deck_hash=text_sha256(deck.text))
+                   deck_hash=(resolution.hash if resolution else shared.deck_hash if shared else
+                              text_sha256(deck_language.expand_fragments(deck)[0].text)))
 
 
 def requested_views(view: str | None, selected_view: str = VIEW_INSTRUCTOR) -> tuple[str, ...]:

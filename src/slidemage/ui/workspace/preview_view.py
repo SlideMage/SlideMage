@@ -40,7 +40,7 @@ from PySide6.QtCore import QPointF, QRectF, QSize, Qt, Signal, QTimer
 from PySide6.QtGui import QColor, QImage, QKeySequence, QPainter, QPixmap, QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QInputDialog, QLabel, QMessageBox, QVBoxLayout, QWidget
 
-from ... import (deck_context, deck_editor, languages, latex_lint, render_lookup, reveal_steps, slide_preview, slide_snapshot, slide_source,
+from ... import (deck_context, deck_editor, deck_language, languages, latex_lint, render_lookup, reveal_steps, slide_preview, slide_snapshot, slide_source,
                  slide_versioning, timing)
 from ...ai.workspace import WorkspaceContext
 from ...ai.tools.slidemage import slide_target
@@ -49,11 +49,13 @@ from ...fileio import text_sha256
 from ...preview_target import PreviewTarget
 from ...preview_requests import PreviewRequest, RenderOptions, RenderRequest, RenderService, SourceRevision
 from ...preview_metrics import PreviewMetrics
+from ...slide_usage import deck_calls, decks_by
 from ...slide_language import MULT, LanguageBadge, TranslationLink, own_language, translation_group
 from ...step_renders import BACKGROUND, FOREGROUND, StepRenderQueue
 from ..dialogs.transcript_preview import show_transcript_preview
 from ..kit.tokens import SPACE, RADIUS_SM
 from ..kit import kit_qss as q
+from ..kit.review_mark import paint_review_mark
 from ..kit.tokens import Tokens
 from ..kit.widgets import Button, Chip, PopoverMenu, SplitButton, Surface, clear_layout
 from . import render_check
@@ -71,10 +73,10 @@ DISPLAY_WIDTH = slide_snapshot.FULL_SIZE[0]   # a page held for display is at mo
 DISPLAY_ENTRIES = 12     # pages held decoded for display ...
 DISPLAY_BYTES = 64 << 20 # ... and at most this much memory for them (width x height x 4 each)
 CHECKING = "Checking current source and settings…"
-STEP_CACHE = 12          # page lists kept (each is a slide's steps as PNGs)
+STEP_CACHE = 12          # page lists kept (each is a slide's steps as compressed images)
 NEIGHBOURS = 4           # slides around the one on show whose steps are counted while the pane is idle
 PREFETCHED = 20          # stored pages of the nearest slides held decoded, ready for the next slide (about 8 MB each)
-PRELOAD_BYTES = 512 << 20   # stored pages (PNG) of the rest of the deck's view held compressed, decoded when shown
+PRELOAD_BYTES = 512 << 20   # stored page images of the rest of the deck's view held compressed, decoded when shown
 PRELOAD_PAUSE = 0.01     # seconds the read-ahead worker rests before each store lookup, so the GUI thread gets its turn
 PRELOAD_RETRY = 120.0    # seconds before a slide whose store had no page is asked again
 SCROLLING_MS = 300       # slide changes closer than this are scrolling: no checks until the selection rests
@@ -209,7 +211,7 @@ class _Shown:
     pixmap: QPixmap
     mtime: int                      # of the slide's source file
     content_hash: Optional[str]     # of the text rendered (the saved file's)
-    image_hash: str                 # of the PNG the pixels came from: the same image is never decoded twice
+    image_hash: str                 # of the bytes the pixels came from: the same image is never decoded twice
 
 
 class DisplayCache:
@@ -252,8 +254,8 @@ class DisplayCache:
 
 
 def _preload_page(background, target, view: str, language: str, data: Optional[bytes], decode: bool):
-    """(PNG, digest, QImage or None) of the stored whole-slide page, or None. Runs on the read-ahead worker: `data`
-    is the PNG already held (then only decoded), else the store is asked; `decode` decodes it too."""
+    """(bytes, digest, QImage or None) of the stored whole-slide page, or None. Runs on the read-ahead worker: `data`
+    is the image already held (then only decoded), else the store is asked; `decode` decodes it too."""
     if data is None:
         time.sleep(PRELOAD_PAUSE)
         renderer = background.renderer
@@ -323,6 +325,7 @@ class PageView(QWidget):
         self.message = ""
         self.dimmed = False     # the page of the slide shown before, kept faint while the new one loads
         self.badge = ""         # a short note drawn on the page's top-right corner
+        self.review = ("", "")  # the watermark's text and note for a slide its deck marks as under review
         self.setMinimumSize(320, 180)
         self.render_button = Button("Render now", "primary", self)
         self.render_button.hide()
@@ -331,6 +334,12 @@ class PageView(QWidget):
         self.pixmap, self.message, self._scaled, self.dimmed, self.badge = pixmap, "", None, False, badge
         self.render_button.hide()
         self.update()
+
+    def set_review(self, text: str, note: str = "") -> None:
+        """Draw the "under review in this deck" watermark over the slide's image ("" for none)."""
+        if self.review != (text, note):
+            self.review = (text, note)
+            self.update()
 
     def keep_dimmed(self) -> None:
         """Keep the page on show, faint: it is the slide shown before, while the new one's check is out."""
@@ -398,6 +407,8 @@ class PageView(QWidget):
                 painter.setOpacity(0.35)
             painter.drawPixmap(page, scaled, QRectF(scaled.rect()))
             painter.setOpacity(1.0)
+            if self.review[0]:
+                paint_review_mark(painter, page, *self.review)
             if self.badge:
                 metrics = painter.fontMetrics()
                 box = QRectF(0, 0, metrics.horizontalAdvance(self.badge) + 16, metrics.height() + 8)
@@ -422,9 +433,9 @@ class PreviewPane(Surface):
     _finished = Signal(object)    # a _Job, from the worker thread
     _batch_progressed = Signal(object)
     _batch_finished = Signal(object, str)
-    _steps_ready = Signal(object, object, str)   # (key, PNG pages, error), from the step queue's thread
+    _steps_ready = Signal(object, object, str)   # (key, page images, error), from the step queue's thread
     _looked_up = Signal(object, object, object, object)   # (slot, identity, arrive, found), from the display worker
-    _prefetch_done = Signal(object, object, object)        # (context, ident, (PNG, digest, QImage) or None), read ahead
+    _prefetch_done = Signal(object, object, object)        # (context, ident, (bytes, digest, QImage) or None), read ahead
 
     def __init__(self, app, state: WorkspaceState,
                  buffer: Callable[[], Optional[tuple[str, str]]]) -> None:
@@ -447,7 +458,7 @@ class PreviewPane(Surface):
         self._pending = None
         self._lifetime = _Lifetime(self)
         self._renders = RenderService()
-        # The render store's lookups, page reads and PNG decodes run here, not in the selection executor: a lookup
+        # The render store's lookups, page reads and image decodes run here, not in the selection executor: a lookup
         # must not wait behind a long validation. One pending lookup per slot ('page', ('steps', key)); a newer one
         # for the slot replaces it, and a selection change drops them all.
         self._display_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='preview-display')
@@ -457,7 +468,7 @@ class PreviewPane(Surface):
         self._stored_asked = None             # what the page was last looked up for; the poll asks again
         # The stored pages of the deck's view, read ahead on a worker of their own (not behind the selection's lookups),
         # outward from the slide on show: the nearest PREFETCHED decoded (ident -> (QPixmap, digest)), the others as
-        # PNG (ident -> (PNG, digest), at most PRELOAD_BYTES). Keyed with the file's mtime, so they outlive a change of
+        # compressed images (ident -> (bytes, digest), at most PRELOAD_BYTES). Keyed with the file's mtime, so they outlive a change of
         # slide, unlike `_lookups`, and the slide scrolled or clicked to shows at once. One deck, view and language.
         self.deck_targets: Callable[[], list] = lambda: []
         self._prefetch_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='preview-prefetch')
@@ -537,6 +548,19 @@ class PreviewPane(Surface):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(PANE_SIDE_MARGIN, SPACE.xl, PANE_SIDE_MARGIN, SPACE.xl)
         layout.setSpacing(SPACE.md)
+        self._block_notice = Surface()
+        self._block_notice.setObjectName(q.CHIP)
+        self._block_notice.setProperty("tone", "info")
+        notice = QHBoxLayout(self._block_notice)
+        notice.setContentsMargins(SPACE.lg, SPACE.md, SPACE.lg, SPACE.md)
+        self._block_text = QLabel()
+        self._block_text.setWordWrap(True)
+        notice.addWidget(self._block_text, 1)
+        library = Button("Show in Library", "secondary", compact=True)
+        library.clicked.connect(lambda: self.app.slide_list.show_in_library())
+        notice.addWidget(library)
+        self._block_notice.hide()
+        layout.addWidget(self._block_notice)
         self._chips = QHBoxLayout()
         self._chips.setSpacing(SPACE.sm)
         layout.addLayout(self._chips)
@@ -581,7 +605,7 @@ class PreviewPane(Surface):
         self._name.setObjectName(q.PREVIEW_TITLE)
         footer.addWidget(self._id)
         footer.addWidget(self._name, 1)
-        self._render = SplitButton("Render")
+        self._render = SplitButton("Render this slide")
         self._render.clicked.connect(self.render_now)
         footer.addWidget(self._render)
         layout.addLayout(footer)
@@ -622,6 +646,15 @@ class PreviewPane(Surface):
             if target is not None:
                 self._settle.start()
         self._target, self._row, self._title, self._message = target, row, title, message
+        block = row.deck_call.block if row else None
+        self._block_notice.setVisible(bool(block))
+        if block:
+            block_title = self.app.slide_list.blocks.get(row.deck_call.source, block)
+            decks = [d.name for d in decks_by(deck_calls(self.app.project, getattr(self.app, "decks", None)), "block").get(block, [])]
+            count = len(decks)
+            self._block_text.setText(
+                f"From the topic block {block_title}. Reordering or removing it here changes the block, "
+                f"which {count} {'deck uses' if count == 1 else 'decks use'}: {', '.join(decks)}.")
         self._language = language
         self._shown_mtime = mtime
         self._refresh()
@@ -688,7 +721,7 @@ class PreviewPane(Surface):
         keep = (mtime, text_hash) if not self._is_draft(target) else None
         if not self._defer_checks and self._stored_asked != (self._generation, ident):
             self._stored_asked = (self._generation, ident)
-            renderer = self._renders._renderer(target.context)
+            renderer = self._renders.renderer(target.context)
             choice = self._step_choice.get(target.source_path)
 
             def select():
@@ -846,7 +879,7 @@ class PreviewPane(Surface):
 
     def _prefetch_neighbours(self) -> None:
         """Read the stored pages of the deck's view ahead, outward from the slide on show: the nearest PREFETCHED are
-        decoded, the others kept as PNG (up to PRELOAD_BYTES), so the slide scrolled or clicked to shows at once. Only
+        decoded, the others kept compressed (up to PRELOAD_BYTES), so the slide scrolled or clicked to shows at once. Only
         what the background renders stored: nothing is compiled. Called once the selection rests; reads queued for
         the order of before are dropped and queued again in the new one."""
         background = getattr(self.app, "background", None)
@@ -909,8 +942,8 @@ class PreviewPane(Surface):
             self._refresh()
 
     def _keep_compressed(self, ident, data: bytes, digest: str) -> None:
-        """Hold the PNG of `ident`; beyond PRELOAD_BYTES the pages farthest from the slide on show give way (or this
-        one, when it is the farthest)."""
+        """Hold the compressed image of `ident`; beyond PRELOAD_BYTES the pages farthest from the slide on show
+        give way (or this one, when it is the farthest)."""
         if ident in self._compressed:
             return
         rank = self._preload_rank.get(ident, len(self._preload_rank))
@@ -923,7 +956,7 @@ class PreviewPane(Surface):
         self._compressed_bytes += len(data)
 
     def _preloaded(self, ident) -> Optional[tuple]:
-        """(QPixmap, digest) of a page read ahead for `ident`: decoded already, or decoded now from its PNG (a few
+        """(QPixmap, digest) of a page read ahead for `ident`: decoded already, or decoded now from its bytes (a few
         milliseconds), or None."""
         if self._preload_context != (self._deck_name(), ident[1], ident[2]):
             return None
@@ -975,6 +1008,9 @@ class PreviewPane(Surface):
             return
         target, row = self._target, self._row
         view, language = self.state.view, self.language
+        deck = self.state.deck
+        marked = target is not None and row is not None and deck is not None and row.review
+        self._page.set_review(deck.review_text if marked else "", row.review_note if marked else "")
         job = self._pending[1] if self._pending else self._active
         busy_here = (target is not None and job is not None and job.generation == self._generation
                      and job.target_key == target.key and (job.view, job.language) == (view, language))
@@ -1014,7 +1050,7 @@ class PreviewPane(Surface):
         self._render.buttons()[0].setEnabled(target is not None and not hidden and self._batch_cancel is None)
         self._render.buttons()[0].setToolTip("This slide is hidden in the selected view." if hidden
                                            else "Render the saved file in the selected view")
-        self._render.set_text(f"Render · {short_view(view)} · {language}")
+        self._render.set_text(f"Render this slide · {short_view(view)} · {language}")
 
         status, tone, icon, can_render = "", "muted", "", False
         has_image = False
@@ -1157,7 +1193,7 @@ class PreviewPane(Surface):
     def _queue_steps(self, target: PreviewTarget, key: tuple, text: str, draft: bool, priority: int) -> None:
         view, language = key[3], key[4]
         service, log = self._renders, self.app.log
-        renderer = service._renderer(target.context)
+        renderer = service.renderer(target.context)
 
         def build(cancel):
             request = service.request(target, text, view, language, log, saved=not draft, all_steps=True)
@@ -1260,11 +1296,16 @@ class PreviewPane(Surface):
         deck = self.state.deck
         if row is None or deck is None:
             return [], []
-        calls = deck_editor.parse_slide_calls(deck)
-        physical = row.deck_call
-        if not any(c.call_start == physical.call_start for c in calls):
+        resolution = deck_language.resolve(deck)
+        calls = resolution.calls
+        physical = next((c for c in calls if c.identity == row.deck_call.identity), None)
+        if physical is None:
             return calls, []
-        return calls, deck_editor.step_block(deck.text, calls, physical)
+        occurrence = [c.expanded for c in calls if c.source == physical.source and (
+            physical.index is None or c.call_start == physical.call_start)]
+        group = deck_editor.step_block(resolution.deck.text, occurrence, physical.expanded)
+        identities = {c.call_start for c in group}
+        return calls, [c for c in calls if c.expanded.call_start in identities]
 
     def _served_views(self) -> list[str]:
         """The versions the selected place of the deck typesets; all of them for a slide shown without the deck."""
@@ -1530,7 +1571,7 @@ class PreviewPane(Surface):
             target, view, language = self._target, self.state.view, self.language
             buffer = self._buffer()
             text = buffer[0] if buffer is not None else None
-            renderer = self._renders._renderer(target.context)
+            renderer = self._renders.renderer(target.context)
 
             def copy():
                 spec = PreviewRequest(target, SourceRevision.capture(target.source_path, text), view, language)
@@ -1646,7 +1687,7 @@ class PreviewPane(Surface):
                             job.image = QImage(str(job.png))
                         job.png = None
                         if job.image.isNull():
-                            # Recording continues independently; its PNG is the fallback if the temp file vanished.
+                            # Recording continues independently; its stored image is the fallback if the temp file vanished.
                             job.pdf, job.png, _, _ = job.request.wait(job.cancel)
                     if job.png is not None:
                         job.image = QImage.fromData(job.png)
@@ -1740,7 +1781,7 @@ class PreviewPane(Surface):
             self.rendered.emit()
             if not job.external:
                 if job.request is not None:
-                    self._renders._renderer(job.request.spec.target.context).submit_other_views(job.request.spec)
+                    self._renders.renderer(job.request.spec.target.context).submit_other_views(job.request.spec)
                 self._after_render(job)
             if job.request is None:
                 self.rendered_target.emit(job.source)

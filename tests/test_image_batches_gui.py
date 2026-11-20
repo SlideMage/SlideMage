@@ -41,7 +41,7 @@ def result_of(kind=DRAFT, route=LOCAL, **kinds):
 def test_a_result_says_what_became_of_each_image():
     result = result_of(a=DONE, b=KEPT, c=FAILED, d=CANCELLED, e=DONE)
     assert result.title == "Image descriptions · partly done" and result.failed == ["media/c.png"]
-    assert result.summary == ("2 drafted · 1 kept as you edited it · 1 failed · 1 cancelled. Each finished item was saved "
+    assert result.summary == ("2 drafted · 1 kept as you edited it · 1 failed · 1 canceled. Each finished item was saved "
                               "as it completed; nothing is rolled back. Retry runs only the failed ones, as a new run "
                               "on the current route.")
     assert [result.label(outcome) for _image, outcome in result.items] == [
@@ -331,7 +331,7 @@ def test_the_panel_lists_each_image_after_a_run_and_retry_runs_only_the_failed(m
                           ("third.png", "You edited it during the run · your text kept"),
                           ("fourth.png", "Cancelled · not sent")]
     assert page.store[THIRD].long == "MY OWN TEXT"
-    assert view.summary.text().startswith("1 drafted · 1 kept as you edited it · 1 failed · 1 cancelled. Each finished item")
+    assert view.summary.text().startswith("1 drafted · 1 kept as you edited it · 1 failed · 1 canceled. Each finished item")
     assert view.retry.text() == "Retry failed (1)"
     # Retry failed: a new batch of the failed image only, on the route active now, asked about again
     backend.draft = original
@@ -395,7 +395,7 @@ def test_stop_and_switch_cancels_the_pending_images_and_the_panel_says_so(make_p
     assert wait_for(lambda: FIRST in page._job.outcomes)
     [work] = page.running_work()
     assert work.line == ("Drafting image descriptions · 1 of 3 done · fake-1. "
-                         "Pending images are cancelled, not moved to the other route")
+                         "Pending images are canceled, not moved to the other route")
     work.stop()                                                           # "Stop and switch"
     assert page._job is None
     assert page.results.title.text() == "Image descriptions · partly done"

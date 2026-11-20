@@ -74,7 +74,7 @@ CHANGE = Change(
         "\\SMProgressStripHeight is \\SMProgressStripRoom (the room below a progress strip, not its drawn height) "
         "and \\SMSideFootnoteTopSep is \\SMSideFootnoteTitleBlockSep (the distance the strip hangs below the title "
         "block); the values mean what they did. \\SMFootlineHeight, \\SMFootlineDepth and \\SMRightFooterPadding "
-        "are gone: the derived \\SMFootlineVOffset and \\SMFooterRightShift cancelled them, so nothing on the page "
+        "are gone: the derived \\SMFootlineVOffset and \\SMFooterRightShift canceled them, so nothing on the page "
         "depended on them. A template or layout profile that still uses one of the five stops the compile with an "
         "error that names it."),
     fix=(

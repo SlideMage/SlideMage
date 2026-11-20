@@ -49,9 +49,11 @@ OUTPUT_FOLDER_RE = re.compile(r"\\deckoutputfolder(?:\[([^\]]*)\])?\{([^}]*)\}")
 # (deck_groups.py) put the deck into those groups; a deck naming none is in
 # the fallback group.
 DECKTAGS_RE = re.compile(r"\\decktags\{([^}]*)\}")
-# \deckappendixtoc in the preamble: always generate the appendix TOC for
-# this deck (whole-deck compiles), whatever the toolbar checkbox says.
-DECKAPPENDIXTOC_RE = re.compile(r"\\deckappendixtoc(?![a-zA-Z@])")
+# \deckappendixtoc[views] in the preamble: always generate the appendix TOC for
+# this deck (whole-deck compiles), whatever the toolbar checkbox says. With
+# views (instructor, during-course, after-course, comma separated) only in
+# those views; without, in every view.
+DECKAPPENDIXTOC_RE = re.compile(r"\\deckappendixtoc(?![a-zA-Z@])(?:\[([^\]]*)\])?")
 # The default groups' tags and the manual's (deck_groups.py).
 TAG_WORK = deck_groups.TAG_WORK
 TAG_COURSE = deck_groups.TAG_COURSE
@@ -60,6 +62,12 @@ TAG_TEST = deck_groups.TAG_TEST
 TAG_MANUAL = deck_groups.TAG_MANUAL
 # The default groups' selectable tags: with a project's own list, ask deck_groups.
 SELECTABLE_GROUP_TAGS = deck_groups.selectable_tags()
+
+
+# \SMReviewText{text} in the preamble: the text of the watermark SlideMage draws over the previews of the slides this
+# deck marks with \SMReview{...} (deck_editor.py). Read here only; a no-op for LaTeX (SlideMage_base.tex).
+REVIEW_TEXT_DEFAULT = "REVIEW"
+REVIEW_TEXT_RE = re.compile(r"\\SMReviewText[ \t]*\{([^{}\r\n]*)\}")
 
 
 @dataclass
@@ -97,8 +105,12 @@ class Deck:
     tags: list[str] = field(default_factory=list)
     # \deckappendixtoc in the preamble (parse_appendix_toc())
     appendix_toc: bool = False
+    # the views named in \deckappendixtoc[...]; empty: every view (parse_appendix_toc_views())
+    appendix_views: tuple[str, ...] = ()
     # which PDF "Open pdf" opens by default (parse_open_pdf(); None = instructor)
     open_pdf: str | None = None
+    # the watermark text for its slides under review (parse_review_text())
+    review_text: str = REVIEW_TEXT_DEFAULT
 
     # The deck's groups in switcher order and their roles (deck_groups.groups_of(),
     # roles_of()), from the project's list at scan time; a Deck made without them
@@ -236,6 +248,29 @@ def parse_appendix_toc(text: str) -> bool:
                for m in DECKAPPENDIXTOC_RE.finditer(preamble))
 
 
+def parse_appendix_toc_views(text: str) -> tuple[str, ...]:
+    """The views a live \\deckappendixtoc[...] limits the appendix to, in file order; empty when the
+    deck has none, or a \\deckappendixtoc without views (then every view gets it)."""
+    begin = DOCUMENT_BEGIN_RE.search(text)
+    preamble = text[:begin.start()] if begin else text
+    views: list[str] = []
+    for m in DECKAPPENDIXTOC_RE.finditer(preamble):
+        if is_commented(preamble, m.start()):
+            continue
+        if m.group(1) is None or not m.group(1).strip():
+            return ()
+        views += [v for v in (p.strip().lower() for p in m.group(1).split(",")) if v and v not in views]
+    return tuple(views)
+
+
+def appendix_toc_for(deck: "Deck", version: str | None) -> bool:
+    """Whether the deck's own \\deckappendixtoc asks for the appendix in `version` (None: a deck
+    without views)."""
+    if not deck.appendix_toc:
+        return False
+    return not deck.appendix_views or (version or "instructor") in deck.appendix_views
+
+
 # "%% SlideMage open PDF: during-course" in the preamble (v5.34.0, direct
 # instruction): which PDF the deck table's "Open pdf" opens by default.
 # Missing = the instructor PDF. A comment, so a deck
@@ -251,6 +286,16 @@ def parse_open_pdf(text: str) -> str | None:
     match = OPEN_PDF_RE.search(preamble)
     value = match.group(1).strip().lower() if match else ""
     return value if value in OPEN_PDF_CHOICES else None
+
+
+def parse_review_text(text: str) -> str:
+    """The deck's watermark text: its first live \\SMReviewText{...} in the preamble, or REVIEW."""
+    begin = DOCUMENT_BEGIN_RE.search(text)
+    preamble = text[:begin.start()] if begin else text
+    for m in REVIEW_TEXT_RE.finditer(preamble):
+        if not is_commented(preamble, m.start()) and m.group(1).strip():
+            return m.group(1).strip()
+    return REVIEW_TEXT_DEFAULT
 
 
 def read_deck(path: Path, archived: bool = False,
@@ -288,7 +333,9 @@ def deck_from_text(path: Path, text: str, archived: bool = False,
         output_folders=_parse_output_folders(text),
         tags=tags,
         appendix_toc=parse_appendix_toc(text),
+        appendix_views=parse_appendix_toc_views(text),
         open_pdf=parse_open_pdf(text),
+        review_text=parse_review_text(text),
         groups=in_groups,
         roles=deck_groups.roles_of(in_groups, groups),
     )

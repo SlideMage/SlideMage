@@ -1,6 +1,7 @@
 % SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 % SPDX-License-Identifier: LPPL-1.3c+
-% SlideMage template name: Greyscale (Latin Modern Roman)
+% SlideMage modes: light, dark=Dark slides
+% SlideMage template name: Grayscale (Latin Modern Roman)
 %
 % A second look that ships with SlideMage (v10.18.0): LaTeX's own serif text face, Latin
 % Modern Roman, in greys only, with en dashes as bullets, numbered footnotes, a taller title
@@ -16,7 +17,7 @@
 % A setting this file leaves out keeps the SlideMage template's value.
 %
 % Like the SlideMage template it is part of the framework (latex/), so every project finds it
-% on the TeX search path; a project's own SlideMage_template_greyscale.tex, if it has one, wins.
+% on the TeX search path; a project's own SlideMage_template_grayscale.tex, if it has one, wins.
 
 % The layout profile: fonts and font metrics (SlideMage_layout_lmroman.tex). Chosen before
 % SlideMage_setup, because the catalog's lengths in ex and em are read in its font.
@@ -52,6 +53,10 @@
 \definecolor{c_custom_brown}{HTML}{5a5a5a}
 % Code comments: a little darker than c_primary_gray, for 4.5:1 on the code panel.
 \definecolor{SMCodeCommentColor}{HTML}{5f5f5f}
+% Code commands in the accent grey (6.4:1 on the panel), copied here, before the colour modes: the
+% framework's default would take c_primary_highlight after the mode's palette line, which in dark mode
+% is a light grey on the light code panel (1.4:1; the theme form's contrast check, v0.16.8).
+\colorlet{SMCodeKeywordColor}{c_primary_highlight}
 
 % ---------------------------------------------------------------------------
 % Roles: a light title bar with dark text (the SlideMage template's is dark with white
@@ -68,6 +73,26 @@
 \renewcommand{\SMStandoutTextColor}{c_primary_dark}
 \renewcommand{\SMAlertTextColor}{c_primary_highlight}
 \renewcommand{\SMProgressBarColor}{c_primary_gray}
+
+% ---------------------------------------------------------------------------
+% Colour modes (SlideMage_setup.tex, 'Colour modes and role colours'): light, the colours
+% above, is the base mode; dark starts from the framework's dark preset (canvas #484848 from
+% c_primary_dark, white text). The title bar turns dark with white text, like the footer. The
+% palette's dark greys are near the canvas (1.0:1 to 1.5:1), so dark mode gives the accent grey
+% and the custom greys, which slides write as text and lines, light values, each at least 4.7:1
+% there (v0.16.5); bullets, \alert, rules, image borders and markers follow, as they are made of them.
+% A deck picks the mode in Deck settings -> Colours.
+% ---------------------------------------------------------------------------
+\SMDeclareMode{light}{}
+\SMDeclareMode{dark}{dark}
+\SMSetRole{title_fill}{dark}{c_primary_dark}
+\SMSetRole{title_text}{dark}{c_true_white}
+\SMSetRole{standout_text}{dark}{c_true_white}
+\SMSetColor{c_primary_highlight}{dark}{HTML}{C7C7C7}      % 5.4:1 on the dark canvas
+\SMSetColor{c_custom_gray}{dark}{HTML}{DEDEDE}           % 6.8:1
+\SMSetColor{c_custom_red}{dark}{HTML}{D0D0D0}            % 5.9:1
+\SMSetColor{c_custom_green}{dark}{HTML}{C4C4C4}          % 5.2:1
+\SMSetColor{c_custom_brown}{dark}{HTML}{BABABA}          % 4.7:1
 
 % Bullets: an en dash on every level instead of the filled circle. The list indents follow
 % the glyph's width by themselves.

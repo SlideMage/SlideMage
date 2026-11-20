@@ -20,7 +20,7 @@ import re
 from collections import Counter
 from dataclasses import dataclass
 
-from .. import languages, latex_lint, slide_source
+from .. import languages, latex_lint, prose_spans, slide_source
 from ..project import ProjectContext
 from ..selection import CONTEXT_CHARS
 from .tools.edits import protected_problem
@@ -35,6 +35,7 @@ class Task:
     rules: str                  # the system prompt
     schema: dict                # of the answer: one property, "body", "text", "edits", "title" or "note"
     keeps_structure: bool = False   # the new text has the same environments, overlay specifications and citations
+    prose_only: bool = False        # only the regular text may change (prose_spans.outside_prose)
 
     @property
     def answer(self) -> str:
@@ -77,7 +78,7 @@ TRANSLATE = Task("translate", (
 
 _EDIT_LIST = (
     "Answer with an edit list. `before` is a piece of the source copied character for character, tabs and "
-    "spaces included, that occurs exactly once in it (add neighbouring text to make it unique); the pieces of "
+    "spaces included, that occurs exactly once in it (add neighboring text to make it unique); the pieces of "
     "different edits must not overlap; `after` replaces it. ")
 _TEXT = (
     "Change only the text the audience reads (frame titles, list items, table cells, footnotes, source "
@@ -102,7 +103,7 @@ PROOFREAD = Task("proofread", (
     "You proofread the LaTeX source of one beamer slide of a university course. Fix spelling, grammar, "
     "punctuation and capitalization mistakes, and nothing else: no rewording, no restyling, no shortening, "
     "the meaning stays. " + _TEXT + "Where there is nothing to fix, answer with an empty edit list. " +
-    _EDIT_LIST + _KEEP), _EDITS)
+    _EDIT_LIST + _KEEP), _EDITS, prose_only=True)
 
 CONCISE = Task("concise", (
     "You make the text of one beamer slide of a university course more concise: shorter wording, no filler, "
@@ -168,9 +169,9 @@ PROOFREAD_SELECTION = Task("proofread_selection", (
     "grammar, punctuation and capitalization mistakes in the selection, and nothing else: no rewording, no "
     "restyling, the meaning stays. " + _SELECTION + _TEXT + "Where there is nothing to fix, answer with an empty "
     "edit list. Answer with an edit list. `before` is a piece of the selection copied character for character, tabs "
-    "and spaces included, that occurs exactly once in the selection (add neighbouring text to make it unique; "
+    "and spaces included, that occurs exactly once in the selection (add neighboring text to make it unique; "
     "the context is not part of it); the pieces of different edits must not overlap; `after` replaces it. "
-    "Answer with the JSON result only."), _EDITS)
+    "Answer with the JSON result only."), _EDITS, prose_only=True)
 
 
 def _manner(address: str) -> str:
@@ -379,7 +380,8 @@ def check(ctx: ProjectContext, task: Task, captured: str, answer: dict | None,
     new = captured[:start] + piece + captured[end:]
     if new == captured or task.answer == "summary":     # a summary is no edit of `captured`: nothing to protect
         return new, []
-    if problem := protected_problem(captured, new) or (task.keeps_structure and _structure_problem(captured, new)):
+    if problem := (protected_problem(captured, new) or (task.keeps_structure and _structure_problem(captured, new))
+                   or (task.prose_only and prose_spans.outside_prose(captured, new))):
         return captured, [problem]
     added = _errors(ctx, new) - _errors(ctx, captured)
     if added:

@@ -253,7 +253,7 @@ def test_a_stopped_run_during_the_measurement_ends_the_card_stopped(fake, monkey
 
     def stopping(*args, **kwargs):
         env.window.assistant.tasks.stop()
-        raise RuntimeError("Preview cancelled")
+        raise RuntimeError("Preview canceled")
 
     monkeypatch.setattr(tasks_module.readability_check, "check_slide", stopping)
     fake.reply({"answer": {"body": BIGGER}})

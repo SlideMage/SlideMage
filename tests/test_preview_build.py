@@ -96,11 +96,12 @@ def test_repaired_missing_input_forces_latexmk_to_forget_its_cached_error(tmp_pa
 
 
 def test_unused_preview_wrappers_are_pruned(tmp_path):
-    build = tmp_path / '.build'
+    build = tmp_path / 'build'
     decks = tmp_path / 'decks'
     decks.mkdir()
-    old = time.time() - (preview_build.UNUSED_DAYS + 1) * 86400
-    for key, age in (('fresh', None), ('stale', old), ('nocache', 'none')):
+    old = time.time() - 3 * 86400
+    recent = time.time() - 86400
+    for key, age in (('fresh', recent), ('stale', old), ('nocache', 'none')):
         (decks / f'_slidemage_preview-{key}.tex').write_text('x')
         if age == 'none':
             os.utime(decks / f'_slidemage_preview-{key}.tex', (old, old))
@@ -113,12 +114,28 @@ def test_unused_preview_wrappers_are_pruned(tmp_path):
     (decks / 'deck.tex').write_text('x')
     for key in ('new-unique', 'other'):
         (decks / f'_slidemage_preview-{key}.tex').write_text('job without a cache in this build root')
+    formats = build / 'preview-formats'
+    for key, age in (('fresh', recent), ('stale', old)):
+        lock = formats / key / 'build.lock'
+        lock.parent.mkdir(parents=True)
+        lock.touch()
+        os.utime(lock, (age, age))
+    # The project's default keeps even the three-day-old cache and format.
     preview_build.prune_unused(tmp_path, build)
+    assert (build / 'preview-cache' / 'stale').exists() and (formats / 'stale').exists()
+    preview_build.prune_unused(tmp_path, build, 2)
     assert sorted(p.name for p in decks.iterdir()) == [
         '_slidemage_preview-fresh.tex', '_slidemage_preview-new-unique.tex',
         '_slidemage_preview-other.tex', 'deck.tex',
     ]
     assert (build / 'preview-cache' / 'fresh').exists() and not (build / 'preview-cache' / 'stale').exists()
+    assert (formats / 'fresh').exists() and not (formats / 'stale').exists()
+    with preview_build.active_build(build, decks, root=tmp_path):
+        preview_build.prune_unused(tmp_path, build, 0)
+        assert (build / 'preview-cache' / 'fresh').exists() and (formats / 'fresh').exists()
+    preview_build.prune_unused(tmp_path, build, 0)
+    assert list((build / 'preview-cache').iterdir()) == [] and list(formats.iterdir()) == []
+    assert [p.name for p in decks.iterdir()] == ['deck.tex']
 
 
 def test_wrappers_in_the_build_folder_are_pruned_too(tmp_path):
@@ -227,7 +244,7 @@ def test_format_invalidates_same_size_mtime_content_and_new_shadow(tmp_path, mon
     package.write_text('y')
     os.utime(package, ns=(previous.st_atime_ns, previous.st_mtime_ns))
     assert _ensure(tmp_path) == first and len(runs) == 2
-    (tmp_path / 'new-shadow.sty').write_text('new search candidate')
+    (tmp_path / 'decks' / 'package.sty').write_text('shadows the one the format read')
     assert _ensure(tmp_path) == first and len(runs) == 3
 
 
@@ -398,7 +415,7 @@ def test_a_race_that_persists_fails_as_font_cache_busy_and_keeps_the_format(tmp_
     def busy(*args, **kwargs):
         raise preview_build.FontCacheBusy('Render failed for abc-EN-Test')
     monkeypatch.setattr(preview_build, '_compile_cached', busy)
-    ctx = SimpleNamespace(root=tmp_path, build_dir=tmp_path / '.build')
+    ctx = ProjectContext.at(tmp_path)
     with pytest.raises(preview_build.FontCacheBusy):
         preview_build.compile_cached(r'\documentclass{beamer}\begin{document}x', 'abc-EN-Test', lambda line: None,
                                      ctx=ctx, env={})
@@ -564,7 +581,7 @@ def test_returning_to_a_view_runs_lualatex_once(tmp_path):
 def test_the_wrapper_pass_runs_at_most_once_in_ten_minutes_per_folder(tmp_path, monkeypatch):
     # Every render ran it: the background workers queued behind one another over hundreds of wrappers (v8.52.2).
     ran = []
-    monkeypatch.setattr(preview_build, "prune_unused", lambda root, build: ran.append(root))
+    monkeypatch.setattr(preview_build, "prune_unused", lambda root, build, days: ran.append(root))
     now = {"t": 1000.0}
     clock = lambda: now["t"]
     one, two = tmp_path / "one", tmp_path / "two"
@@ -658,3 +675,27 @@ def test_a_spare_is_used_once_and_a_preamble_change_discards_it(tmp_path, monkey
         assert discarded == [processes[1]] and len(commands) == 2 and len(processes) == 3
     finally:
         preview_build.set_focus(ctx, None)
+
+
+# -- the failure names the first TeX error, not only the log's last lines ---------------------------------------------
+
+FILE_LINE_LOG = ('(./SlideMage_alt.lua)\n/home/user/.cache/slidemage/render-store/x/work/decks/_slidemage_preview-1.t\n'
+                 'ex:42: Missing $ inserted.\n<inserted text> \n                $\nl.42 \\end{figureframe}\n\n'
+                 + 'Here is how much of LuaTeX\'s memory you used:\n' * 30)
+
+
+def test_first_tex_error_reads_file_line_errors_and_classic_ones():
+    assert compiler.first_tex_error(FILE_LINE_LOG) == '! Missing $ inserted.\n<inserted text> \n                $\nl.42 \\end{figureframe}'
+    assert compiler.first_tex_error('x\n! Undefined control sequence.\nl.9 \\foo\nmore').startswith('! Undefined control sequence.\nl.9')
+    assert compiler.first_tex_error('Output written on job.pdf (1 page).') == ''
+
+
+def test_a_failed_render_leads_with_its_first_error(tmp_path, monkeypatch):
+    _runs, call = _latexmk_runs(monkeypatch, tmp_path, [])
+    monkeypatch.setattr(compiler, 'run_latexmk', lambda command, *, jobname, outdir, **kwargs: compiler.Build(
+        1, outdir / f'{jobname}.pdf', outdir / f'{jobname}.log', FILE_LINE_LOG, False))
+    with pytest.raises(RuntimeError) as failure:
+        call()
+    message = str(failure.value)
+    assert message.startswith('Render failed for abc-EN-Test:\n! Missing $ inserted.\n')
+    assert 'l.42 \\end{figureframe}' in message and message.endswith("Here is how much of LuaTeX's memory you used:")

@@ -11,19 +11,25 @@ with the last one, and for each change decides what the window shows:
 * slides added or removed: a rescan; any other changed file: the slide list and panels are refreshed
   (lint dots, previews, versions).
 A file SlideMage saved itself shows as unchanged against its buffer, so the poll does not act on it.
+
+The timer's scans run on a thread of their own (2026-11-16): on a synced project folder one scan took 1 to 4 s, and
+on the GUI thread, once a second, that froze the window again and again while the terminal ran. The result comes
+back to the GUI thread, which compares and acts as before. `start()` (the baseline) and `poll()` (the last look on
+`stop()`, and callers that want the answer now) still scan on the spot.
 """
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QTimer
+from PySide6.QtCore import QObject, QTimer, Signal
 
 from ....ai import project_watch
 from ..source_file import SAME
 
 POLL_MS = 1000
-STRUCTURE_FOLDERS = ("slides", "decks")
+STRUCTURE_FOLDERS = ("slides", "decks", "blocks")
 
 
 def _text(path: Path) -> str | None:
@@ -39,17 +45,23 @@ class ExternalEditWatch(QObject):
     `on_change(changes)`. This is the host service (Host.watch_external_edits, plugin_api.EditWatch); DiskSync below
     is what the window does with the changes of the Claude Code session."""
 
+    _scanned = Signal(int, object)      # the generation a background scan was started in, its Scan
+
     def __init__(self, root: Path, on_change: Callable[[project_watch.Changes], None],
                  parent: QObject | None = None) -> None:
         super().__init__(parent)
         self.root, self._on_change = root, on_change
         self._known: project_watch.Scan = {}
+        self._generation = 0            # bumped by every scan on the spot: an older background scan is dropped
+        self._scanning = False          # a background scan is out: the timer starts no second one
         self._timer = QTimer(self)
         self._timer.setInterval(POLL_MS)
-        self._timer.timeout.connect(self.poll)
+        self._timer.timeout.connect(self._poll_in_background)
+        self._scanned.connect(self._on_scanned)
 
     def start(self) -> None:
         if not self._timer.isActive():
+            self._generation += 1
             self._known = project_watch.scan(self.root)
             self._timer.start()
 
@@ -62,11 +74,39 @@ class ExternalEditWatch(QObject):
             self._timer.stop()
 
     def poll(self) -> None:
-        now = project_watch.scan(self.root)
+        """Scan now, on this thread, and hand over what changed."""
+        self._generation += 1
+        self._take(project_watch.scan(self.root))
+
+    def _take(self, now: project_watch.Scan) -> None:
         changes = project_watch.diff(self._known, now)
         if changes:
             self._on_change(changes)
         self._known = now           # only once the caller took the changes in: a failure is tried again
+
+    def _poll_in_background(self) -> None:
+        if self._scanning:
+            return                  # the last scan is still running (a slow drive): skip this tick
+        self._scanning = True
+        generation, root = self._generation, self.root
+
+        def work() -> None:
+            try:
+                now = project_watch.scan(root)
+            except Exception:  # noqa: BLE001 -- the next tick tries again
+                now = None
+            try:
+                self._scanned.emit(generation, now)
+            except RuntimeError:
+                pass                # the watch is gone (window closed)
+
+        threading.Thread(target=work, name="edit-watch-scan", daemon=True).start()
+
+    def _on_scanned(self, generation: int, now) -> None:
+        self._scanning = False
+        if now is None or generation != self._generation or not self._timer.isActive():
+            return                  # failed, or a scan on the spot (or stop) came in between
+        self._take(now)
 
     def __enter__(self) -> ExternalEditWatch:
         self.start()
@@ -89,22 +129,26 @@ class DiskSync(ExternalEditWatch):
         review_changed = window.project.ai_review_path in (*changes.added, *changes.modified, *changes.removed)
         if review_changed:
             window.refresh_ai_review()
-        edited_decks, refresh, shown = [], False, False
-        for path in (*changes.modified, *changes.added):
+        edited_decks, refresh = [], False
+        for path in (*changes.modified, *changes.added, *changes.removed):
             if path == window.project.ai_review_path:
+                continue
+            if path.parent == window.project.blocks_dir:
+                window.centre.disk_changed(path)
+                edited_decks.append(path)
                 continue
             outcome = window.centre.disk_changed(path)
             if outcome == SAME:
                 continue
-            if outcome is None and path == window.centre.path:
-                shown = True                    # the Preview shows this slide and must say it is older now
+            if outcome is None:
+                window.centre.file_written(path)    # the Preview renders the shown slide, as after a chat edit
             deck = decks.get(path)
             if deck is None:
                 refresh = True
             elif _text(path) != deck.text:
-                edited_decks.append(deck)
+                edited_decks.append(deck.path)
         for deck in edited_decks:
-            window.after_deck_edit(deck.path, f"Claude Code changed {deck.path.name}")
+            window.after_deck_edit(deck, f"Claude Code changed {deck.name}")
         if edited_decks:
             return                              # after_deck_edit rescans and redraws everything
         if structural:
@@ -112,5 +156,3 @@ class DiskSync(ExternalEditWatch):
         elif refresh:
             window.slide_list.rebuild()
             window.side_panels.refresh()
-        if shown:
-            window.centre.refresh()

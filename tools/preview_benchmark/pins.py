@@ -46,7 +46,7 @@ def run(root, framework, output):
     # Separate current calls still have their own changed revision and version text.
     current = replace(spec.target, macro='slide', version=None)
     new = preview_requests.PreviewRequest(current, preview_requests.SourceRevision.capture(source), spec.view, 'EN')
-    resolver = service._renderer(ctx).resolver
+    resolver = service.renderer(ctx).resolver
     assert resolver.fast_key(new.unit, new.revision.text) != resolver.fast_key(spec.unit, spec.revision.text)
     service.close()
     result = dict(initial_compile_count=1, after_batch_compile_count=0, after_batch_raster_count=0,

@@ -86,6 +86,13 @@ def test_the_folder_holds_the_deck_its_slides_and_only_the_media_they_use(projec
         p.relative_to(result.folder).as_posix() for p in result.folder.rglob("*") if p.is_file())
 
 
+def test_a_step_is_reported_for_every_file_copied(project):
+    steps = []
+    result = latex_export.export_deck(project, deck_of(project, "acme"), project.root.parent, on_progress=steps.append)
+    n = len(result.files) - 1                      # every file but the generated .latexmkrc
+    assert [s.text for s in steps] == [f"Copying ({i} of {n})" for i in range(1, n + 1)] and steps[-1].fraction == 1
+
+
 def test_the_preambles_theme_logo_bib_and_code_files_come_along(project):
     names = set(export(project).files)
     assert {"SlideMage_template_acme.tex", "SlideMage_base.tex", "SlideMage_alt.lua",
@@ -135,14 +142,14 @@ def test_the_shipped_lmsans_profile_comes_along_for_a_template_that_picks_it(pro
     assert (result.folder / "SlideMage_layout_lmsans.tex").read_bytes() == shipped
 
 
-def test_a_deck_on_the_shipped_greyscale_template_gets_it_its_profile_and_the_logo(project):
+def test_a_deck_on_the_shipped_grayscale_template_gets_it_its_profile_and_the_logo(project):
     """v10.18.0: the second bundled template picks the lmroman profile and keeps the catalog's logo."""
     root = project.root
-    (root / "decks" / "grey.tex").write_text(HEAD.format(template="greyscale", calls="\\slide{zz1-EN-One}"),
+    (root / "decks" / "grey.tex").write_text(HEAD.format(template="grayscale", calls="\\slide{zz1-EN-One}"),
                                              encoding="utf-8")
     result = export(ProjectContext.at(root), "grey")
     files = set(result.files)
-    assert {"SlideMage_template_greyscale.tex", "SlideMage_layout_lmroman.tex", "slidemage-logo.pdf"} <= files
+    assert {"SlideMage_template_grayscale.tex", "SlideMage_layout_lmroman.tex", "slidemage-logo.pdf"} <= files
     assert "SlideMage_layout_fira.tex" not in files and result.missing == []
 
 
@@ -257,3 +264,22 @@ def test_the_exported_folder_compiles_on_its_own(project, tmp_path_factory):
     with pymupdf.open(alone / "plain.pdf") as pdf:
         assert len(pdf) == 2
         assert "One" in pdf[0].get_text() and "Two" in pdf[1].get_text()
+
+
+@pytest.mark.parametrize("folder", ["decks", "decks/archive"])
+def test_a_slideblock_exports_its_slides_and_their_dependencies(project, folder):
+    project.blocks_dir.mkdir(exist_ok=True)
+    block = project.blocks_dir / "topic.tex"
+    block.write_text("\\slide{zz1-EN-One}\n\\slide{zz2-EN-Two}\n", encoding="utf-8")
+    path = project.root / folder / "linked.tex"
+    path.parent.mkdir(exist_ok=True)
+    path.write_text(HEAD.format(template="slidemage", calls=r"\slideblock{topic}"), encoding="utf-8")
+
+    result = export(project, "linked")
+
+    assert result.missing == []
+    assert {"linked.tex", "blocks/topic.tex", "slides/zz1-EN-One-current.tex", "slides/zz2-EN-Two-current.tex",
+            "media/pic-one.png", "media/bare.png", "snippets/zz2-1.tex"} <= set(result.files)
+    for name in ("blocks/topic.tex", "slides/zz1-EN-One-current.tex", "slides/zz2-EN-Two-current.tex"):
+        assert (result.folder / name).read_bytes() == (project.root / name).read_bytes()
+    assert r"\slideblock{topic}" in (result.folder / "linked.tex").read_text(encoding="utf-8")

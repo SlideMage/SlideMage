@@ -31,7 +31,7 @@ merged with that fork's history).
 
 | Path | Contents |
 | --- | --- |
-| `latex/` | The framework: the SlideMage beamer theme (`beamerthemeSlideMage.sty`), `SlideMage_setup.tex` (the setup layer and catalog of template settings), the layout profiles `SlideMage_layout_fira.tex`, `SlideMage_layout_lmsans.tex` and `SlideMage_layout_lmroman.tex`, `SlideMage_base.tex`, the SlideMage template `SlideMage_template_slidemage.tex` with its logo, the greyscale template `SlideMage_template_greyscale.tex`, the house citation format `SlideMage_citation_default.tex` (and `SlideMage_bibliography_default.tex`, its old name, a one-line loader), `SlideMage_alt.lua`, `SlideMage_measure.lua`. Institution-independent. |
+| `latex/` | The framework: the SlideMage beamer theme (`beamerthemeSlideMage.sty`), `SlideMage_setup.tex` (the setup layer and catalog of template settings), the layout profiles `SlideMage_layout_fira.tex`, `SlideMage_layout_lmsans.tex` and `SlideMage_layout_lmroman.tex`, `SlideMage_base.tex`, the SlideMage template `SlideMage_template_slidemage.tex` with its logo, the grayscale template `SlideMage_template_grayscale.tex`, the house citation format `SlideMage_citation_default.tex` (and `SlideMage_bibliography_default.tex`, its old name, a one-line loader), `SlideMage_alt.lua`, `SlideMage_measure.lua`. Institution-independent. |
 | `example/` | A complete SlideMage project: `slides/`, `decks/`, `media/`, `SlideMage.bib`, `.latexmkrc`, and `slide_ids.csv`, which marks a project's root. Also the template for a new project created from SlideMage. |
 | `src/slidemage/` | SlideMage, the PySide6 app, an installable Python package (`pyproject.toml`): the workspace window, its dialogs and pages under `ui/` (`ui/kit/` is the widget kit), the AI layer (providers, agent, tools, MCP server) under `ai/`, and the backend modules beside them. |
 | `packaging/` | The PyInstaller spec for the one-file executable, and a Linux `.desktop` template. |
@@ -369,16 +369,19 @@ first and the plugins below:
   needed. **Add from file…** takes a `.smtheme`. **Add from GitHub…** takes
   `owner/name` and installs the newest release of a (private) theme repository with
   the GitHub token of Settings → General; such a theme's updates are offered at start
-  (*Install now*, *Not now*, *Skip this version*, under the update setting) and its
+  (*Install now*, *Not now*, *Skip this version*, under the update setting), or installed
+  without asking when its row's **Update automatically** is on (asked when you add it); its
   row has **Check for update** and says why the last check failed.
 - **Citation formats**: the citation format packages installed on this computer (the
   way references look, packaged on its own: `SlideMage_citation_<key>.tex` with a
   `citation.toml`, `docs/CITATION_PACKAGE.md`), with the same buttons as the themes:
   **Remove**, **Add from file…** (a `.smcite`), **Add from GitHub…**, update offers at
-  start, **Check for update**. A template or deck chooses one with `\SMCitationFormat`.
+  start, **Update automatically**, **Check for update**. A template or deck chooses one with `\SMCitationFormat`.
 - **Plugins**, installed: each plugin with its version and state (*Loaded*, *Disabled*,
   *Failed to load* with **Details…**, or *Incompatible*). The **Enabled** switch
-  turns it on or off; **Update to …** and **Remove** are on the same row.
+  turns it on or off; **Update automatically**, **Update to …** and **Remove** are on the
+  same row. **Install** (and **Install from file…**) asks whether the plugin should update
+  automatically.
 - **Plugins**, available: the plugins of the list at https://slidemage.org/plugins/, each
   with its summary, what it needs and what it contacts on the network. **Install**
   installs it; **Check for plugins** fetches the list again.
@@ -406,8 +409,13 @@ The start-up update check also looks for newer releases of installed plugins fro
 the list, at most once a day, in the app's update mode (**File → Settings… →
 General → Updates**, see [Releases and updates](#releases-and-updates)): *don't
 check* means no plugin check; *ask* (the default) names the plugins with a newer
-release, and **Update to …** installs one; *install automatically* installs them;
-they take effect after a restart. A plugin run from a checkout is not updated.
+release in a dialog that stays until you answer (*Install now*, *Not now*, *Skip this
+version*; *Not now* asks again the next day, a skipped version is not offered again);
+*install automatically* installs them. A plugin's own **Update automatically** switch
+on its row overrides the mode for that plugin. While the plugin behind the AI
+assistant's route has an update waiting, the assistant says so under its switch, with
+**Update…**. Updates take effect after a restart. A plugin run from a checkout is not
+updated.
 
 ### Where plugins live
 
@@ -609,7 +617,7 @@ version block, `\SMUseBibliography`) and, after `\begin{document}`, the slides, 
 reading `slides/<id-slug>-current.tex` (or a frozen version). A file of the project with a
 framework file's name wins over the framework's (the project folder comes first on the TeX
 search path): a project can ship its own template, layout profile or even its own copy of the
-SlideMage template. **To make a template**, copy `latex/SlideMage_template_greyscale.tex` (a
+SlideMage template. **To make a template**, copy `latex/SlideMage_template_grayscale.tex` (a
 template that sets many catalog settings, each with a comment) or `latex/SlideMage_template_slidemage.tex`
 (which sets almost none) into the project as `SlideMage_template_<key>.tex`, add a `% SlideMage template name: ...` line, and
 set between `\input{SlideMage_setup}` and `\input{SlideMage_base}` what you change from the
@@ -681,7 +689,7 @@ shows them all on.
   Modern Roman, LaTeX's own serif text face (Computer Modern in its OpenType form), with Latin
   Modern Mono for code. The first serif profile and the first written by the tool alone
   (`calibrate_font_profile.py --new`). Beamer sets a frame in its sans family, so a serif
-  profile names its font as `\setsansfont` (and `\setmainfont`). The greyscale template uses it.
+  profile names its font as `\setsansfont` (and `\setmainfont`). The grayscale template uses it.
 - `tests/fixtures/template_stress/` — a **test project**, never offered by the app (it
   is neither in `example/` nor in `latex/`): the template `SlideMage_template_stress-test.tex`,
   which picks `lmsans` and sets every hook of the catalog to a clearly different value,
@@ -748,7 +756,7 @@ shows them all on.
   project's own copy would win). SlideMage keeps its previews apart from
   the institutions' (template name "SlideMage"); the manual,
   `decks/slidemage-manual.tex`, is the demo deck in it.
-- `latex/SlideMage_template_greyscale.tex` — the **greyscale template** (since v10.18.0),
+- `latex/SlideMage_template_grayscale.tex` — the **grayscale template** (since v10.18.0),
   a second look that ships with SlideMage and the starting point to copy for a template of your
   own: Latin Modern Roman (the `lmroman` profile), greys only, en dashes as bullets, numbered
   footnotes, a taller title bar and footer, more room around the SlideMage logo and wider
@@ -1115,10 +1123,16 @@ it is moved, copied or archived:
   (`\input{SlideMage_template_<name>}`), chosen from the templates the
   project can find.
 - **Language**: `\decklanguage[..]`, one of the project's languages (see "Languages").
-- **Dark slides** (supported templates, including the SlideMage template):
-  a charcoal background, white body text,
-  dark cards and gray code panels. Saved in the deck and applied to its previews
-  and compiled PDFs; title and footer bars keep the institution colors.
+- **Colours**: the colour modes the template declares (for example light and
+  dark; enabled when it declares more than one). Saved in the deck as
+  `\newcommand{\SMModeOverride}{<mode>}` before the template and applied to its
+  previews and compiled PDFs. **Theme per view** can give a view its own theme
+  and mode, for example dark for the instructor deck and light for print.
+  For one PDF in another mode without changing the deck, **Compile → Current
+  view in Dark slides** (or *in another colour mode…* when the template has
+  several) builds the view shown into its own file, `<deck>-<view>-<mode>.pdf`
+  (a fixed `\deckoutputfolder` file name gets `-<mode>` too), so the view's
+  usual PDF stays; Open PDF lists it as "· dark colours".
 - **Footer text**: `\FooterText`, the left part of the footer.
 - **Course link** (CampusOnline plugin): a full HTTP or HTTPS URL; **Open** saves the settings and
   opens the page in your default browser. Clear the field to remove the link.
@@ -2607,13 +2621,31 @@ is the untouched source, `-cropped` is what slides actually reference).
 
 ### Color palette
 
-The dark option uses `#2b2b2b` for the canvas and `#3a3a3a` for cards,
-with white text, yellow inline code, and black code listings on `#c6c6c6`.
-These two dark grays are the softened variant used in the chapter-one design
-examples. The shared TikZ styles `SMCard` and `SMProcess` follow the template;
-card headings use `\SMCardHeadingFont`. Light decks retain their existing palette.
-A template advertises dark-mode support with `% SlideMage dark mode: true` in
-its first 30 lines; copied or renamed templates keep the option without app changes.
+A template lists its colour modes in its first 30 lines, `% SlideMage modes: light, dark`
+(the first is the base mode), and declares them to the framework with
+`\SMDeclareMode{light}{}` and `\SMDeclareMode{dark}{dark}`; `\SMSetRole` and `\SMSetColor`
+lines set what a mode changes (`latex/SlideMage_setup.tex`, "Colour modes and role colours").
+The `dark` preset mixes the canvas from `c_primary_dark` with 17 % white and cards with 23 %,
+with white text and links and black text on coloured fills. Slides that should follow the
+mode use the role colours `c_text`, `c_canvas`, `c_card`, `c_line`, `c_text_muted`,
+`c_text_on_accent` and `c_link`; a palette name such as `c_primary_dark` is one colour in
+every mode. (The switch `\SMDarkMode` and the `% SlideMage dark mode: true` header were
+removed in v0.16.0.)
+
+Both shipped templates (SlideMage and Grayscale) offer light and dark. Their dark mode is the
+preset plus lighter values for the palette colours slides write as text and lines and that are
+too dark on the dark canvas (`\SMSetColor` lines: the highlight colour and the `c_custom_*`
+colours), each at least 4.4:1 there, so `\textcolor{c_custom_red}{...}` stays readable without
+touching the slide; bullets, rules, image borders and markers follow. Grayscale's title bar turns
+dark with white text. A theme makes its own dark mode readable the same way: give each accent
+that slides use as text a dark-mode value, and keep white text off those colours (a node with
+`fill=c_primary_highlight` writes `text=c_canvas`, white in light mode).
+
+The source editor's **Color** menu lists the role colours first, each with what it is for, then the
+palette. Its swatches show the colours of the deck's theme in the mode of the view shown (a
+view's own `theme:mode` included), read from the template's lines the way the framework resolves
+them, so switching a deck to dark turns the `c_text` swatch white and shows each palette colour
+with the value the theme gives it in dark mode.
 
 Every color the preamble defines follows a `c_<tier>_<hue>` naming scheme
 (e.g. `c_secondary_blue`), usable anywhere a color name is expected
@@ -3393,6 +3425,7 @@ on everything that compiles.
 | `image` | error | `\includegraphics`, `\chapterlogo`, `\fullbleedframe`, `sideimageframe`, `\cornerfigure`, `besidefigure`, `\fitfigure`, `\sectionfigure` pointing at a file that does not exist (extension optional) |
 | `code-file` | error | `\SMCodeFile{path}` pointing at a file that does not exist (path relative to the project root) |
 | `slide-file` | error | a deck call whose `slides/<id>-current.tex` / `-vX-Y-Z.tex` does not exist |
+| `macro-color` | warning | `\colorlet` or `\definecolor` of a name that is a macro holding a color's name (`\SMTitleBoxColor`, `\SMBulletColor` ...): the macro keeps its value; use `\renewcommand` |
 | `underscore` | warning | `_` in running text outside math, tikz and name/path arguments ("Missing $ inserted") |
 | `caret` | warning | `^` in running text outside math (`10^6` typed without `$...$`) |
 | `percent` | warning | `5% growth`: a `%` right after a digit followed by more text -- the rest of the line becomes a comment |

@@ -3,15 +3,19 @@
 """What "Empty pdf folder" and "Remove temp files" (Housekeeping) would delete, and the deleting.
 
 Free of Qt: the Housekeeping sheet (ui/dialogs/housekeeping.py) shows the counts, the window
-(ui/workspace/maintenance.py) asks and calls the removal.
+(ui/workspace/maintenance.py) asks and calls the removal. Startup also prunes forgotten render stores.
 """
 from __future__ import annotations
 
 import shutil
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from collections.abc import Callable
+
 from . import compiler, deck_snapshot, preview_build, project
+from .progress import Progress
 from .project import ProjectContext
 
 # The project root's own workflow scratch folder (CONVERSION_NOTES.md) -- where a PPTX
@@ -39,9 +43,11 @@ def pdf_files(ctx: ProjectContext) -> list[Path]:
     return [p for p in ctx.pdf_dir.iterdir() if p.is_file()] if ctx.pdf_dir.is_dir() else []
 
 
-def delete_files(files: list[Path]) -> None:
-    for path in files:
+def delete_files(files: list[Path], on_progress: Callable[[Progress], None] | None = None) -> None:
+    for n, path in enumerate(files, 1):
         path.unlink(missing_ok=True)
+        if on_progress:
+            on_progress(Progress.step(n, len(files), "Deleting"))
 
 
 def find_temp_files(ctx: ProjectContext) -> TempFiles:
@@ -53,16 +59,39 @@ def find_temp_files(ctx: ProjectContext) -> TempFiles:
     return TempFiles(compiler.removable_build_entries(ctx), [p for p in wrappers if not preview_build.is_active(p)], scratch)
 
 
-def remove_temp_files(ctx: ProjectContext, found: TempFiles) -> None:
+def remove_temp_files(ctx: ProjectContext, found: TempFiles,
+                      on_progress: Callable[[Progress], None] | None = None) -> None:
     paths = found.build + found.scratch + found.wrappers
     # A preview can start after the sheet counts files. Both the reservation
     # check and deletion use the same guard, including a live CLI's OS lock.
     with preview_build.cleanup_guard(paths, ctx.root) as permitted:
         if not permitted:
             return
-        for path in found.build + found.scratch:
+        for n, path in enumerate(paths, 1):
             if path.is_dir():
                 shutil.rmtree(path, ignore_errors=True)
             else:
                 path.unlink(missing_ok=True)
-        delete_files(found.wrappers)
+            if on_progress:
+                on_progress(Progress.step(n, len(paths), "Removing"))
+
+
+def prune_render_stores(ctx: ProjectContext) -> None:
+    """Remove stores unused for 30 days whose project folder no longer exists; keep the open project's store."""
+    stores = project.cache_dir() / "render-store"
+    current = stores / project.project_id(ctx.root)
+    before = time.time() - 30 * 86400
+    for store in stores.glob("*"):
+        if store == current or not store.is_dir() or store.is_symlink():
+            continue
+        try:
+            if (store / "index.sqlite").stat().st_mtime >= before:
+                continue
+            marker = store / "project.txt"
+            if marker.exists():
+                folder = marker.read_text(encoding="utf-8")
+                if folder and Path(folder).is_dir():
+                    continue
+        except (OSError, UnicodeError):
+            continue
+        shutil.rmtree(store, ignore_errors=True)

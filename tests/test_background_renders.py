@@ -15,7 +15,7 @@ import pymupdf
 import pytest
 
 from conftest import EXAMPLE
-from slidemage import background_renders, compile_records, compiler, deck_scan, render_evidence, render_store, slide_preview, slide_versioning
+from slidemage import background_renders, compile_records, compiler, deck_outline, deck_scan, render_evidence, render_store, slide_preview, slide_versioning
 from slidemage.background_renders import BackgroundRenderer
 from slidemage.compiler import CancelToken
 from slidemage.deck_editor import VIEWS
@@ -51,8 +51,8 @@ class FakeTeX:
     """Stands for slide_preview.render_slide_to_pdf: a PDF of `pages` pages and the recorded inputs, in a folder
     like the real one's; `fail` maps a slide id-slug to the error to raise."""
 
-    def __init__(self, project, pages=3):
-        self.project, self.pages, self.calls, self.fail = project, pages, [], {}
+    def __init__(self, project, pages=3, inputs=()):
+        self.project, self.pages, self.calls, self.fail, self.inputs = project, pages, [], {}, list(inputs)
 
     def __call__(self, unit, cancel):
         self.calls.append((unit.id_slug, unit.view, unit.language))
@@ -65,7 +65,7 @@ class FakeTeX:
             doc.new_page(width=453, height=255).insert_text((20, 40), f"{unit.id_slug} step {number + 1}")
         doc.save(pdf)
         doc.close()
-        pdf.with_suffix(".inputs.json").write_text(json.dumps([str(unit.source_path)]), encoding="utf-8")
+        pdf.with_suffix(".inputs.json").write_text(json.dumps([str(unit.source_path), *map(str, self.inputs)]), encoding="utf-8")
         return pdf
 
 
@@ -84,13 +84,13 @@ def make(project, store, raster, tex=None, batch=1, **kwargs):
                     clock=lambda: 1000.0, on_battery=lambda: False, cpu_load=lambda: 0.0, is_busy=lambda: [])
     gate.last_input = 0.0
     renderer = BackgroundRenderer(project, store, gate=gate, decks=lambda: decks, open_deck=lambda: open_deck,
-                                  engine_fp=lambda: "LuaHBTeX 1.22|Windows", renderer=tex or FakeTeX(project), raster=raster, **kwargs)
+                                  engine_fp=lambda: "LuaHBTeX 1.22|Windows", render_override=tex or FakeTeX(project), raster=raster, **kwargs)
     renderer.test_decks = decks
     return renderer
 
 
 def render_unit(renderer, unit):
-    spec = renderer.request_for(unit)
+    spec = renderer._sweep_request(unit)          # the request as the sweep builds it
     cancel = CancelToken()
     cancel.low_priority = True
     request = renderer.renders.request(spec.target, spec.revision.text, unit.view, unit.language, lambda _: None, spec=spec)
@@ -102,8 +102,8 @@ def render_unit(renderer, unit):
         raise
     stored = renderer.store.find(renderer.resolver.fast_key(unit, spec.revision.text))
     if stored is not None:
-        renderer.store.link_decks(stored['name'], [unit.deck])
-        return stored['name']
+        renderer.store.link_decks(stored['key'], [unit.deck])
+        return stored['key']
     return None
 
 
@@ -125,6 +125,13 @@ def test_units_of_a_deck_follow_deck_order_and_start_at_the_last_slide(project, 
     bare = middle.split("-")[0]
     wrapped = background_renders.deck_units(project, deck, "instructor", "EN", bare)
     assert wrapped[0].id_slug == middle and [u.id_slug for u in wrapped] == [u.id_slug for u in units[10:] + units[:10]]
+    for view in VIEWS:
+        units = background_renders.deck_units(project, deck, view, "EN", context_ready=lambda: True)
+        rows = deck_outline.outline_rows(project, deck, view, "EN")
+        visible = [row for row in rows if not row.hidden and (project.slides_dir / row.call.source_filename).is_file()]
+        assert [(u.id_slug, u.frame_number) for u in units] == [(row.call.id_slug, row.frame_number) for row in visible]
+        # The manual repeats \slidestep calls, with hidden steps between the visible ones.
+        assert any(row.frame_number != row.position for row in visible)
 
 
 def test_a_view_that_does_not_typeset_a_call_has_no_unit(project, store, raster):
@@ -170,7 +177,7 @@ def test_rendering_a_unit_stores_every_step_and_then_it_is_fresh(project, store,
     assert name == r.resolver.fast_key(unit)
     found = r.resolver.lookup(unit)
     assert found.state is Freshness.FRESH and found.final and found.record["pages"] == 3
-    assert store.page(found.record, 3).startswith(b"\x89PNG") and store.page(found.record, 4) is None
+    assert store.page(found.record, 3)[8:12] == b"WEBP" and store.page(found.record, 4) is None
     assert not list(Path(tempfile.gettempdir()).glob("slidemage_preview_*"))          # the temp folder is gone
     render_unit(r, unit)
     assert len(tex.calls) == 1                                                        # nothing to do the second time
@@ -191,18 +198,62 @@ def test_editing_the_slide_or_what_it_reads_makes_it_outstanding_again(project, 
     assert not again.final
 
 
-def test_a_page_number_that_moved_is_refreshed_last(project, store, raster):
-    tex = FakeTeX(project)
+def test_inserting_a_slide_plans_only_the_new_units(project, store, raster, caplog):
+    deck = next(d for d in deck_scan.scan_decks(project) if d.name == "slidemage-manual")
+    body = "\\slide{1jh-EN-Title-Slide}\n\\slide{1cx-EN-Slide-IDs}\n\\end{document}\n"
+    deck.path.write_text(deck.preamble_text + "\n" + body, encoding="utf-8", newline="")
+    tex = FakeTeX(project, pages=1)
     r = make(project, store, raster, tex=tex)
-    deck = deck_named(r, "slidemage-manual")
-    units = background_renders.deck_units(project, deck, "instructor", "EN")
-    render_unit(r, units[3])
-    from dataclasses import replace
-    moved = replace(units[3], frame_number=units[3].frame_number + 1)
+    r.test_decks[:] = [deck_named(r, "slidemage-manual")]
+    deck = r.test_decks[0]
+    for _, unit in r.scan():
+        render_unit(r, unit)
+    assert r.scan() == [] and r.progress.fresh == 6
+
+    inserted = "zzz-EN-Inserted"
+    (project.slides_dir / f"{inserted}-current.tex").write_text("\\begin{frame}New\\end{frame}\n", encoding="utf-8")
+    deck.path.write_text(deck.preamble_text + f"\n\\slide{{{inserted}}}\n" + body, encoding="utf-8", newline="")
+    r.test_decks[:] = [deck_scan.read_deck(deck.path)]
+    with caplog.at_level(logging.INFO, logger="slidemage.background"):
+        plan = r.scan()
+    assert len(plan) == 3 and {u.id_slug for _, u in plan} == {inserted}
+    assert r.progress.total == 9 and r.progress.fresh == 6 and r.progress.left == 3
+    lines = [rec.getMessage() for rec in caplog.records if rec.getMessage().startswith("scan:")]
+    assert len(lines) == 1 and "9 units, 6 fresh, 0 failed; reasons: no render: 3" in lines[0]
+    moved = next(u for u in background_renders.deck_units(project, r.test_decks[0], "instructor", "EN")
+                 if u.id_slug == "1cx-EN-Slide-IDs")
     assert r.resolver.lookup(moved).state is Freshness.FRESH_NUMBERING_DIFFERS
     render_unit(r, moved)
-    assert r.resolver.lookup(moved).state is Freshness.FRESH and len(tex.calls) == 2
-    assert store.count() == 1
+    assert r.resolver.lookup(moved).state is Freshness.FRESH and len(tex.calls) == 7
+    assert store.count() == 6
+
+
+@pytest.mark.parametrize(("name", "stale"), [
+    ("sources/paper.pdf", False),
+    ("decks/NewDeck.tex", False),
+    ("decks/archive/Old.tex", False),
+    ("notes.txt", False),
+    ("sources/SlideMage_project_macros.tex", False),
+    ("SlideMage_project_macros.tex", True),
+    ("decks/SlideMage_project_macros.tex", True),
+    ("references.bib", True),
+    ("decks/references.bib", True),
+    ("sources/picture.pdf", True),
+    ("picture.pdf", True),
+])
+def test_new_project_names_only_stale_renders_they_can_affect(project, store, raster, name, stale):
+    picture = project.root / "sources/picture.png"
+    picture.parent.mkdir()
+    picture.write_bytes(b"picture")
+    tex = FakeTeX(project, pages=1, inputs=[picture])
+    r = make(project, store, raster, tex=tex)
+    unit = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[0]
+    render_unit(r, unit)
+    assert r.resolver.lookup(unit).state is Freshness.FRESH
+    added = project.root / name
+    added.parent.mkdir(parents=True, exist_ok=True)
+    added.write_text("new candidate", encoding="utf-8")
+    assert r.resolver.lookup(unit, strict=True).state is (Freshness.STALE if stale else Freshness.FRESH)
 
 
 def test_a_failing_slide_is_remembered_and_not_planned_again_until_it_changes(project, store, raster):
@@ -230,7 +281,7 @@ def test_failed_background_build_tracks_its_own_inputs_and_retries_after_repair(
     from slidemage import compiler
 
     r = make(project, store, raster)
-    r._render = None
+    r.render_override = None
     monkeypatch.setenv("SLIDEMAGE_PREVIEW_FORMAT", "0")
     unit = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[0]
     dependency = project.root / "preview-shared.tex"
@@ -274,21 +325,45 @@ def test_failed_background_build_tracks_its_own_inputs_and_retries_after_repair(
     assert render_unit(r, unit) is None
 
 
-def test_failure_count_and_details_ignore_obsolete_and_changed_inputs(project, store, raster):
-    tex = FakeTeX(project)
+def test_a_clean_scan_prunes_unused_failures_and_texsets(project, store, raster, tmp_path, monkeypatch):
+    packages = [tmp_path / "old.cls", tmp_path / "current.cls"]
+    for path in packages:
+        path.write_text("package", encoding="utf-8")
+    tex = FakeTeX(project, inputs=[packages[0]])
     r = make(project, store, raster, tex=tex)
     unit = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[0]
     tex.fail[unit.id_slug] = "Render failed for x:\n! Bad dependency."
+    other = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[1]
+    render_unit(r, other)
+    old_digest = r.resolver.lookup(other).record["tex_digest"]
+    tex.inputs = [packages[1]]
+    _edit(other.source_path)
+    render_unit(r, other)
+    current_digest = r.resolver.lookup(other).record["tex_digest"]
+    assert old_digest != current_digest and store.tex_files(old_digest)
     store.record_failure("obsolete", render_store.DETERMINISTIC, "an old request", [])
     with pytest.raises(RuntimeError):
         render_unit(r, unit)
+    real_units = background_renders.deck_units
+
+    def unreadable(ctx, deck, *args, **kwargs):
+        if deck.name == "slidemage-manual-copy":
+            raise OSError("cannot read this deck now")
+        return real_units(ctx, deck, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(background_renders, "deck_units", unreadable)
+        r.scan()
+    assert store.failure("obsolete") and store.tex_files(old_digest)
     r.scan()
     assert r.progress.failures == 1
     assert [f["key"] for f in r.current_failures()] == [r.resolver.fast_key(unit)]
+    assert store.failure("obsolete") is None
+    assert store.tex_files(old_digest) is None and store.tex_files(current_digest)
     _edit(unit.source_path)
     r.scan()
     assert r.progress.failures == 0 and r.current_failures() == []
-    assert len(store.failures()) == 2                     # historical records do not affect the warning
+    assert store.failures() == []
 
 
 def test_the_planner_feeds_the_scheduler_and_the_progress_goes_down(project, store, raster):
@@ -367,7 +442,7 @@ def test_archiving_a_deck_removes_its_renders_and_stops_planning_it(project, sto
 
 def test_a_slide_with_no_page_in_the_view_is_a_failure_not_an_empty_render(project, store, raster):
     r = make(project, store, raster, tex=FakeTeX(project, pages=1))
-    r._rasterise = lambda pdf, cancel: []
+    r.rasterise = lambda pdf, cancel: []
     unit = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[0]
     with pytest.raises(RuntimeError):
         render_unit(r, unit)
@@ -383,9 +458,10 @@ def test_a_deck_a_plugin_wants_soon_comes_after_the_open_deck_and_before_the_res
 
 
 
-def test_a_scan_counts_each_deck_by_version_and_lists_the_decks_left_out(project, store, raster):
-    tex = FakeTeX(project, pages=1)
-    r = make(project, store, raster, tex=tex)
+def test_a_scan_counts_each_deck_by_version_and_lists_the_decks_left_out(project, store, raster, caplog):
+    dependency = project.root / "scan-input.tex"
+    dependency.write_text("before", encoding="utf-8")
+    r = make(project, store, raster, tex=FakeTeX(project, pages=1, inputs=[dependency]))
     deck = deck_named(r, "slidemage-manual")
     units = background_renders.deck_units(project, deck, "instructor", "EN")
     for unit in units[:5]:
@@ -400,6 +476,17 @@ def test_a_scan_counts_each_deck_by_version_and_lists_the_decks_left_out(project
     assert progress.total == mine.total and progress.fresh == 5 and 0 < progress.percent < 10
     assert progress.decks_up_to_date == 0 and not mine.up_to_date
     assert progress.scanned_at > 0
+    with caplog.at_level(logging.INFO, logger="slidemage.background"):
+        caplog.clear()
+        r.scan()
+        assert not [rec for rec in caplog.records if rec.getMessage().startswith("scan:")]
+        _edit(dependency)
+        r.scan()
+        r.scan()
+    lines = [rec.getMessage() for rec in caplog.records if rec.getMessage().startswith("scan:")]
+    assert len(lines) == 1
+    assert f"{mine.total} units, 0 fresh, 0 failed" in lines[0]
+    assert "file scan-input.tex: 5" in lines[0]
 
 
 @pytest.mark.skipif(shutil.which("latexmk") is None or shutil.which("lualatex") is None, reason="needs a TeX installation")
@@ -471,15 +558,21 @@ def _record(pdf, job, units, ctx, paths=None):
 def test_a_deck_compile_gives_the_preview_current_pages_until_what_the_slide_depends_on_changes(project, store, raster, tmp_path):
     from slidemage.compiler import CompileJob
 
-    r = make(project, store, raster)
+    tex = FakeTeX(project)
+    r = make(project, store, raster, tex=tex)
     deck = deck_named(r, "slidemage-manual")
     units = background_renders.deck_units(project, deck, "instructor", "EN")[:6]
+    unit = units[0]
+    tex.fail[unit.id_slug] = "Render failed for x:\n! Undefined control sequence."
+    with pytest.raises(RuntimeError):
+        render_unit(r, unit)
+    assert r.resolver.lookup(unit).state is Freshness.FAILED
     pdf = _compiled_pdf(tmp_path, units)
     job = CompileJob(deck, "instructor", None)
     assert r.ingest_compile(job, pdf, _record(pdf, job, units, project)) >= 1
-    unit = units[0]
+    assert store.failure(r.resolver.fast_key(unit)) is None
     found = r.resolver.lookup(unit)
-    assert found.usable and found.record["origin"] == render_store.ORIGIN_COMPILE
+    assert found.usable
     assert store.page(found.record, 1) is not None and found.record["pages"] == 2
     assert found.final                          # a plain \slide call: the compile already has every one of its steps
     # another slide changing does not change this slide's page ...
@@ -506,9 +599,46 @@ def test_a_compile_with_an_input_changed_during_it_imports_nothing(project, stor
     external.write_text("@book{y}\n", encoding="utf-8")
     os.utime(external, ns=(before.st_atime_ns, before.st_mtime_ns))
     assert r.ingest_compile(job, pdf, record) == 0 and store.count() == 0
+    # Written again now, the changed file is in the record without a hash (v0.17.17): still nothing is taken, since
+    # every slide reads the bibliography.
     assert compile_records.write_record(project, job.jobname, project.build_dir / f"{job.jobname}-test",
-                                        deck.path, "", pdf, record["started"], record["inventory"], record["configuration"]) is None
-    assert compile_records.read_record(project.build_dir, job.jobname) is None
+                                        deck.path, "", pdf, record["started"], record["inventory"], record["configuration"])
+    again = compile_records.read_record(project.build_dir, job.jobname)
+    assert next(e for e in again["inputs"] if Path(e["path"]).name == "references.bib")["sha256"] is None
+    assert r.ingest_compile(job, pdf, again) == 0 and store.count() == 0
+
+
+def test_a_slide_saved_during_the_compile_keeps_only_its_own_pages_out(project, store, raster, tmp_path, caplog):
+    """v0.17.17, direct report: an 11-minute IA2 instructor compile stored no previews at all, because one slide
+    (eaq) was saved while it ran. Now only that slide is left to the sweep."""
+    r = make(project, store, raster)
+    deck = deck_named(r, "slidemage-manual")
+    units = background_renders.deck_units(project, deck, "instructor", "EN")[:3]
+    edited, *others = units
+    job = compiler.CompileJob(deck, "instructor", None)
+    pdf = _compiled_pdf(tmp_path, units)
+    invocation = project.build_dir / f"{job.jobname}-test"
+    invocation.mkdir(parents=True, exist_ok=True)
+    (invocation / f"{job.jobname}.fls").write_text(
+        "".join(f"INPUT {path}\n" for path in [deck.path, *[u.source_path for u in units]]), encoding="utf-8")
+    (invocation / f"{job.jobname}.log").write_text("ok\n", encoding="utf-8")
+    env = compiler.build_env(project)
+    inventory = render_evidence.search_inventory(project.root, env)
+    configuration = render_evidence.digest(render_evidence.configuration_state(project.root, env))
+    started = time.time()
+    time.sleep(0.05)
+    edited.source_path.write_text(edited.source_path.read_text(encoding="utf-8") + "\n% saved during the compile\n",
+                                  encoding="utf-8")
+    assert compile_records.write_record(project, job.jobname, invocation, deck.path, "", pdf, started, inventory,
+                                        configuration, deck_path=deck.path)
+    record = compile_records.read_record(project.build_dir, job.jobname)
+    with caplog.at_level(logging.INFO, logger="slidemage.background"):
+        assert r.ingest_compile(job, pdf, record) == len(others)
+    # the debug log says what was taken and why the rest was not
+    assert (f"deck compile {job.jobname}: {len(others)} of " in caplog.text
+            and "1 its file changed during or since the compile" in caplog.text)
+    assert store.latest_for_unit(edited.label) is None
+    assert all(r.resolver.lookup(unit).final for unit in others)
 
 
 def test_a_deck_compile_imports_other_slides_but_skips_a_frozen_plus_slide(project, store, raster, tmp_path):
@@ -662,7 +792,7 @@ def test_a_dependency_edited_during_the_render_is_never_stored(project, store, r
         return pdf
 
     monkeypatch.setattr(slide_preview, "render_slide_text_to_pdf", compile)
-    r._render = None
+    r.render_override = None
     assert render_unit(r, unit) is None
     assert store.count() == 0 and store.failures() == []
     assert not r.resolver.lookup(unit).usable
@@ -801,7 +931,7 @@ def test_a_slide_that_needs_its_deck_is_typeset_in_the_decks_compile_and_kept(pr
         return FakeTeX(project, pages=1)(unit, cancel) if id_slug == unit.id_slug else None
 
     monkeypatch.setattr(deck_context, "render_in_deck", in_deck)
-    r._render = None
+    r.render_override = None
     assert render_unit(r, unit) is not None
     assert asked == [(deck.name, "instructor", unit.id_slug, True, "EN")] and not tex.calls
     assert r.resolver.lookup(unit).state is Freshness.FRESH
@@ -876,7 +1006,7 @@ def _edit(path, text="\n% edited\n"):
 
 
 def _keys_of(store, label):
-    return sorted(row[0] for row in store.db.execute("SELECT fast_key FROM renders WHERE unit=?", (label,)))
+    return sorted(row[0] for row in store.db.execute("SELECT key FROM renders WHERE unit=?", (label,)))
 
 
 def _png():
@@ -886,11 +1016,11 @@ def _png():
 def _leftover(store, label, deck, key):
     """A render stored long ago under `key` (a key no deck uses now)."""
     meta = dict(unit=label, rendered_at=time.time() - 3600, manifest=[], tex_digest="", frame_number=1, unstable=False)
-    pdf = store.local_dir / "leftover.pdf"
+    pdf = store.root / "leftover.pdf"
     with pymupdf.open() as doc:
         doc.new_page()
         doc.save(pdf)
-    return store.put(key, render_store.ORIGIN_BACKGROUND, pdf, [_png()], meta, decks=[deck] if deck else [])
+    return store.put(key, pdf, [_png()], meta, decks=[deck] if deck else [])
 
 
 def _call_twice(project, slide="1cx-EN-Slide-IDs"):
@@ -1105,3 +1235,51 @@ def test_a_render_stays_current_when_the_bundled_framework_moves(project, store,
     monkeypatch.setattr(projects, "template_dir", lambda name: second)
     assert r.resolver.lookup(unit, strict=True).usable
 
+
+
+class HangingTeX(FakeTeX):
+    """A TeX that never finishes by itself: it returns only once the job was stopped."""
+
+    def __call__(self, unit, cancel):
+        self.calls.append((unit.id_slug, unit.view, unit.language))
+        deadline = time.monotonic() + 20
+        while not cancel.is_set() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        raise RuntimeError("stopped")
+
+
+def test_a_render_that_hangs_is_stopped_and_its_slides_are_tried_again_one_by_one(project, store, raster, monkeypatch):
+    monkeypatch.setattr(background_renders, "JOB_SECONDS", 0.4)
+    monkeypatch.setattr(background_renders, "UNIT_SECONDS", 0.0)
+    tex = HangingTeX(project, pages=1)
+    r = make(project, store, raster, tex=tex, batch=4)
+    deck = deck_named(r, "slidemage-manual")
+    store.touch_deck(deck.name, opened=True)
+    r.tick()
+    job = next(iter(r.scheduler.jobs(P_IDLE)))
+    labels = [unit.label for unit in job.payload[0]]
+    started = time.monotonic()
+    r.scheduler.run_next()                       # returns because the watchdog stops the hung render
+    assert time.monotonic() - started < 10
+    assert set(labels) <= r._slow and all(r._timeouts[label] == 1 for label in labels)
+    r.tick()                                     # planned again, each slide on its own
+    assert all(label in r._single for label in labels)
+    assert not (set(labels) & r._gave_up)
+
+
+def test_a_slide_that_times_out_on_its_own_twice_is_left_alone(project, store, raster, monkeypatch):
+    monkeypatch.setattr(background_renders, "JOB_SECONDS", 0.2)
+    monkeypatch.setattr(background_renders, "UNIT_SECONDS", 0.0)
+    r = make(project, store, raster, tex=HangingTeX(project, pages=1), batch=1)
+    deck = deck_named(r, "slidemage-manual")
+    store.touch_deck(deck.name, opened=True)
+    r.tick()
+    job = next(iter(r.scheduler.jobs(P_IDLE)))
+    label = job.payload[0][0].label
+    for _ in range(background_renders.TIMEOUTS_BEFORE_GIVING_UP):
+        r.scheduler.submit(job.key, job.payload, P_IDLE, job.rank, group=job.group)
+        r.scheduler.run_next()
+    assert label in r._gave_up
+    r._replan.set()
+    r.tick()
+    assert all(unit.label != label for _rank, unit in r._plan)

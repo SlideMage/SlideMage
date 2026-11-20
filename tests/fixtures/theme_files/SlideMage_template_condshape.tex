@@ -1,0 +1,32 @@
+% SlideMage template name: Conditional shape (test only)
+% A TEST theme with the shape of an older project theme (no institution's colours): no modes, a
+% setting inside \ifdefined ... \fi that the form must leave alone, a \colorlet for a code colour,
+% indented lines, trailing comments, and project macros after the base. tests/test_theme_file.py
+% reads and edits it.
+\input{SlideMage_setup}
+
+% Palette (official colours first).
+\definecolor{c_primary_dark}{HTML}{3c3c3b} % official
+\definecolor{c_primary_highlight}{HTML}{f39200} % official
+\definecolor{c_primary_gray}{HTML}{878786} % official
+\definecolor{c_primary_white}{HTML}{FFFFFF}
+\definecolor{c_secondary_blue}{HTML}{003360} % official
+\definecolor{c_tertiary_blue}{HTML}{8099B0} % derived (50% white-blend of c_secondary_blue)
+
+\renewcommand{\SMInstituteLogoPath}{schemes/scheme_test/logo-cropped.pdf}
+\setlength{\SMLogoHeight}{3ex}
+
+\renewcommand{\SMTitleBoxColor}{c_secondary_blue}
+\renewcommand{\SMTitleTextColor}{c_primary_white}
+
+% White info block titles, only with a framework that has the hook.
+\ifdefined\SMInfoBlockTitleTextColor
+  \renewcommand{\SMInfoBlockTitleTextColor}{c_primary_white}
+\fi
+
+  \colorlet{SMCodeKeywordColor}{c_secondary_blue}   % indented on purpose
+\definecolor{SMCodeCommentColor}{HTML}{5f5f5f}
+
+\input{SlideMage_base}
+
+\input{SlideMage_project_macros}

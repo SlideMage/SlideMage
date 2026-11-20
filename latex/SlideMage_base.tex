@@ -394,11 +394,11 @@
 \@ifundefinedcolor{SMCardBackgroundColor}{\colorlet{SMCardBackgroundColor}{white}}{}
 \@ifundefinedcolor{SMCardBorderColor}{\colorlet{SMCardBorderColor}{c_primary_dark}}{}
 \@ifundefinedcolor{SMProcessBorderColor}{\colorlet{SMProcessBorderColor}{c_tertiary_gray}}{}
-\makeatother
 \tikzset{
 	SMCard/.style={draw=SMCardBorderColor, fill=SMCardBackgroundColor, text=c_text},
-	SMProcess/.style={draw=none, fill=SMProcessFill, text=SMBlockBodyText},
+	SMProcess/.style={draw=\SM@processline, fill=SMProcessFill, text=SMBlockBodyText},
 }
+\makeatother
 
 % The theme's divider frames for \part, \section, \subsection and \subsubsection
 % (\SMDividerFrames in beamerthemeSlideMage.sty) are off, so \section{} (used
@@ -1052,6 +1052,20 @@
 }
 \makeatother
 
+% Topic blocks share the deck's scope, so settings in their slides persist.
+\makeatletter
+\newif\ifSM@intopicblock
+\newcommand{\slideblock}[1]{%
+	\ifSM@intopicblock
+		\PackageError{SlideMage}{\string\slideblock\space inside a topic block}{Topic blocks cannot be nested.}%
+	\else
+		\SM@intopicblocktrue
+		\input{blocks/#1.tex}%
+		\SM@intopicblockfalse
+	\fi
+}
+\makeatother
+
 % Define a new \slide command to automatically pick the current version of the slide
 % 2026-07-08 (direct instruction): slide filenames dropped their leading
 % "s-" (e.g. slides/ab3-Some-Slide-current.tex, not the old
@@ -1251,6 +1265,24 @@
 % edited from SlideMage itself (the "Tags" button, and the Duplicate
 % dialog), placed just before \begin{document}.
 \newcommand{\decktags}[1]{}
+
+% \SMReview[note]{\slide{ID-slug}} - marks this slide as "under review" in
+% this deck only (2026-11-16, direct request): the slide is included
+% provisionally and is to be looked at again when going through the deck.
+% The wrapper goes around any call of the \slide{} family, on one line:
+%   \SMReview{\slide{abc-EN-Some-Slide}}
+%   \SMReview[check the numbers]{\conditionalslide[instructor]{xyz-EN-Answer-Key}}
+% For LaTeX it does nothing but run the call: the compiled PDF is the same
+% with and without it. SlideMage reads the wrapper out of the deck's source
+% text (deck_editor.py, REVIEW_OPEN_RE) and draws a watermark over the
+% slide's preview and its thumbnail in the slide list; the slide file, its
+% frozen versions and its renders are not touched. Set and cleared in the
+% slide list ("Mark for review in this deck").
+% \SMReviewText{text} in the preamble sets the watermark's text for the
+% deck (default REVIEW); read by SlideMage only (deck_scan.py,
+% REVIEW_TEXT_RE), a no-op here like \decktags.
+\NewDocumentCommand{\SMReview}{O{} m}{#2}
+\NewDocumentCommand{\SMReviewText}{m}{}
 
 % Deck language system (added 2026-08-24) -- fixed per deck, like
 % \FooterText or the institution \input{} choice, not a per-compile-run
@@ -5812,7 +5844,7 @@
 		      inner xsep=\SMFrametitleLeftPadding, inner ysep=1.5pt, text height=6.2pt, text depth=2pt,
 		      minimum height=11.19pt,
 		      text width=\dimexpr\paperwidth-2\SMFrametitleLeftPadding\relax,
-		      align=left, text=c_text_on_accent, font=\fontsize{6.3}{7.5}\selectfont]
+		      align=left, text=SMStripText, font=\fontsize{6.3}{7.5}\selectfont]
 			at ($(current page.north west)+(0,-\SMTitleBarBottomAlign)$)
 			{\foreach \SMStepName [count=\SMStepIndex] in {#1}{%
 				\ifnum\SMStepIndex>1\ $\rightarrow$\ \fi
@@ -5888,7 +5920,13 @@
 % typeset, so write \_ \{ \} \# as in any text. The transcript shows both as
 % `code`. Ligatures=TeXOff: code shows -- and `` as typed, not as an en dash
 % and a curly quote (fontspec's default for \newfontfamily).
-\newcommand{\SMInlineCodeStyle}{}
+% The role inline_code (SlideMage_setup.tex) colours it, but only in body text: text that has another
+% colour (a title bar, a block title, \textcolor) keeps it. Without the role this does nothing.
+\makeatletter
+\begingroup\color{c_text}\global\let\SM@bodycolorspec\current@color\endgroup
+\newcommand{\SMInlineCodeStyle}{%
+	\ifx\SM@inlinecode\@empty\else\ifx\current@color\SM@bodycolorspec\color{\SM@inlinecode}\fi\fi}
+\makeatother
 \newcommand{\SMCode}[1]{{\SMInlineCodeFont\SMInlineCodeStyle #1}}
 \newcommand{\SMCmd}[1]{{\SMInlineCodeFont\SMInlineCodeStyle\textbackslash #1}}
 
@@ -6042,8 +6080,11 @@
 %   and the logo link are unchanged.
 % \deckappendixtoc -- in the deck preamble, inert for LaTeX (like
 %   \decktags): SlideMage then generates the appendix for this deck on every
-%   whole-deck compile, whatever the toolbar checkbox says.
-\newcommand{\deckappendixtoc}{}
+%   whole-deck compile, whatever the toolbar checkbox says. The optional
+%   argument names the views that get it (instructor, during-course,
+%   after-course, comma separated): \deckappendixtoc[instructor]. Without it,
+%   every view does.
+\newcommand{\deckappendixtoc}[1][]{}
 \newlength{\SMChapterAgendaMaxHeight}
 \newcommand{\SMNavigationLead}{Navigation:}
 \newcommand{\SMNavigationLabelDeck}{Contents}
@@ -6290,7 +6331,7 @@
 			\input{SlideMage_citation_\SMCitationFormat}%
 		}{%
 			\PackageError{SlideMage}{The citation format "\SMCitationFormat" is not available}{%
-				There is no file SlideMage_citation_\SMCitationFormat.tex on the TeX search path.\MessageBreak
+				File `SlideMage_citation_\SMCitationFormat.tex' not found on the TeX search path.\MessageBreak
 				Install the citation package for "\SMCitationFormat" (Settings -> Plugins -> Citation formats),\MessageBreak
 				or set \string\SMCitationFormat\space to a format that is installed (default is built in).}%
 		}%
@@ -6352,7 +6393,7 @@
 	\edef\SM@bl@t{\SM@bodysizenumber{0.66\SMBodyFontSize}}%
 \fi\fi\fi
 % The class's skips go with the class's own size only: for another size the font sizes change and the
-% skips and list parameters stay as they are (v10.18.1's greyscale stopgap did exactly that).
+% skips and list parameters stay as they are (v10.18.1's grayscale stopgap did exactly that).
 \begingroup\SM@classnormalsize\xdef\SM@classbodysize{\f@size}\endgroup
 \ifdim\SM@bs@n pt=\SM@classbodysize pt\else
 	\let\SM@classnormalsize\@empty\let\SM@classsmall\@empty\let\SM@classfootnotesize\@empty

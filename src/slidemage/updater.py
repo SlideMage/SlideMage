@@ -370,7 +370,7 @@ def download(
                 out.write(chunk)
                 done += len(chunk)
                 if not progress(done, total):
-                    raise UpdateError("Download cancelled.")
+                    raise UpdateError("Download canceled.")
     except urllib.error.HTTPError as exc:
         raise UpdateError(f"Download failed: {exc.code} {exc.reason}.") from exc
     except (urllib.error.URLError, OSError) as exc:

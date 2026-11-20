@@ -15,7 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DIRECT = ("PySide6", "pymupdf", "pillow", "lxml", "python-pptx", "odfpy", "ptyprocess", "pywinpty",
-          "keyring")
+          "keyring", "pyspellchecker", "spylls")
 # What the package metadata of these does not say clearly (checked against their projects).
 KNOWN = {
     "pymupdf": "AGPL-3.0-or-later (MuPDF, Artifex Software)",
@@ -23,6 +23,8 @@ KNOWN = {
     "pyside6": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only (Qt for Python, The Qt Company)",
     "pyside6-essentials": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only (Qt for Python, The Qt Company)",
     "pyside6-addons": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only (Qt for Python, The Qt Company)",
+    # spylls' metadata says MIT, but its LICENSE file and its repository say MPL-2.0 (LICENSES/MPL-2.0.txt).
+    "spylls": "MPL-2.0",
     "shiboken6": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only (Qt for Python, The Qt Company)",
 }
 

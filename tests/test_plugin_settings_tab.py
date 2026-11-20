@@ -54,6 +54,20 @@ def isolated(tmp_path, monkeypatch):
             del sys.modules[key]
 
 
+@pytest.fixture(autouse=True)
+def auto_answers(monkeypatch):
+    """The "Update automatically?" question after an install: answered No unless a test says otherwise; what it was
+    asked about is recorded."""
+    asked = SimpleNamespace(what=[], yes=False)
+
+    def ask(parent, what):
+        asked.what.append(what)
+        return asked.yes
+
+    monkeypatch.setattr(settings_plugins, "ask_auto_update", ask)
+    return asked
+
+
 class FakeApp(QWidget):
     def __init__(self, root):
         super().__init__()
@@ -262,12 +276,13 @@ def test_install_from_file_confirms_with_the_manifest(app, tmp_path, monkeypatch
         zf.writestr("hello/__init__.py", (FIXTURES / "hello" / "hello" / "__init__.py").read_text())
     tab = PluginsTab(app)
     asked = answer(monkeypatch, False)
-    assert tab.install_from_file(archive) is False
-    assert not (loader.plugins_dir() / "hello").exists() and not installer.pending_restart()
+    tab.install_from_file(archive)
+    assert tab._job is None and not (loader.plugins_dir() / "hello").exists() and not installer.pending_restart()
     assert "not from the SlideMage plugin list. It runs with your rights." in asked[0]
     assert "hello fixture 0.1.0" in asked[0] and "api.example.org" in asked[0]
     answer(monkeypatch, True)
-    assert tab.install_from_file(archive) is True
+    tab.install_from_file(archive)
+    idle(tab)
     assert (loader.plugins_dir() / "hello" / "plugin.toml").is_file()
     assert tab.banner.isVisibleTo(tab) and "hello" in tab.rows
     assert "starts after a restart" in tab.rows["hello"].state_chip.text()
@@ -278,20 +293,23 @@ def test_install_from_file_checks_a_sha256_file(app, tmp_path, monkeypatch):
     tab = PluginsTab(app)
     asked = answer(monkeypatch, True)
     Path(str(archive) + ".sha256").write_text(f"{'1' * 64}  hello.smplugin\n")
-    assert tab.install_from_file(archive) is False
+    tab.install_from_file(archive)
     assert asked == [] and "does not match" in tab.status.text()          # not even asked
     assert tab.status.property("tone") == "error" and not (loader.plugins_dir() / "hello").exists()
     Path(str(archive) + ".sha256").write_text("garbage")
-    assert tab.install_from_file(archive) is False and "SHA-256" in tab.status.text()
+    tab.install_from_file(archive)
+    assert "SHA-256" in tab.status.text() and tab._job is None
     Path(str(archive) + ".sha256").write_text(f"{sha(archive)}  hello.smplugin\n")
-    assert tab.install_from_file(archive) is True
+    tab.install_from_file(archive)
+    idle(tab)
+    assert (loader.plugins_dir() / "hello").is_dir()
 
 
 def test_install_from_file_bad_archive_is_a_caption(app, tmp_path):
     bad = tmp_path / "bad.smplugin"
     bad.write_bytes(b"not a zip")
     tab = PluginsTab(app)
-    assert tab.install_from_file(bad) is False
+    tab.install_from_file(bad)
     assert "not a valid zip" in tab.status.text()
 
 
@@ -301,6 +319,7 @@ def test_file_dialog_installs_the_chosen_file(app, tmp_path, monkeypatch):
     answer(monkeypatch, True)
     tab = PluginsTab(app)
     tab.file_button.click()
+    idle(tab)
     assert (loader.plugins_dir() / "hello").is_dir()
 
 
@@ -518,7 +537,7 @@ def test_the_tab_is_in_the_sheet_before_the_plugins_own(qapp, tmp_path):
     from slidemage.ui.dialogs.settings import SettingsSheet
     app = FakeApp(tmp_path)
     app.project = ProjectContext.at(tmp_path)
-    app.set_dark_mode = app.set_autosave = app.set_tab_width_chars = lambda *args: None
+    app.set_dark_mode = app.set_autosave = app.set_tab_width_chars = app.set_hover_help = lambda *args: None
     sheet = SettingsSheet(app, tab=PLUGINS)
     names = [sheet._tabs.tabText(i) for i in range(sheet._tabs.count())]
     assert names[-1] == "Extensions"
@@ -609,7 +628,7 @@ def test_a_status_scrolls_up_to_where_it_is_shown(app, qapp):
 def test_opening_for_a_plugin_scrolls_to_the_plugins(app, qapp):
     from slidemage.ui.dialogs.settings import PLUGIN_LIST, SettingsSheet
     app.project = ProjectContext.at(app.project.root)
-    app.set_dark_mode = app.set_autosave = app.set_tab_width_chars = lambda *args: None
+    app.set_dark_mode = app.set_autosave = app.set_tab_width_chars = app.set_hover_help = lambda *args: None
     sheet = SettingsSheet(app, tab=PLUGINS, focus=PLUGIN_LIST)
     assert sheet.current_tab() == PLUGINS
     sheet._plugins_area.setFixedHeight(120)
@@ -629,3 +648,51 @@ def test_help_opens_the_top_and_a_plugin_request_the_plugins():
     WorkspaceWindow.open_extensions(stub)
     WorkspaceWindow.open_plugins(stub)
     assert opened == [(PLUGINS, None), (PLUGINS, PLUGIN_LIST)]
+
+
+# -- updating without asking (2026-11-16) -----------------------------------------------------------------------
+
+def test_a_new_install_asks_whether_to_update_automatically_and_the_row_shows_the_choice(app, tmp_path, monkeypatch,
+                                                                                        auto_answers):
+    from slidemage.plugins import updates
+
+    archive = zip_plugin(tmp_path)
+    write_cache(entry("hello", "Hello", sha256=sha(archive), size=archive.stat().st_size))
+    fake_download(monkeypatch, archive)
+    auto_answers.yes = True
+    tab = PluginsTab(app)
+    tab.available["hello"].install_button.click()
+    idle(tab)
+    assert auto_answers.what == ["the plugin hello fixture"] and updates.auto_choice("hello") is True
+    installer._changed.clear()
+    session.set_loaded(loader.load_all(Registrar, "v8.64.0"))
+    row = PluginsTab(app).rows["hello"]
+    assert row.auto_check is not None and row.auto_check.isChecked()
+    row.auto_check.setChecked(False)
+    assert updates.auto_choice("hello") is False
+
+
+def test_an_update_does_not_ask_again(app, tmp_path, monkeypatch, auto_answers):
+    installer.install(zip_plugin(tmp_path))
+    installer._changed.clear()
+    session.set_loaded(loader.load_all(Registrar, "v8.64.0"))
+    new = zip_plugin(tmp_path, version="0.2.0", out=tmp_path / "new.smplugin")
+    write_cache(entry("hello", version="0.2.0", sha256=sha(new), size=new.stat().st_size))
+    fake_download(monkeypatch, new)
+    tab = PluginsTab(app)
+    tab.rows["hello"].update_button.click()
+    idle(tab)
+    assert auto_answers.what == []
+
+
+def test_removing_a_plugin_forgets_its_choices(app, tmp_path, monkeypatch):
+    from slidemage.plugins import updates
+
+    installer.install(zip_plugin(tmp_path))
+    installer._changed.clear()
+    session.set_loaded(loader.load_all(Registrar, "v8.64.0"))
+    updates.set_auto_update("hello", True)
+    updates.skip_version("hello", "9.9.9")
+    answer(monkeypatch, True)
+    PluginsTab(app).remove_plugin("hello", "hello fixture")
+    assert updates.auto_choice("hello") is None and updates.skipped_version("hello") == ""

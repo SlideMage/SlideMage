@@ -579,7 +579,7 @@ def test_color_menu_takes_the_decks_theme_colours_and_follows_switches(pane, ctx
 
     pane.app_for_test.state.deck = deck("slidemage")                # another deck
     assert _color_menu(pane, monkeypatch)["c_primary_highlight"] == "#0066cc"
-    pane.app_for_test.state.deck = deck("greyscale")                # the shipped greyscale template
+    pane.app_for_test.state.deck = deck("grayscale")                # the shipped grayscale template
     grey = _color_menu(pane, monkeypatch)
     assert grey["c_primary_highlight"] == "#555555"
     assert all(v[1:3] == v[3:5] == v[5:7] for v in grey.values())
@@ -593,6 +593,88 @@ def test_color_menu_takes_the_decks_theme_colours_and_follows_switches(pane, ctx
 def test_shipped_templates_give_every_menu_name_from_their_own_files(ctx):
     from slidemage import theme_colors
 
-    for key in ("slidemage", "greyscale"):
-        read = theme_colors.theme_colors(key, ctx.root)
-        assert set(theme_colors.swatches(key, ctx.root)) == set(read) and len(read) >= 21
+    for key in ("slidemage", "grayscale"):
+        for mode in ("", "dark"):
+            read = theme_colors.theme_colors(key, ctx.root, mode)
+            menu = theme_colors.swatches(key, ctx.root, mode)
+            assert set(menu) <= set(read) and len(menu) >= 28        # 7 roles and the 21 palette names
+            assert all(menu[name] == read[name] for name in menu)
+
+
+def test_color_menu_leads_with_the_roles_in_the_mode_of_the_view_shown(pane, ctx, monkeypatch):
+    """v0.16.3: the role colours come first, with what each is for, in the colour mode of the deck and the view."""
+    from types import SimpleNamespace
+    from slidemage.ui.kit.widgets import PopoverMenu
+
+    text = ("\\documentclass{beamer}\n\\newcommand{\\SMModeOverride}{dark}\n\\input{SlideMage_template_slidemage}\n"
+            "% SlideMage view themes: after-course=slidemage:light\n\\begin{document}\n\\end{document}\n")
+    pane.app_for_test.state = SimpleNamespace(deck=SimpleNamespace(text=text), view="instructor")
+    shown = []
+    monkeypatch.setattr(PopoverMenu, "popup_below", lambda self, anchor, **kw: shown.append(self))
+    pane._open_color_menu()
+    entries = shown[0]._entries
+    assert entries[0] == ("header", "Follows the color mode")
+    items = [e for e in entries if e[0] == "item"]
+    assert [e[1] for e in items[:7]] == ["c_text", "c_text_muted", "c_text_on_accent", "c_link", "c_canvas",
+                                          "c_card", "c_line"]
+    assert items[0][3] == "body text, lines" and items[7][3] == ""
+    assert ("header", "Palette") in entries
+    dark = {e[1]: e[7] for e in items}
+    assert dark["c_text"] == "#ffffff" and dark["c_canvas"] == "#444444"
+    assert dark["c_primary_highlight"] == "#8bbcec"                     # v0.16.5: the template's dark value
+    assert dark["c_secondary_blue"] == "#3d8fe0"                        # a colour the mode leaves alone
+
+    pane.app_for_test.state.view = "after-course"                       # this view is light
+    light = _color_menu(pane, monkeypatch)
+    assert light["c_text"] == "#1e1e1e" and light["c_canvas"] == "#ffffff"
+    choose = []
+    monkeypatch.setattr(pane, "_wrap", choose.append)
+    shown.clear()
+    monkeypatch.setattr(PopoverMenu, "popup_below", lambda self, anchor, **kw: shown.append(self))
+    pane._open_color_menu()
+    shown[0].triggered.emit("c_text")
+    assert choose == ["textcolor{c_text}"]
+
+
+# -- Reindent in the Tools menu: slides, decks and the .bib -----------------------------------------------
+
+def _tools_menu(pane, monkeypatch):
+    from slidemage.ui.kit.widgets import PopoverMenu
+
+    shown = []
+    monkeypatch.setattr(PopoverMenu, "popup_below", lambda self, anchor, **kw: shown.append(self))
+    pane._open_tools_menu()
+    return {e[1]: e for e in shown[0]._entries if e[0] == "item"}
+
+
+def test_reindent_is_offered_for_a_deck_and_the_bib_with_their_own_rules(pane, ctx, slides, monkeypatch):
+    deck = ctx.decks_dir / "course.tex"
+    deck.parent.mkdir(parents=True, exist_ok=True)
+    deck.write_text("\\begin{document}\n\\section{A}\n\\slide{abc-EN-Demo}\n\\end{document}\n", encoding="utf-8")
+    bib = ctx.bibliography_path
+    bib.write_text("@book{alpha,\ntitle={A},\n  }\n", encoding="utf-8")
+    other = ctx.root / "notes.tex"
+    other.write_text("x\n", encoding="utf-8")
+
+    pane.show_path(deck)
+    assert pane.current.is_deck and pane.current.reindent_kind == "deck"
+    item = _tools_menu(pane, monkeypatch)["reindent"]
+    assert item[6] and "\\if" in item[3]                        # enabled, and says what it does
+    pane.reindent()
+    assert pane.current.editor.text() == "\\begin{document}\n\t\\section{A}\n\t\\slide{abc-EN-Demo}\n\\end{document}\n"
+    assert pane.app_for_test.logged[-1] == "Reindented course.tex"
+
+    pane.show_path(bib)
+    assert pane.current.reindent_kind == "bib" and _tools_menu(pane, monkeypatch)["reindent"][6]
+    pane.reindent()
+    assert pane.current.editor.text() == "@book{alpha,\n\ttitle={A},\n}\n"
+    pane.reindent()
+    assert pane.app_for_test.logged[-1] == "SlideMage.bib: indentation already correct"
+
+    pane.show_path(slides / "def-EN-Other-current.tex")
+    assert pane.current.reindent_kind == "slide" and _tools_menu(pane, monkeypatch)["reindent"][6]
+    pane.show_path(other)                                       # any other file: not offered
+    assert pane.current.reindent_kind is None and not _tools_menu(pane, monkeypatch)["reindent"][6]
+    before = pane.current.editor.text()
+    pane.reindent()
+    assert pane.current.editor.text() == before

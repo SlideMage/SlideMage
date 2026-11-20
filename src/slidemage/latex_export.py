@@ -32,6 +32,7 @@ from typing import Callable, Optional
 
 from . import citations, themes, unused_content
 from .deck_scan import Deck
+from .progress import Progress
 from .project import ProjectContext, is_snapshot
 from .slide_templates import framework_dirs
 from .tex_source import COMMENT_RE
@@ -50,9 +51,9 @@ FILE_SUFFIXES = TEXT_SUFFIXES | {".pdf", ".png", ".jpg", ".jpeg", ".svg", ".eps"
 TOKEN_RE = re.compile(r"(?<![\w/.:@\\-])\w[\w.+-]*(?:/\w[\w.+-]*)*")
 # Commands whose argument is a file name, possibly without its suffix; the first group is what a missing file is reported for.
 NAMED_FILE_RE = re.compile(
-    r"\\(?P<command>input|include|includegraphics|SMCodeFile|lstinputlisting|usepackage|RequirePackage|documentclass)"
+    r"\\(?P<command>input|include|slideblock|includegraphics|SMCodeFile|lstinputlisting|usepackage|RequirePackage|documentclass)"
     r"\s*(?:\[[^\]]*\])?\s*\{(?P<names>[^{}\\#%]+)\}")
-REPORTED_COMMANDS = {"input", "include", "includegraphics", "SMCodeFile", "lstinputlisting"}
+REPORTED_COMMANDS = {"input", "include", "slideblock", "includegraphics", "SMCodeFile", "lstinputlisting"}
 # These typeset a file's text as code; what is in it is not part of the build.
 LISTING_COMMANDS = {"SMCodeFile", "lstinputlisting"}
 IMPLIED_SUFFIXES = ("", ".tex", ".sty", ".cls")
@@ -161,15 +162,17 @@ class _Collector:
         text = COMMENT_RE.sub("", source.read_text(encoding="utf-8", errors="replace"))
         if own:
             self._texts.append(text)
-            if source.parent == self.ctx.decks_dir or source == self.deck.path:
+            if source.parent in (self.ctx.decks_dir, self.ctx.blocks_dir) or source == self.deck.path:
                 self._scan_slides(text)
             if DEFAULT_BIBLIOGRAPHY_RE.search(text):
                 self.reference("SlideMage.bib", ("",), own, True)
         for match in NAMED_FILE_RE.finditer(text):
             command = match.group("command")
-            suffixes = IMPLIED_SUFFIXES if command in {"input", "include", "usepackage", "RequirePackage",
+            suffixes = IMPLIED_SUFFIXES if command in {"input", "include", "slideblock", "usepackage", "RequirePackage",
                                                        "documentclass"} else ("",)
             for name in (n.strip() for n in match.group("names").split(",")):
+                if command == "slideblock":
+                    name = f"blocks/{name}"
                 self.reference(name, suffixes, own, command in REPORTED_COMMANDS, command in LISTING_COMMANDS)
         for match in THEME_RE.finditer(text):
             for name in (n.strip() for n in match.group("names").split(",")):
@@ -240,7 +243,8 @@ def _rename(source: Path, target: Path, tries: int = 50) -> None:
 
 
 def export_deck(ctx: ProjectContext, deck: Deck, dest_dir: Path,
-                log: Optional[Callable[[str], None]] = None) -> ExportResult:
+                log: Optional[Callable[[str], None]] = None,
+                on_progress: Optional[Callable[[Progress], None]] = None) -> ExportResult:
     """Write ``<dest_dir>/<deck.name>-latex/``, replacing a folder of that name. The files are written into a
     scratch folder next to it first and renamed at the end, so a failure leaves the old folder (if any) and no
     half-written one."""
@@ -253,7 +257,9 @@ def export_deck(ctx: ProjectContext, deck: Deck, dest_dir: Path,
     scratch = Path(tempfile.mkdtemp(prefix=f".{target.name}-", dir=dest_dir))
     old = None
     try:
-        for dest, source in sorted(files.items()):
+        for n, (dest, source) in enumerate(sorted(files.items()), 1):
+            if on_progress:
+                on_progress(Progress.step(n, len(files), "Copying"))
             _copy(source, scratch / dest, source.parent == ctx.decks_dir or source == deck.path)
         (scratch / ".latexmkrc").write_text(LATEXMKRC, encoding="utf-8", newline="\n")
         # The old folder goes aside and is deleted only once the new one is in place, so a failure keeps it.

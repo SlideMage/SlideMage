@@ -34,8 +34,7 @@ from .. import background
 from ..kit import kit_qss as q
 from ..kit.tokens import SPACE
 from ..kit.widgets import Button, Card, ModalSheet, Page, Surface, caption, clear_layout, row
-from .settings_plugins import (PLUGINS_PAGE, Job, download_release, install_downloaded, install_file, network_line,
-                               pick_plugin_file)
+from .settings_plugins import PLUGINS_PAGE, download_and_install, network_line, pick_plugin_file, prepare_file
 
 log = logging.getLogger(__name__)
 
@@ -87,7 +86,7 @@ class PluginOfferSheet(ModalSheet):
         self.catalogue: Catalogue | None = None
         self.rows: dict[str, PluginRow] = {}
         self.restart_requested = False
-        self._job: Job | None = None
+        self._job: background.Handle | None = None
         self._queue: list[tuple[CataloguePlugin, Release]] = []
         self._current: tuple[CataloguePlugin, Release] | None = None
         self._total = 0
@@ -215,18 +214,13 @@ class PluginOfferSheet(ModalSheet):
         self._current = self._queue.pop(0)
         plugin, release = self._current
         self._say(f"Downloading {plugin.name} ({self._total - len(self._queue)} of {self._total})…")
-        self._start(partial(download_release, release), self._downloaded)
+        self._start(partial(download_and_install, release), self._installed_one)
 
-    def _downloaded(self, folder, error: Exception | None) -> None:
-        plugin, release = self._current
+    def _installed_one(self, manifest, error: Exception | None) -> None:
+        plugin, _release = self._current
         if error is None:
-            try:
-                manifest = install_downloaded(folder, release)
-            except installer.InstallError as exc:
-                error = exc
-            else:
-                self._installed.append(f"{manifest.name} {manifest.version}")
-        if error is not None:
+            self._installed.append(f"{manifest.name} {manifest.version}")
+        else:
             if not isinstance(error, installer.InstallError):
                 log.error("plugin job failed", exc_info=error)
             self._failed.append(f"{plugin.name}: {error}")
@@ -249,11 +243,21 @@ class PluginOfferSheet(ModalSheet):
         path = pick_plugin_file(self)
         if path is None:
             return
-        if install_file(self, path, self._say_file):
-            self._installed.append(path.name)
-            self.file_button.hide()
-            self.restart_button.show()
-            self.close_button.setText("Close")
+        plan = prepare_file(self, path, self._say_file)
+        if plan is None:
+            return
+        self._set_busy(True)
+        self._say(f"Installing {plan.manifest.name}…")
+
+        def done(_result, error: Exception | None) -> None:
+            self._set_busy(False)
+            if plan.end(error, self._say_file):
+                self._installed.append(path.name)
+                self.file_button.hide()
+                self.restart_button.show()
+                self.close_button.setText("Close")
+
+        self._start(plan.work, done)
 
     def _say_file(self, text: str, error: bool) -> None:
         self._say(text)
@@ -270,12 +274,8 @@ class PluginOfferSheet(ModalSheet):
         self.update_buttons()
 
     def _start(self, work, on_done) -> None:
-        job = Job(work)
-        self._job = job
-
         def finished(result, error) -> None:
             self._job = None
             on_done(result, error)
 
-        job.done.connect(finished)
-        background.start_detached(job)
+        self._job = background.run_in_background(work, finished, parent=self)

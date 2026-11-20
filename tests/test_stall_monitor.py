@@ -6,6 +6,7 @@ from __future__ import annotations
 from conftest import pause
 
 import logging
+import os
 import threading
 import time
 
@@ -87,6 +88,33 @@ def test_a_translation_scan_logs_how_many_slide_files_it_read_and_for_how_long(t
         scans = [m for m in handler.messages if m.startswith("slide_language.scan ")]
         assert len(scans) == 1 and "files=2" in scans[0] and "gui=" in scans[0] and "slowest_read_s=" in scans[0]
     finally:
+        perf.removeHandler(handler)
+        perf.setLevel(logging.NOTSET)
+        timing.log.removeHandler(handler)
+        timing.log.setLevel(logging.NOTSET)
+
+
+def test_every_use_of_the_translation_index_logs_its_listing_time_and_caller_even_when_the_groups_are_cached(tmp_path):
+    from slidemage import slide_language
+
+    slides = tmp_path / "slides"
+    slides.mkdir()
+    path = slides / "aaa-EN-One-current.tex"
+    path.write_text("%% Included in decks: x\n", encoding="utf-8")
+    os.utime(path, (1_000_000, 1_000_000))             # long settled, so the second index reuses the groups
+    handler = with_debug_log()
+    perf = logging.getLogger("slidemage.perf")
+    perf.addHandler(handler)
+    perf.setLevel(logging.DEBUG)
+    try:
+        slide_language.clear_cache()
+        for _ in range(2):
+            slide_language.TranslationLinks(slides, ("EN", "DE")).group("aaa-EN-One")
+        scans = [m for m in handler.messages if m.startswith("slide_language.scan ")]
+        assert len(scans) == 2 and "cached=False" in scans[0] and "cached=True" in scans[1]
+        assert all("listing_s=" in m and "settled=True" in m and "caller='test_stall_monitor.py:" in m for m in scans)
+    finally:
+        slide_language.clear_cache()
         perf.removeHandler(handler)
         perf.setLevel(logging.NOTSET)
         timing.log.removeHandler(handler)

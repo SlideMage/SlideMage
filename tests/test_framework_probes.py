@@ -1,8 +1,11 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Optional framework inputs must be covered even when the recorder never sees them."""
+from fnmatch import fnmatchcase
 from pathlib import Path
 import re
+
+from slidemage.render_evidence import PROBES
 
 
 def test_framework_probes_are_covered_by_the_inventory():
@@ -34,9 +37,15 @@ def test_framework_probes_are_covered_by_the_inventory():
                     assert definition.startswith(r'{\SMUseBibliography}[1][SlideMage.bib]{'), where
                     assert definition.rstrip().endswith(r'\def\input@path{}'), where
                     assert rest.startswith(r'{#1}{\addbibresource{#1}}{\addbibresource{../#1}}'), where
+                    assert any(fnmatchcase('references.bib', pattern) for pattern in PROBES), where
                     continue
-                # These two macros expand only the filename, never its search folder.
-                name = name.replace(r'\SMLayoutProfile', 'profile').replace(r'\SMCitationFormat', 'format')
+                if r'\SMLayoutProfile' in name or r'\SMCitationFormat' in name:
+                    # Not a probe: a render reads the one file it names. Lacking it, the false branch raises an error
+                    # whose help starts with the log line that preview_build reads as a missing input.
+                    assert kind == r'\IfFileExists' and re.match(
+                        r'\s*\{(?:[^{}]|\{[^{}]*\})*\}\s*\{\s*\\PackageError\{SlideMage\}\{[^{}]*\}\{\s*File `'
+                        + re.escape(name) + "' not found", rest[argument.end():]), where
+                    continue
                 assert not re.search(r'[\\#]', name), (where, name)
                 names = [name]
             elif kind == 'kpse.find_file':
@@ -44,6 +53,9 @@ def test_framework_probes_are_covered_by_the_inventory():
                 assert argument and re.fullmatch(
                     r'"(?:hyphenation/)?hyph-"\s*\.\.\s*file\s*\.\.\s*"\.pat\.txt"'
                     r'|"SlideMage_(?:alt|measure)\.lua",\s*"(?:lua|tex)"', argument[1]), where
+                if argument[1].startswith('"hyph'):
+                    assert all(any(fnmatchcase(name, pattern) for pattern in PROBES)
+                               for name in ('hyphenation/hyph-de.pat.txt', 'hyph-de.pat.txt')), where
                 continue
             elif kind == 'io.open':
                 argument = re.match(r'\s*(.*?),\s*"r"\s*\)', rest, re.S)
@@ -71,4 +83,5 @@ def test_framework_probes_are_covered_by_the_inventory():
                     continue
                 parts = Path(name).parts
                 assert parts[0] not in {'slides', 'media', 'snippets'} and not skipped.intersection(parts), (where, name)
+                assert len(parts) == 1 and any(fnmatchcase(name, pattern) for pattern in PROBES), (where, name)
     assert counts == {r'\IfFileExists': 4, r'\InputIfFileExists': 2, 'kpse.find_file': 6, 'io.open': 3}

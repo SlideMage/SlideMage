@@ -188,9 +188,7 @@ def _issue(code, line, message=None):
             _issue("underscore", 1),
             _issue("optional-arg", 2, "\\item[ label has no closing ] on this line"),
             _issue("caret", 3),
-            _issue("underscore", 3),
-            _issue("underscore", 3),
-            _issue("underscore", 5),
+            _issue("underscore", 3),                 # one per line (v0.16.32), not one per character
             _issue("underscore", 5),
         ],
         id="optional-and-overlay",
@@ -253,20 +251,26 @@ def _issue(code, line, message=None):
         "\\url{a_b^&#} \\textbf{a_b^&#} \\Customcolor{a_b^&#}\n"
         "\\href{a_b^&#}{a_b^&#} a_b _a a_ 10^6\n",
         [
-            _issue("ampersand", 1),
-            _issue("ampersand", 1),
+            _issue("ampersand", 1),                  # one per line (v0.16.32), not one per character
             _issue("caret", 1),
-            _issue("hash", 1),
             _issue("hash", 1),
             _issue("underscore", 1),
             _issue("ampersand", 2),
             _issue("caret", 2),
-            _issue("caret", 2),
             _issue("hash", 2),
-            _issue("underscore", 2),
             _issue("underscore", 2),
         ],
         id="owners",
+    ),
+    pytest.param(
+        "\\colorlet{SMCodeKeywordColor}{c_secondary_blue}\n"
+        "\\definecolor{c_graz_dark}{HTML}{2B2B2B} \\SMSetColor{c_custom_red}{dark}{HTML}{FF6B6B}\n"
+        "\\SMSetRole{text_on_accent}{dark}{c_true_black} \\SMDeclareMode{light_x}{}\n"
+        "\\textcolor{c_custom_red}{a_b}\n",
+        [
+            _issue("underscore", 4),                 # \textcolor's second group is typeset text
+        ],
+        id="name-only-arguments",
     ),
     # A lexical check does not execute \catcode assignments.
     pytest.param(
@@ -306,3 +310,31 @@ def _issue(code, line, message=None):
 def test_lex_golden(text, expected):
     # Includes ordering and duplicates, plus the default source/path on each cached issue.
     assert _lex(text) == tuple(expected)
+
+
+def test_a_colour_under_a_colour_name_macros_name_is_warned_about(ctx):
+    text = ("\\colorlet{SMTitleBoxColor}{c_secondary_blue}\n% \\colorlet{SMBulletColor}{red}\n"
+            "\\definecolor{SMBulletColor}{HTML}{112233}\n\\colorlet{SMCodeKeywordColor}{c_secondary_blue}\n"
+            "\\renewcommand{\\SMTitleBoxColor}{c_secondary_blue}\n")
+    issues = [i for i in latex_lint.lint_text(ctx, text) if i.code == "macro-color"]
+    assert [(i.line, i.severity) for i in issues] == [(1, "warning"), (3, "warning")]
+    assert "\\renewcommand{\\SMTitleBoxColor}" in issues[0].message
+
+
+@pytest.mark.parametrize("extra", [r"\section{Topic}", r"\slideblock{nested}", "plain text"])
+def test_lint_reports_forbidden_block_content(ctx, extra):
+    ctx.blocks_dir.mkdir(parents=True)
+    ctx.decks_dir.mkdir(parents=True)
+    ctx.slides_dir.mkdir(parents=True)
+    block = ctx.blocks_dir / "topic_block.tex"
+    block.write_text("%% Topics: Example\n% \\section{Comment}\n\n" + extra
+                     + "\n\\slide{abc-EN-Hello} % kept\n", encoding="utf-8")
+    (ctx.slides_dir / "abc-EN-Hello-current.tex").write_text("Hello\n", encoding="utf-8")
+    (ctx.decks_dir / "test.tex").write_text(
+        "\\documentclass{beamer}\n\\begin{document}\n"
+        "\\slideblock{topic_block}\n\\end{document}\n", encoding="utf-8")
+    deck, = deck_scan.scan_dir(ctx.decks_dir, False)
+    result = latex_lint.check_deck_job(ctx, deck)
+    assert [(i.code, i.line, i.path) for i in result.errors] == [("block-content", 4, block)]
+    assert extra in result.errors[0].message
+    assert not result.warnings

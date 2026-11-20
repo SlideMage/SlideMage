@@ -85,7 +85,7 @@ def test_unchanged_versions_are_compiled_only_after_asking(ctx, qapp, monkeypatc
     win.log = lambda line: None
     win.project = None
     win.centre = SimpleNamespace(preview=SimpleNamespace(_renders=SimpleNamespace(
-        _renderer=lambda _ctx: SimpleNamespace(resolver=None))))
+        renderer=lambda _ctx: SimpleNamespace(resolver=None))))
     result = compile_actions._confirm_unchanged_jobs(win, jobs, {})
     assert [j.jobname for j in result] == expected
     if button:
@@ -172,7 +172,7 @@ def run_window(monkeypatch, settings, running=False, ctx=EXAMPLE_PROJECT):
         project=ctx,
         centre=SimpleNamespace(source=SimpleNamespace(flush_all=lambda: None),
                                preview=SimpleNamespace(_renders=SimpleNamespace(
-            _renderer=lambda _ctx: SimpleNamespace(resolver=None)))),
+            renderer=lambda _ctx: SimpleNamespace(resolver=None)))),
         build_options=SimpleNamespace(
             appendix_toc_checkbox=SimpleNamespace(isChecked=lambda: False)),
         compile=SimpleNamespace(running=running, start=lambda *args, **kwargs: started.append((args, kwargs))))

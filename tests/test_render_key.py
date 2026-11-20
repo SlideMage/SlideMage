@@ -66,15 +66,6 @@ def test_hash_is_kept_by_size_and_mtime_and_read_again_when_they_change(tmp_path
     assert cache.hash(path) != first and cache.reads == 2
 
 
-def test_the_audit_finds_a_change_under_an_unchanged_size_and_mtime(tmp_path, store):
-    cache = dep_hash.HashCache(store.db, store.lock)
-    path = write(tmp_path / "a.txt", "abcd")
-    cache.hash(path)
-    write(path, "abce")                              # same size, same mtime
-    assert cache.hash(path) is not None and cache.reads == 1      # the shortcut cannot see it
-    assert cache.audit() == [dep_hash.norm(path)]
-
-
 # -- the key ----------------------------------------------------------------------------
 
 def test_the_key_follows_slide_text_preamble_view_language_and_engine(ctx, resolver, store, hashes):
@@ -140,9 +131,9 @@ def make_record(resolver, unit, inputs):
     return key, meta
 
 
-def store_render(store, key, meta, origin="background", pages=2, decks=("deck1",)):
-    pdf = write(store.local_dir / f"{origin}.pdf", "%PDF")
-    return store.put(key, origin, pdf, [real_png()] * pages, meta, decks=decks)
+def store_render(store, key, meta, pages=2, decks=("deck1",)):
+    pdf = write(store.root / "render.pdf", "%PDF")
+    return store.put(key, pdf, [real_png()] * pages, meta, decks=decks)
 
 
 def test_a_render_is_fresh_until_a_file_it_read_changes(ctx, resolver, store):
@@ -158,8 +149,22 @@ def test_a_render_is_fresh_until_a_file_it_read_changes(ctx, resolver, store):
     write(image, "other image")
     result = resolver.lookup(unit)
     assert result.state is Freshness.STALE and result.record is not None       # shown as outdated, never as fresh
+    assert result.why == "file media/pic.png"
     write(image, "img")
     assert resolver.lookup(unit).state is Freshness.FRESH
+
+
+def test_a_stale_render_names_the_changed_file_even_when_the_inventory_changed_too(ctx, resolver, store):
+    write(ctx.slides_dir / "aaa-EN-One-current.tex", "slide")
+    image = write(ctx.media_dir / "pic.png", "img")
+    unit = unit_for(ctx)
+    key, meta = make_record(resolver, unit, [unit.source_path, image])
+    store_render(store, key, meta)
+    write(image, "other image")
+    write(ctx.root / "SlideMage_project_macros.tex", "new macros")
+    assert resolver.lookup(unit).why == "file media/pic.png"
+    write(image, "img")
+    assert resolver.lookup(unit).why == "inventory"
 
 
 def test_a_different_page_number_is_fresh_with_a_note(ctx, resolver, store):
@@ -196,14 +201,14 @@ def test_two_producers_replace_one_object_of_a_key(ctx, resolver, store):
     unit = unit_for(ctx)
     write(unit.source_path, "slide")
     layer = write(ctx.root / "SlideMage_template_acme.tex", "v1")
-    for origin, pages in (("reveal", 2), ("background", 3), ("reveal", 1)):
+    for pages in (2, 3, 1):
         if pages == 1:
             write(layer, "v2 longer")
             assert resolver.lookup(unit).state is Freshness.STALE
         key, meta = make_record(resolver, unit, [unit.source_path, layer])
-        assert store_render(store, key, meta, origin=origin, pages=pages) == key
+        assert store_render(store, key, meta, pages=pages) == key
         found = resolver.lookup(unit)
-        assert found.final and found.record["origin"] == origin and found.record["pages"] == pages
+        assert found.final and found.record["pages"] == pages
         assert store.count() == 1 and store.find(key) is not None
         assert [p.name for p in (store.root / "objects" / key[:2]).iterdir()] == [key]
         assert not store.page(found.record, pages + 1)
@@ -235,7 +240,7 @@ def test_an_old_format_object_is_never_found_or_kept(ctx, resolver, store):
     store.db.execute("UPDATE filehash SET sha256='old raw-byte hash'")
     store.db.execute("PRAGMA user_version=0")
     store.db.commit()
-    again = render_store.RenderStore(ctx, store.local_dir)
+    again = render_store.RenderStore(ctx, store.root)
     try:
         hashes = dep_hash.HashCache(again.db, again.lock)
         current = render_key.Resolver(ctx, hashes, again, engine_fp=lambda: "LuaHBTeX 1.22|Windows")
@@ -243,28 +248,73 @@ def test_an_old_format_object_is_never_found_or_kept(ctx, resolver, store):
         assert not again.find(key) and again.latest_for_unit(unit.label) is None
         assert not again.failures() and not again.tried_last(key)
         assert hashes.hash(unit.source_path) == preview_requests.SourceRevision.capture(unit.source_path).content_hash
-        assert again.rescan() == 0 and not folder.exists()
+        again.rescan()
+        assert not folder.exists()
     finally:
         again.close()
 
 
-def test_objects_survive_the_loss_of_the_index_and_are_adopted_by_rescan(ctx, resolver, store):
-    write(ctx.slides_dir / "aaa-EN-One-current.tex", "slide")
+def test_an_old_index_opens_without_losing_its_render(ctx, resolver, store):
     unit = unit_for(ctx)
+    write(unit.source_path, "slide")
     key, meta = make_record(resolver, unit, [unit.source_path])
     store_render(store, key, meta)
-    local = store.local_dir
-    store.close()
-    (local / "index.sqlite").unlink()
-    again_store = render_store.RenderStore(ctx, local)
+    # Recreate the PNG publication an older release wrote, including its on-disk and indexed metadata.
+    from PIL import Image
+
+    folder = render_store.object_dir(store.root, key)
+    legacy = json.loads((folder / "meta.json").read_text(encoding="utf-8"))
+    for name in list(legacy["files"]):
+        if name.endswith(".webp"):
+            path = folder / name
+            png = path.with_suffix(".png")
+            with Image.open(path) as image:
+                image.save(png, format="PNG")
+            path.unlink()
+            del legacy["files"][name]
+            legacy["files"][png.name] = png.stat().st_size
+    legacy["bytes"] = sum(legacy["files"].values())
+    (folder / "meta.json").write_text(json.dumps(legacy), encoding="utf-8")
+    store.db.execute("UPDATE renders SET bytes=?, meta=? WHERE key=?", (legacy["bytes"], json.dumps(legacy), key))
+    store.db.commit()
+    before = store.find(key)
+    store.db.executescript("""
+        ALTER TABLE renders RENAME TO new_renders;
+        CREATE TABLE renders (
+            name TEXT PRIMARY KEY, fast_key TEXT NOT NULL, origin TEXT NOT NULL, unit TEXT NOT NULL,
+            bytes INTEGER NOT NULL, rendered_at REAL NOT NULL, last_used REAL NOT NULL,
+            decks TEXT NOT NULL, meta TEXT NOT NULL);
+        INSERT INTO renders SELECT key, key, 'background', unit, bytes, rendered_at, last_used, decks, meta FROM new_renders;
+        DROP TABLE new_renders;
+        CREATE INDEX renders_key ON renders(fast_key);
+        ALTER TABLE failures DROP COLUMN last_try;
+        CREATE TABLE last_tries (fast_key TEXT PRIMARY KEY, tried_at REAL NOT NULL);
+    """)
+    folder = store.root
+    upgraded = render_store.RenderStore(ctx, folder)
     try:
-        assert again_store.count() == 0 and again_store.rescan() == 1
-        again = render_key.Resolver(ctx, dep_hash.HashCache(again_store.db, again_store.lock), again_store,
-                                    engine_fp=lambda: "LuaHBTeX 1.22|Windows")
-        assert again.lookup(unit).state is Freshness.FRESH
-        assert again_store.page(again.lookup(unit).record, 1).startswith(b"\x89PNG")
+        assert upgraded.count() == 1 and upgraded.find(key) == before
+        record = upgraded.find(key)
+        assert upgraded.page(record, 1) == real_png()
+        assert upgraded.pages(record) == [real_png()] * 2
+        assert upgraded.thumbnail_path(record) == Path(record["dir"]) / "thumb.png"
+        assert upgraded.thumbnail_path(record).read_bytes().startswith(b"\x89PNG")
+        store_render(upgraded, key, meta, pages=1)
+        assert upgraded.find(key)["pages"] == 1
     finally:
-        again_store.close()
+        upgraded.close()
+
+
+def test_rescan_deletes_objects_the_index_does_not_know(ctx, resolver, store):
+    unit = unit_for(ctx)
+    write(unit.source_path, "slide")
+    key, meta = make_record(resolver, unit, [unit.source_path])
+    store_render(store, key, meta)
+    folder = render_store.object_dir(store.root, key)
+    store.db.execute("DELETE FROM renders")
+    store.db.commit()
+    store.rescan()
+    assert not folder.exists() and store.count() == 0
 
 
 def test_the_store_creates_nothing_in_the_project_and_removes_old_caches(ctx, tmp_path, monkeypatch):
@@ -280,7 +330,7 @@ def test_the_store_creates_nothing_in_the_project_and_removes_old_caches(ctx, tm
     store = render_store.RenderStore(ctx, local)
     try:
         pdf = write(tmp_path / "x.pdf", "%PDF")
-        store.put("k" * 64, "background", pdf, [real_png()], dict(unit="u", manifest=[], rendered_at=1.0), decks=["d"])
+        store.put("k" * 64, pdf, [real_png()], dict(unit="u", manifest=[], rendered_at=1.0), decks=["d"])
         store.touch_deck("d", opened=True)
         store.rescan()
         assert store.root == local and (local / "objects").is_dir() and store.work_dir == local / "work"
@@ -308,14 +358,17 @@ def test_eviction_order_and_protection(ctx, resolver, store):
         keys[name] = key
     store.db.execute("UPDATE renders SET bytes=1000")
     assert store.total_bytes() == 3000
-    store.enforce_limit(2000, protected_decks={"recent"}, keep_days=3650)
+    clock[0] += 31 * 86400
+    assert store.enforce_limit(10 * 1024 ** 3, protected_decks={"recent"}) == 0
+    assert store.count() == 3                             # age alone never evicts an unprotected render
+    store.enforce_limit(2000, protected_decks={"recent"})
     assert store.count() == 2 and store.find(keys["b"])                    # the least recently used unprotected went
-    store.enforce_limit(1000, protected_decks={"recent"}, keep_days=3650)
+    store.enforce_limit(1000, protected_decks={"recent"})
     assert store.count() == 1 and store.find(keys["b"])                    # one unprotected is left? no: only the protected one
     store.db.execute("UPDATE renders SET bytes=1000")
-    store.enforce_limit(900, protected_decks={"recent"}, keep_days=3650)
+    store.enforce_limit(900, protected_decks={"recent"})
     assert store.count() == 1                                              # protected stays unless more than twice over
-    store.enforce_limit(400, protected_decks={"recent"}, keep_days=3650)
+    store.enforce_limit(400, protected_decks={"recent"})
     assert store.count() == 0
 
 
@@ -327,6 +380,43 @@ def test_archiving_a_deck_deletes_only_what_no_other_deck_uses(ctx, resolver, st
         store_render(store, key, meta, decks=decks)
     assert store.drop_deck("old") == 1
     assert resolver.lookup(solo).state is not Freshness.FRESH and resolver.lookup(shared).state is Freshness.FRESH
+
+
+def _put(store, key):
+    return store_render(store, key, dict(unit=f"unit-{key}", rendered_at=time.time()))
+
+
+def test_clear_moves_the_files_to_the_trash_and_purge_deletes_them(store):
+    key = _put(store, "ab" + "0" * 62)
+    store.clear()
+    assert store.count() == 0 and not store.find(key)
+    trash = list(store.root.glob("trash-*"))
+    assert len(trash) == 1 and (trash[0] / "objects").is_dir()              # clear() itself deleted nothing
+    store.purge_trash()
+    assert not list(store.root.glob("trash-*"))
+
+
+def test_a_render_stored_after_clear_survives_the_purge(store):
+    _put(store, "ab" + "0" * 62)
+    store.clear()
+    key = _put(store, "cd" + "1" * 62)                                       # before the purge: objects/ and tmp/ are new
+    store.purge_trash()
+    assert store.find(key) and store.count() == 1
+
+
+def test_rescan_purges_a_trash_folder_a_crash_left(store):
+    leftover = store.root / "trash-deadbeef"
+    (leftover / "objects").mkdir(parents=True)
+    store.rescan()
+    assert not leftover.exists()
+
+
+def test_archiving_a_deck_trashes_the_renders_only_it_used(store):
+    solo, shared = _put(store, "ab" + "0" * 62), "cd" + "1" * 62
+    store_render(store, shared, dict(unit="shared", rendered_at=time.time()), decks=("old", "live"))
+    store.db.execute("UPDATE renders SET decks=? WHERE key=?", ('["old"]', solo))
+    assert store.drop_deck("old") == 1 and store.find(shared) and not store.find(solo)
+    assert len(list(store.root.glob("trash-*"))) == 1
 
 
 def test_failures_are_remembered_for_the_input_state_and_backed_off(ctx, resolver, store):
@@ -360,7 +450,7 @@ def test_legacy_failures_are_retried_once_without_discarding_renders(ctx, tmp_pa
     folder = tmp_path / "legacy-store"
     with_store = render_store.RenderStore(ctx, folder)
     try:
-        store_render(with_store, "good", {"unit": "deck:slide:instructor:EN"}, origin="reveal")
+        store_render(with_store, "good", {"unit": "deck:slide:instructor:EN"})
         with_store.record_failure("bad", render_store.DETERMINISTIC, "missing setup", [])
         with_store.note_last_try("bad")
         with_store.db.execute("DELETE FROM store_flags WHERE name=?", (render_store.FAILURE_INPUTS_TRACKED,))
@@ -409,17 +499,17 @@ def test_a_render_depends_only_on_the_alt_texts_of_the_pictures_it_read(ctx, res
     picture = write(ctx.root / "media" / "a.png", "png")
     entries = resolver.build_manifest([str(p) for p in (slide, picture, csv_path, json_path)]).entries
     assert {kind for kind, rel, _sha in entries if "alt-text" in rel} == {render_key.KIND_ALT_TEXT}
-    assert resolver.manifest_current(entries)
+    assert resolver.manifest_current(entries) is None
     write(csv_path, header + "media/a.png,informative,auto,A,,auto,,\nmedia/b.png,informative,auto,B changed,,auto,,\n"
           "media/c.png,informative,auto,C new,,auto,,\n", OLD + 10)
     write(json_path, json.dumps({"version": 2, "images": {"media/a.png": {"short": "A"},
                                                          "media/c.png": {"short": "C"}}}), OLD + 10)
-    assert resolver.manifest_current(entries)                 # another picture's alt text: still current
+    assert resolver.manifest_current(entries) is None         # another picture's alt text: still current
     write(csv_path, header + "media/a.png,informative,auto,A changed,,auto,,\n", OLD + 20)
-    assert not resolver.manifest_current(entries)             # its own picture's alt text: out of date
+    assert resolver.manifest_current(entries) is not None     # its own picture's alt text: out of date
     write(csv_path, header + "media/a.png,informative,auto,A,,auto,,\n", OLD + 30)
     write(json_path, json.dumps({"version": 2, "images": {"MEDIA/A.PNG": {"short": "A, longer"}}}), OLD + 30)
-    assert not resolver.manifest_current(entries)             # matched by file name, whatever the case and folder
+    assert resolver.manifest_current(entries) is not None     # matched by file name, whatever the case and folder
 
 
 # -- the small copy of the last page (2026-10-30, direct request) -------------------------
@@ -433,19 +523,33 @@ def real_png() -> bytes:
 
 
 def test_put_writes_a_thumbnail_of_the_last_page_within_the_preview_cache_size_and_lists_it(ctx, resolver, store):
+    from io import BytesIO
     from PIL import Image
     from slidemage.render_evidence import THUMBNAIL_MAX
+
     unit = unit_for(ctx)
     write(unit.source_path, "slide")
     key, meta = make_record(resolver, unit, [unit.source_path])
-    name = store_render(store, key, meta)
-    folder = render_store.object_dir(store.root, name)
-    assert store.thumbnail_path(store.find(key)) == folder / "thumb.png"
-    with Image.open(folder / "thumb.png") as im:
-        assert im.width == THUMBNAIL_MAX[0] and im.height <= THUMBNAIL_MAX[1]
-    meta = json.loads((folder / "meta.json").read_text(encoding="utf-8"))
-    assert meta["files"]["thumb.png"] == (folder / "thumb.png").stat().st_size
-    assert meta["pages"] == 2 and store.total_bytes() == meta["bytes"] == sum(meta["files"].values())
+    small = BytesIO()
+    Image.new("RGBA", (2, 1), (21, 54, 89, 0)).save(small, format="PNG")
+    originals = [small.getvalue(), real_png()]
+    store.put(key, write(store.root / "render.pdf", "%PDF"), originals, meta)
+    record = store.find(key)
+    folder = Path(record["dir"])
+    assert set(record["files"]) == {"slide.pdf", "p001.webp", "p002.webp", "thumb.webp"}
+    pages = store.pages(record)
+    for number, (png, webp) in enumerate(zip(originals, pages, strict=True), start=1):
+        assert webp[8:12] == b"WEBP" and store.page(record, number) == webp
+        with Image.open(BytesIO(png)) as original, Image.open(BytesIO(webp)) as stored:
+            assert stored.size == original.size
+            assert stored.convert(original.mode).tobytes() == original.tobytes()
+    assert store.thumbnail_path(record) == folder / "thumb.webp"
+    with Image.open(folder / "thumb.webp") as thumbnail, Image.open(BytesIO(originals[-1])) as original:
+        original.thumbnail(THUMBNAIL_MAX, Image.Resampling.LANCZOS)
+        assert thumbnail.format == "WEBP" and thumbnail.size == original.size
+        assert thumbnail.tobytes() == original.tobytes()
+    assert record["files"]["thumb.webp"] == (folder / "thumb.webp").stat().st_size
+    assert record["pages"] == 2 and store.total_bytes() == record["bytes"] == sum(record["files"].values())
 
 
 def test_a_rescan_that_is_stopped_forgets_no_object(ctx, resolver, store):
@@ -455,5 +559,7 @@ def test_a_rescan_that_is_stopped_forgets_no_object(ctx, resolver, store):
     store_render(store, key, meta)
     [folder] = [path for path in (store.root / "objects").glob("*/*") if path.is_dir()]
     shutil.rmtree(folder)                                           # gone on disk, still in the index
-    assert store.rescan(lambda: True) == 0 and store.count() == 1
-    assert store.rescan() == 0 and store.count() == 0
+    store.rescan(lambda: True)
+    assert store.count() == 1
+    store.rescan()
+    assert store.count() == 0

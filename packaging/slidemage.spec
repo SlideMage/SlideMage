@@ -148,6 +148,10 @@ a = Analysis(
     ],
     hiddenimports=HIDDEN_IMPORTS,
 )
+# pyspellchecker's word lists (spellchecker/resources/*.json.gz, about 7 MB) are downloaded on first use of a
+# language (slidemage/spelling/catalogue.py), never bundled: no hook collects them today, and this keeps a future
+# one from doing so.
+a.datas = [entry for entry in a.datas if "spellchecker/resources" not in entry[0].replace("\\", "/")]
 pyz = PYZ(a.pure)
 
 # Windows only: a splash screen (splash.png) shown by the bootloader while
@@ -183,6 +187,7 @@ if BUILD != "onefile":
         name="SlideMage",
         console=False,
         icon=icon,
+        manifest=str(ROOT / "packaging" / "slidemage.manifest") if sys.platform == "win32" else None,
     )
     folder = COLLECT(
         folder_exe,
@@ -203,4 +208,5 @@ if BUILD != "folder":
         name="SlideMage",
         console=False,
         icon=icon,
+        manifest=str(ROOT / "packaging" / "slidemage.manifest") if sys.platform == "win32" else None,
     )

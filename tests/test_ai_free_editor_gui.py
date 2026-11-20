@@ -4,7 +4,7 @@
 from slidemage import alt_blocks, alt_images, deck_editor, deck_scan
 from slidemage.ai import routes
 from slidemage.ui.dialogs.add_slide import AddSlideSheet
-from conftest import build_window, make_project
+from conftest import build_window, make_project, wait_until
 from slidemage.project import ProjectContext
 
 
@@ -16,7 +16,7 @@ def test_no_routes_still_allows_a_linked_manual_translation(qapp, tmp_path, monk
     sheet = AddSlideSheet(window, deck, position, indent, where="at the end", is_dirty=window.centre.unsaved,
                           source="translate", slide="abc-EN-Hello", target="DE")
     sheet.show()
-    qapp.processEvents()
+    wait_until(lambda: sheet.picked() == "abc-EN-Hello")   # the picker fills in the background
     assert not routes.all() and sheet.machine.isHidden() and not sheet.wants_translation()
     sheet.ok.click()
     created = next(ctx.slides_dir.glob("*-DE-Hello-current.tex"))

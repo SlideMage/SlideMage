@@ -23,7 +23,7 @@ from PIL import Image
 import pymupdf
 from PySide6.QtCore import QEvent, QObject, QTimer
 from PySide6.QtWidgets import QApplication, QWidget
-from slidemage import batch_render, deck_outline, preview_requests, render_store
+from slidemage import batch_render, deck_outline, preview_requests
 from slidemage.deck_scan import read_deck
 from slidemage.project import ProjectContext
 from slidemage.ui.kit.theme import ThemeManager
@@ -54,13 +54,13 @@ def run(output, rows):
     Image.new('RGB', (160, 90), '#f4f4f4').save(image, 'PNG')
     png = image.getvalue()
     service = preview_requests.RenderService()
-    renderer = service._renderer(ctx)
+    renderer = service.renderer(ctx)
     for slot in deck_outline.resolve_slots(ctx, deck, 'instructor', 'EN'):
         spec, = batch_render.plan_slide(ctx, deck, source, 'instructor', 'EN',
                                                    occurrence_key=slot.key)
         evidence = renderer.resolver.capture(spec.unit, spec.revision.text)
         manifest = renderer.resolver.build_manifest([str(source), str(dependency)])
-        assert renderer._store_render(spec.unit, render_store.ORIGIN_REVEAL, pdf, [png], manifest, evidence)
+        assert renderer.store_render(spec.unit, pdf, [png], manifest, evidence)
     app = QApplication.instance() or QApplication([])
     state = WorkspaceState(ctx)
     host = QWidget()

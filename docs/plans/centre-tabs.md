@@ -2,6 +2,9 @@
 
 Status: all decisions made by the user 2026-11-01 (section 6). Step 1 is merged (v0.13.14). Step 2 is done (v0.13.16, branch tabs/step2-slides, not merged); steps 3 and 4 next, after the go.
 
+Next (2026-11-13): each tab gets a deck context and the slide list follows the tab on show, starting from D9 to D12:
+see [tab-contexts.md](tab-contexts.md) (a plan for review, nothing built).
+
 Request (2026-11-01): "I liked working in tabs in SlideMage versions up to v5. Draft a plan to open source views, the
 .bib edit view, and slides that the user opens using the search functionality in tabs. When opening a deck source or
 the .bib, in a way SlideMage already does this - at least it returns to the previously viewed slide when closing
@@ -29,6 +32,10 @@ these views. Modify that so it shows them as tabs instead, so the user can easil
   `SourcePane.file_closed`).
 
 ## 2. What it should do
+
+> **Superseded in part by `docs/plans/tab-contexts.md`** (built in v0.16.41 to v0.16.44): there is no single slide
+> tab any more. Each open deck has its own working tab (closing it closes the deck), a deck's tabs stay together
+> with a colour stripe, and the tabs are restored per deck. Read that plan for the rules; what follows is the first design.
 
 A **tab strip** at the top of the centre column, above Preview / Source / Split / Details:
 

@@ -188,6 +188,18 @@ def test_the_context_menu_offers_the_edit_commands_and_the_two_tasks_when_the_se
         menu.close()
 
 
+def test_a_route_that_takes_a_rewrite_as_a_prompt_gets_the_instruction(fake):  # noqa: F811
+    env, filled = asked(fake), []
+    area = env.window.assistant
+    area.surface_for("fake_cloud").fill_prompt = lambda text: filled.append(text) or True
+    fake.routes.cloud.task_prompt = lambda ctx, route, name, slide, language, **kw: (
+        "" if slide is None else f"{name} {slide.name}: {kw['instruction']}")
+    select(env, "First point")
+    area.rewrite_selection("Simplify")
+    assert filled == ["rewrite abc-EN-Hello-current.tex: " + ai_tasks.REWRITE_PRESETS["Simplify"]]
+    assert fake.calls() == [] and area.tasks.card is None
+
+
 # -- the card: Generate, Review, Apply ------------------------------------------------------------------------------
 
 def test_a_rewrite_is_reviewed_applied_into_the_buffer_and_taken_back_by_the_editors_undo(fake):  # noqa: F811

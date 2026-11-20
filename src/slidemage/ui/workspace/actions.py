@@ -65,8 +65,19 @@ def _with_ai(visible):
     return lambda w: bool(routes.all()) and visible(w)
 
 
+def _other_mode_title(w) -> str:
+    """"Dark slides" when the view's template has one other colour mode, else "another colour mode…"."""
+    modes = compile_actions.other_modes(w) if getattr(getattr(w, "state", None), "deck", None) else []
+    return modes[0][1] if len(modes) == 1 else "another color mode…"
+
+
 def _has_deck(w) -> bool:
     return w.state.deck is not None
+
+
+def _deck_spelling(w) -> None:
+    from ..dialogs import deck_spelling
+    deck_spelling.open_for(w, w.state.deck)
 
 
 def _active_deck(w) -> bool:
@@ -239,8 +250,11 @@ def build_registry(mac: bool = sys.platform == "darwin") -> CommandRegistry:
     add("compile:current", "Compile PDF · current view", VIEW_AND_BUILD,
         lambda w: w.commands.run(f"compile:{w.state.view if _versioned(w) else VIEWS[0]}", w), icon="picture_as_pdf",
         shortcut="Ctrl+Shift+B", enabled=_has_deck)
-    add("compile:all", "All views of this deck", VIEW_AND_BUILD, lambda w: compile_actions.compile_current(w, "all"),
-        enabled=_has_deck)
+    add("compile:all", "All views of this deck", VIEW_AND_BUILD, compile_actions.compile_all_views,
+        meta="choose views", enabled=_has_deck)
+    add("compile:mode", lambda w: "Current view in " + _other_mode_title(w), VIEW_AND_BUILD,
+        compile_actions.compile_in_mode, icon="contrast", meta="own PDF, once",
+        enabled=lambda w: bool(compile_actions.other_modes(w)), keywords="dark light colors colours mode handout")
     add("compile:chapters", "After course, one PDF per chapter", VIEW_AND_BUILD,
         lambda w: compile_actions.compile_current(w, "chapters"),
         enabled=lambda w: _has_deck(w) and w.state.deck.has_chapters)
@@ -359,6 +373,8 @@ def build_registry(mac: bool = sys.platform == "darwin") -> CommandRegistry:
         lambda w: w.centre.update_deck_versions(), enabled=_has_deck)
     add("deck:readability", "Check readability of this deck", DECK,
         lambda w: w.assistant.check_readability(DECK_SCOPE), icon="visibility", meta="no AI", enabled=_has_deck)
+    add("deck:spelling", "Check spelling of this deck…", DECK, _deck_spelling, icon="spellcheck", meta="no AI",
+        enabled=_has_deck)
     add("add_slide", "Add slide…", DECK, lambda w: w.slide_list.add_slide(), enabled=_has_deck)
     add("import_presentation", "Import PPTX/ODP…", DECK, _window("_on_import_presentation"))
     add("refresh_decks", "Refresh decks", DECK, _window("_on_refresh_decks_clicked"))
@@ -372,6 +388,7 @@ def build_registry(mac: bool = sys.platform == "darwin") -> CommandRegistry:
         lambda w: w.set_autosave(not autosave_on()), icon="save",
         meta="Save edits as you type; off, Ctrl+S saves")
     add("images", "Image descriptions", PROJECT, _window("_toggle_images"), icon="image", meta="every slide with images")
+    add("library", "Library", PROJECT, _window("_toggle_library"), icon="collections_bookmark", meta="similar slides")
     add("edit_bib", "Edit .bib", PROJECT, _window("_on_edit_bib"))
     add("edit_test_slides", "Edit test-slides.tex", PROJECT, _window("_on_edit_test_slides"))
     add("open_project", "Open project…", PROJECT, _window("_on_open_project"))

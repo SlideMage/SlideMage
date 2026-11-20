@@ -955,3 +955,11 @@ def test_route_owned_surface_keeps_its_conversation_and_confirms_ending_it(env):
     assert surface.turns == ["Hello"]
     env.window.assistant.new_conversation()
     assert surface.turns == [] and surface.answer.text() == "" and surface.restarts == [("", False)]
+
+
+def test_a_long_file_name_wraps_inside_the_user_bubble(qapp):
+    from slidemage.ui.workspace.chat.cards import BUBBLE_WIDTH, UserBubble
+    bubble = UserBubble("Summarise this\n\nAttached: sources/Find_the_Good_Seek_the_Unity_A_Hidden_Message_in_Teams.pdf")
+    label = bubble.findChild(QLabel)
+    assert label.width() <= BUBBLE_WIDTH - 24                     # never wider than the bubble's inside
+    assert "Find_​the_​" in label.text()                  # the name may break after _

@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from .. import slide_add
+from . import translation_style
 from .image_instructions import IMAGE_DESCRIPTION_RULES
 from ..project import ProjectContext
 
@@ -83,7 +84,7 @@ Images, notes and text helpers.
 
 _LAYOUT = """\
 Layout helpers (prefer these to hand-measured shifts).
-- Content is top-aligned automatically; do not add vertical shifts. [c] centres a frame.
+- Content is top-aligned automatically; do not add vertical shifts. [c] centers a frame.
 - Two columns go inside standardframe: \\begin{columns}[t,onlytextwidth] with column{0.48\\linewidth} x2.
   Do not combine columns with \\pause reveals next to a bulky image; use an overlay or a minipage.
 - Tables: \\begin{SMTable}[gap=12pt]{lcc} with \\toprule \\midrule \\bottomrule.
@@ -92,6 +93,16 @@ Layout helpers (prefer these to hand-measured shifts).
 - \\shrinklists{1|2|3} makes lists one to three sizes smaller; \\small or \\footnotesize shrink text.
 - A frame that is full overflows into the footer: the lint and render_preview show it; shorten
   the text or split the slide rather than shrinking below \\footnotesize."""
+
+
+def _translation(ctx: ProjectContext) -> str:
+    informal = translation_style.address(ctx) == "informal"
+    lines = ["Translating slides.",
+             f"- Address the audience {'informally' if informal else 'formally'} in every language "
+             f"(German: {translation_style.de_address(ctx)})."]
+    if glossary := translation_style.glossary(ctx).strip():
+        lines += [f"- Use the terms of the project's glossary ({translation_style.GLOSSARY_PATH}):", glossary]
+    return "\n".join(lines)
 
 
 def _frames(ctx: ProjectContext) -> str:
@@ -105,7 +116,7 @@ def _frames(ctx: ProjectContext) -> str:
     lines.append(
         "\nUse \\source{...} in figureframe/sideimageframe/standardframe for the Source line. highlightframe "
         "is a standardframe with a different title bar for slides the presenter must notice. sectionframe "
-        "opens a part (add \\section{...} before its call in the deck). Pass [c] to centre a frame vertically.")
+        "opens a part (add \\section{...} before its call in the deck). Pass [c] to center a frame vertically.")
     return "\n".join(lines)
 
 
@@ -115,6 +126,7 @@ GUIDES: dict[str, tuple[str, str | Callable[[ProjectContext], str]]] = {
     "layout": ("columns, tables, blocks, figures, spacing", _LAYOUT),
     "reveals": ("\\pause, \\only, \\slidestep, deck versions", _REVEALS),
     "citations": ("SlideMage.bib, \\fullcite, \\textcite", _CITATIONS),
+    "translation": ("the form of address and the glossary for translations", _translation),
     "images_and_text": ("images, notes, code and text helpers, escaping", _NOTES_IMAGES + "\n" + IMAGE_DESCRIPTION_RULES),
 }
 TOPICS = tuple(GUIDES)

@@ -75,6 +75,45 @@ def test_moving_from_a_step_the_narrowed_stops_do_not_have_goes_to_the_next_one(
     assert bar.step == 1
 
 
+def test_the_bar_keeps_its_room_so_the_slide_above_it_does_not_move(qapp):
+    from PySide6.QtWidgets import QVBoxLayout, QWidget
+    window = QWidget()
+    layout = QVBoxLayout(window)
+    page = QWidget()
+    layout.addWidget(page, 1)
+    bar = RevealBar(tokens)
+    layout.addWidget(bar)
+    window.resize(800, 600)
+    window.show()
+
+    def height():
+        for _ in range(3):
+            QApplication.processEvents()
+        return page.height()
+
+    one = {"instructor": RowSpec("instructor", plan(1, {1}, marked=False))}
+    plain = {"instructor": RowSpec("instructor", plan(4, {1, 3}, marked=False))}
+    collapsed = height()
+    for state in (one, plain, rows_of(), one):
+        bar.set_state("instructor", 1, state, False)
+        assert height() == collapsed
+    bar.show_counting()
+    assert height() == collapsed
+    bar.setVisible(False)                              # no slide on show
+    assert height() == collapsed
+    bar.set_expanded(True)
+    bar.set_state("instructor", 3, rows_of(), False)
+    expanded = height()
+    assert expanded < collapsed
+    for step in (lambda: bar.show_counting(), lambda: bar.set_state("instructor", 1, one, False),
+                 lambda: bar.set_state("instructor", 3, rows_of(), False)):
+        step()
+        assert height() == expanded                    # also while the next slide's steps are counted
+    bar.set_expanded(False)
+    assert height() == collapsed
+    window.close()
+
+
 def test_unmarked_slides_have_no_deck_toggle(qapp):
     bar = RevealBar(tokens)
     bar.set_state("instructor", 3, {"instructor": RowSpec("instructor", plan(3, {1, 2, 3}, marked=False))}, False)

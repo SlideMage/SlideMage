@@ -31,12 +31,15 @@ listing shown in the GUI and in README.md):
     image         \\includegraphics/\\chapterlogo file that does not exist
     code-file     \\SMCodeFile{path} whose file does not exist
     slide-file    a \\slide{}-family call whose slides/*.tex file is missing
+    block-content anything other than slide calls, blank lines and comments in a topic block
 
   warnings (very likely a mistake, but the compile may still succeed)
     underscore    _ in running text outside math / macro arguments
     percent       "5% growth": the % starts a comment and swallows the rest
     overlay       \\only<2-> style overlay specification whose > is missing
     optional-arg  \\item[ label never closed on its line
+    macro-color   \\colorlet/\\definecolor of a name that is a macro holding a
+                  color's name (\\SMTitleBoxColor ...): the macro stays
     table-edges   SMTable with neither [gap=...] nor @{} edges: its rules
                   run past the text on both sides
     heading-text  frame opens with a bare \\textbf{...} line above its list
@@ -53,10 +56,10 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Iterable, Optional
 
-from . import bibliography, deck_editor
+from . import bibliography, deck_editor, deck_language, topic_blocks
 from .deck_scan import Chapter, Deck
 from .project import ProjectContext
-from .tex_source import INPUT_RE, blanked_verbatim, comment_start, masked_same_length
+from .tex_source import blanked_verbatim, comment_start, masked_same_length
 
 ERROR = "error"
 WARNING = "warning"
@@ -75,12 +78,14 @@ CHECKS: list[tuple[str, str, str]] = [
     ("image", ERROR, "\\includegraphics, \\chapterlogo, \\fullbleedframe or sideimageframe pointing at a file that does not exist (the extension may be omitted)."),
     ("code-file", ERROR, "\\SMCodeFile{path} pointing at a file that does not exist (the path is relative to the project root, extension included)."),
     ("slide-file", ERROR, "A deck's \\slide/\\slidefinal/\\slidestep/\\conditionalslide/\\slideversion/... call whose slides/<id>-current.tex (or -vX-Y-Z.tex) file does not exist."),
+    ("block-content", ERROR, "A topic block may contain only slide calls, blank lines and comments; no sections or nested blocks."),
     ("underscore", WARNING, "_ in running text outside math and outside macro arguments that take names/paths (\"Missing $ inserted\")."),
     ("caret", WARNING, "^ in running text outside math (\"10^6\" typed without $...$) -- \"Missing $ inserted\"."),
     ("percent", WARNING, "A % directly after a digit and followed by more text (\"5% growth\"): the % starts a comment and silently drops the rest of the line."),
     ("overlay", WARNING, "Overlay specification whose closing > is missing, e.g. \\only<2-{...}."),
     ("optional-arg", WARNING, "\\item[ ... whose closing ] is missing on that line."),
     ("heading-text", WARNING, "A content frame that opens with a bare \\textbf{...} line directly above its list: the heading reads as a detached label -- make it the list's first \\item."),
+    ("macro-color", WARNING, "\\colorlet or \\definecolor of a name that is a SlideMage macro holding a color's name (\\SMTitleBoxColor, \\SMBulletColor ...): it defines a color nothing uses and the macro keeps its value. Write \\renewcommand{\\SMTitleBoxColor}{c_secondary_blue}."),
     ("table-edges", WARNING, "\\begin{SMTable}{...} with neither a [gap=...] option nor @{} at the edges of its column spec: the table rules run \\tabcolsep past the text on both sides. Write \\begin{SMTable}[gap=12pt]{lcc}."),
 ]
 _SEVERITY = {code: sev for code, sev, _ in CHECKS}
@@ -125,7 +130,7 @@ _MATH_ENVS = {"equation", "equation*", "align", "align*", "alignat", "alignat*",
 # Macros whose argument is a name/path/key, never typeset text: an _ there is fine.
 _NON_TYPESET_OWNERS = {
     "textcolor", "color", "colorbox", "fcolorbox", "definecolor", "colorlet", "pagecolor",
-    "includegraphics", "input", "include", "InputIfFileExists", "graphicspath",
+    "includegraphics", "input", "include", "slideblock", "InputIfFileExists", "graphicspath",
     *deck_editor.ALL_MACROS, "setSlideID", "setSlideVersion", "chapterlogo",
     "fullbleedframe", "label", "ref", "pageref", "eqref", "hyperlink", "hypertarget",
     "href", "url", "nolinkurl", "begin", "end", "cite", "fullcite", "parencite", "textcite",
@@ -137,6 +142,12 @@ _NON_TYPESET_OWNERS = {
     "deckoutputfolder", "decktags", "SMCodeFile", "note",  # \note can hold typeset text, but see below
 }
 _NON_TYPESET_OWNERS.discard("note")  # typeset text: an unescaped _ there is a real error
+# Macros whose first N brace groups are all names (colours, colour models and specs, modes, roles), not only the first:
+# \colorlet{SMCodeKeywordColor}{c_secondary_blue} has its _ in the second group (v0.16.32). \textcolor and \colorbox
+# stay at one: their second group is typeset text.
+_NAME_ARGUMENTS = {"colorlet": 2, "definecolor": 3, "providecolor": 3, "fcolorbox": 2, "setbeamercolor": 2,
+                   "SMSetColor": 4, "SMSetRole": 3, "SMDeclareMode": 2}
+_NON_TYPESET_OWNERS |= set(_NAME_ARGUMENTS)
 
 # Macros whose first argument is a URL/target, where & and # are legal.
 _URL_OWNERS = {"href", "url", "nolinkurl", "hyperlink", "hypertarget", "hyperref"}
@@ -206,6 +217,8 @@ class _Lexer:
         self.left_count = self.right_count = 0
         self.left_line = 1
         self.pending: Optional[str] = None     # command whose arguments we may be inside
+        # (command, brace depth before its first group, groups still to come) of a _NAME_ARGUMENTS command
+        self.name_args: Optional[tuple[str, int, int]] = None
         self.opt_depth = 0
         self.code_region = False               # \ExplSyntaxOn / \makeatletter
         # [brace depth at command, groups expected, groups closed, start line, opened]
@@ -213,7 +226,10 @@ class _Lexer:
         self.line = 1
 
     def add(self, code: str, line: int, message: str) -> None:
-        self.issues.append(LintIssue(code, message, line))
+        """Record an issue; the same message on the same line once (two _ in one name are one problem)."""
+        issue = LintIssue(code, message, line)
+        if issue not in self.issues:
+            self.issues.append(issue)
 
     def _check_encoding(self, text: str) -> None:
         for number, raw in enumerate(text.split("\n"), 1):
@@ -302,6 +318,7 @@ class _Lexer:
         if name in _DEF_COMMANDS and _DEF_COMMANDS[name] > 0:
             self.def_stack.append([len(self.brace_stack), _DEF_COMMANDS[name], 0, self.line, 0])
         self.pending = name
+        self.name_args = (name, len(self.brace_stack), _NAME_ARGUMENTS[name]) if name in _NAME_ARGUMENTS else None
 
     def _control_symbol(self, i: int) -> int:
         # control symbol: \{ \} \$ \& \% \# \_ \\ \[ \] \( \) \, ...
@@ -343,6 +360,11 @@ class _Lexer:
                 break
         while self.def_stack and self.def_stack[-1][2] >= self.def_stack[-1][1]:
             self.def_stack.pop()
+        # One of a name-only command's groups closed: the next group, if one follows at once, is a name too.
+        if self.name_args is not None and len(self.brace_stack) == self.name_args[1]:
+            name, depth, left = self.name_args
+            self.name_args = (name, depth, left - 1) if left > 1 else None
+            self.pending = name if left > 1 else None
         return i + 1
 
     def _overlay(self, i: int) -> int:
@@ -367,6 +389,8 @@ class _Lexer:
         c = self.masked[i]
         if self.opt_depth == 0:
             self.pending = None if c not in "<*" else self.pending
+            if self.pending is None and self.name_args is not None and len(self.brace_stack) == self.name_args[1]:
+                self.name_args = None              # text after the command, between its groups: it is over
         if c == "$":
             return self._dollar(i)
         # Only these characters need context checks; running text just clears pending.
@@ -570,10 +594,30 @@ def _external(ctx: ProjectContext, text: str) -> list[LintIssue]:
 # Public API
 # --------------------------------------------------------------------------
 
+_COLOUR_DEFINITION_RE = re.compile(r"\\(colorlet|definecolor|providecolor)\s*\{(SM[A-Za-z]+)\}")
+
+
+def _macro_colours(text: str) -> list[LintIssue]:
+    """A colour defined under the name of a macro that holds a colour's name: the macro stays as it was."""
+    from . import theme_fields
+
+    masked = masked_same_length(text)
+    return [LintIssue("macro-color", f"\\{m.group(1)}{{{m.group(2)}}} defines a color nothing uses: \\{m.group(2)} is a "
+                      f"macro, set it with \\renewcommand{{\\{m.group(2)}}}{{...}}", masked.count("\n", 0, m.start()) + 1)
+            for m in _COLOUR_DEFINITION_RE.finditer(masked) if m.group(2) in theme_fields.MACRO_COLOURS]
+
+
 def lint_text(ctx: ProjectContext, text: str, source: str = "buffer", path: Optional[Path] = None) -> list[LintIssue]:
     """All issues in one piece of LaTeX source (the editor buffer, a file...)."""
     found = [i.with_source(source, path) for i in _lex(text)]
     found += [i.with_source(source, path) for i in _external(ctx, text)]
+    found += [i.with_source(source, path) for i in _macro_colours(text)]
+    if path is not None and path.parent == ctx.blocks_dir:
+        masked = deck_language.masked(text)
+        if deck_language.calls_in(masked, []) or re.search(r"\\slideblock\b", masked):
+            found += [LintIssue("block-content", "topic blocks allow only slide calls, blank lines and comments; "
+                                f"found {line.strip()!r}", number, source, path)
+                      for number, line in topic_blocks.stray_lines(text)]
     found.sort(key=lambda x: (x.line, x.code))
     return found
 
@@ -644,12 +688,11 @@ def check_deck_job(ctx: ProjectContext, deck: Deck, version: Optional[str] = Non
         if keep is None or keep(issue.line):
             result.issues.append(issue)
 
-    from . import deck_language
     from .deck_settings import read_settings
     language = (language or read_settings(deck.text).language).upper()
-    resolved_deck, inline_inputs = deck_language.compile_deck(ctx, deck, language)
-    calls = [s.call for s in deck_language.deck_slots(ctx, resolved_deck, language)]
-    for path in inline_inputs:
+    resolution = deck_language.resolve(deck)
+    calls = [s.call for s in deck_language.slots(ctx, resolution.calls, language)]
+    for path in resolution.dependencies:
         if path.parent != ctx.slides_dir:
             check_file(path)
     for call in calls:
@@ -659,35 +702,12 @@ def check_deck_job(ctx: ProjectContext, deck: Deck, version: Optional[str] = Non
             continue
         path = ctx.slides_dir / call.source_filename
         if not path.is_file():
-            line = text.count("\n", 0, call.call_start) + 1
             result.issues.append(LintIssue(
                 "slide-file", f"{path.name} does not exist (called as \\{call.macro}{{{call.id_slug}}})",
-                line, deck.path.name, deck.path))
+                call.source_line, call.source.name, call.source))
             continue
         check_file(path)
 
-    # \input{fragment} decks (test-slides.tex): their slide calls count too
-    if deck.preamble_end is not None and resolved_deck.text == text:
-        body = masked_same_length(text)[deck.preamble_end:]
-        for m in INPUT_RE.finditer(body):
-            name = m.group(1).strip()
-            frag = ctx.decks_dir / (name if name.endswith(".tex") else name + ".tex")
-            if frag.is_file() and frag not in seen:
-                frag_text = read_source(frag) or ""
-                seen.add(frag)
-                result.files_checked += 1
-                result.issues.extend(lint_text(ctx, frag_text, frag.name, frag))
-                for slot in deck_language.slots(ctx, deck_language.calls_in(frag_text, []), language):
-                    call = slot.call
-                    if not call.included_in(version):
-                        continue
-                    path = ctx.slides_dir / call.source_filename
-                    if not path.is_file():
-                        result.issues.append(LintIssue(
-                            "slide-file", f"{path.name} does not exist (called as \\{call.macro}{{{call.id_slug}}})",
-                            frag_text.count("\n", 0, call.call_start) + 1, frag.name, frag))
-                    else:
-                        check_file(path)
     result.seconds += time.perf_counter() - started
     return result
 

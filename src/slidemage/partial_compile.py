@@ -53,7 +53,7 @@ from typing import Callable, Optional
 from . import compile_log, compile_records, compiler, deck_groups, deck_scan, project
 from .compiler import CancelToken, CompileJob
 from .deck_editor import SlideCall
-from .fileio import replace_with_retry, write_json
+from .fileio import replace_with_retry, text_sha256, write_json
 
 LogCallback = Callable[[str], None]
 
@@ -196,12 +196,6 @@ class PartialPlan:
         return [f for f in self.frames if f not in self.requested]
 
 
-def _deck_calls(ctx: project.ProjectContext, job: CompileJob) -> list[SlideCall]:
-    from . import deck_language
-    deck, _ = deck_language.expand_fragments(job.deck)
-    return [s.call for s in deck_language.deck_slots(ctx, deck, deck_language.language_for_job(job))]
-
-
 @dataclass
 class _FullCompile:
     """What the last whole-deck compile of a job left: its record and PDF, and
@@ -234,16 +228,28 @@ def _full_compile(ctx: project.ProjectContext, job: CompileJob) -> _FullCompile:
     if compile_records.sha256(full_pdf) != record.get("pdf_sha256"):
         raise PartialError(f"{full_pdf.name} was changed since it was compiled -- compile "
                            "the whole deck.")
+    from . import deck_language
+    deck, dependencies = deck_language.expand_fragments(job.deck)
+    inputs = {compile_records.norm(e["path"]): e["sha256"] for e in record.get("inputs", [])}
+    # Old fragment contents are not kept, so even a comment change needs a full compile.
+    for name in sorted(inputs.keys() | {compile_records.norm(p) for p in dependencies}):
+        path = Path(name)
+        if path.parent == ctx.blocks_dir and (not path.is_file() or compile_records.sha256(path) != inputs.get(name)):
+            raise PartialError(f"{path.name} changed since the last whole-deck compile -- compile the whole deck.")
     deck_key = compile_records.norm(job.deck.path)
     deck_changed_at: Optional[int] = None
     for entry in record.get("inputs", []):
         if compile_records.norm(entry["path"]) == deck_key:
-            if compile_records.sha256(job.deck.path) != entry["sha256"]:
+            changed = (text_sha256(deck.text) != entry["text_sha256"] if "text_sha256" in entry
+                       else compile_records.sha256(job.deck.path) != entry["sha256"])
+            if changed:
                 deck_changed_at = _first_change(aux, job)
             break
 
     groups = frame_groups(page_infos(full_pdf))
-    calls = [c for c in _deck_calls(ctx, job) if c.included_in(job.version)]
+    calls = [replace(s.call, chapter=s.call.expanded.chapter)
+             for s in deck_language.deck_slots(ctx, job.deck, deck_language.language_for_job(job))
+             if s.call.included_in(job.version)]
     matched: list[tuple[FrameGroup, SlideCall]] = []
     unmatched: list[FrameGroup] = []
     ptr = 0
@@ -266,8 +272,7 @@ def frames_for_slides(ctx: project.ProjectContext, job: CompileJob, slide_ids: l
     wanted = {i.lower() for i in slide_ids}
     full = _full_compile(ctx, job)
     from . import deck_language
-    deck, _ = deck_language.expand_fragments(job.deck)
-    for slot in deck_language.deck_slots(ctx, deck, deck_language.language_for_job(job)):
+    for slot in deck_language.deck_slots(ctx, job.deck, deck_language.language_for_job(job)):
         if any(slot.matches(i) for i in slide_ids):
             wanted.add(slot.call.id.lower())
     return sorted(f for group, call in full.matched if call.id.lower() in wanted for f in group.frames)
@@ -295,7 +300,7 @@ def plan(ctx: project.ProjectContext, job: CompileJob, spec: str | list[int]) ->
     if deck_changed_at is not None:
         # a change after the last kept slide moves no number before it
         # (2026-10-08, direct instruction); anything earlier may.
-        late = [k for k in kept if k.call.line_end > deck_changed_at]
+        late = [k for k in kept if k.call.expanded.line_end > deck_changed_at]
         if deck_changed_at < (job.deck.preamble_end or 0) or late:
             where = ("in its preamble" if deck_changed_at < (job.deck.preamble_end or 0)
                      else f"before or at page {late[0].first_frame}")
@@ -355,7 +360,8 @@ def wrapper_text(plan: PartialPlan) -> str:
     whole-deck compile, without the generated appendix."""
     job = plan.job
     from . import deck_language
-    deck, _ = deck_language.expand_fragments(job.deck)
+    resolution = deck_language.resolve(job.deck)
+    deck, calls = resolution.deck, resolution.calls
     # The appendix itself isn't generated (its pages stay as they are),
     # but the footers' "Slide previews" link to it must be there.
     lines = compiler.override_lines(plan.context, job, appendix_link=job._appendix_applies,
@@ -365,7 +371,7 @@ def wrapper_text(plan: PartialPlan) -> str:
         raise PartialError(f"{deck.name}: no \\begin{{document}}")
     end = compiler.DOCUMENT_END_RE.search(text, deck.preamble_end)
     body_end = end.start() if end else len(text)
-    kept = {k.call.line_start: k for k in plan.kept}
+    kept = {k.call.identity: k for k in plan.kept}
     out: list[str] = [text[:deck.preamble_end]]
     language = deck_language.language_for_job(job)
     if language_lines := deck_language.language_lines(plan.context, language if job.language else None, deck=language):
@@ -374,11 +380,12 @@ def wrapper_text(plan: PartialPlan) -> str:
         out.append("\n" + plan.extra_lines)
     pos = deck.preamble_end
     # Include folded translation calls here so they are removed too.
-    for call in sorted(deck_language.calls_in(text, deck.chapters), key=lambda c: c.line_start):
+    for occurrence in calls:
+        call = occurrence.expanded
         if call.line_start < pos or call.line_start >= body_end:
             continue
         out.append(text[pos:call.line_start])
-        keep = kept.get(call.line_start)
+        keep = kept.get(occurrence.identity)
         if keep is not None:
             out.append(f"\\setcounter{{framenumber}}{{{keep.first_frame - 1}}}"
                        f"\\setcounter{{page}}{{{keep.first_page}}}%\n")

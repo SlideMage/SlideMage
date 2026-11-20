@@ -48,7 +48,7 @@ class FakeWindow:
         self.edits = []
 
     def after_deck_edit(self, path, summary, previous_text=None):
-        text = read(path)
+        text = read(self.state.deck.path)
         self.state.set_deck(replace(self.state.deck, text=text, chapters=parse_chapters(text)))
         self.list.rebuild()
         self.list.deck_edited(path, summary, previous_text)
@@ -321,6 +321,13 @@ def test_the_find_box_filters_by_id_or_title_and_enter_goes_to_the_first_match(m
     slide_list.find.returnPressed.emit()
     assert slide_list.find.text() == "" and window.state.focused_slide == "ddd"
     assert all(not i.isHidden() for i in slide_list.tree.slide_items())
+
+
+def test_the_find_box_has_an_x_and_the_not_reviewed_filter_looks_pressed_while_on(make_list):
+    slide_list, _, _ = make_list(FRONT_AND_SECTIONS)
+    assert slide_list.find.isClearButtonEnabled()
+    assert slide_list.review_filter.isCheckable()
+    assert 'QPushButton[kind="secondary"]:checked' in ThemeManager()._build_qss()
 
 
 def test_a_slide_focused_from_elsewhere_is_shown_though_the_filter_hides_it_or_its_section_is_closed(make_list):
@@ -638,6 +645,7 @@ def test_the_slide_menu_offers_every_way_to_call_a_slide(make_list, monkeypatch,
         "variant:slide", "variant:slidefinal", "variant:omitslide", "variant:conditionalslide",
         "variant:slidestep", "variant:slideversion:1-0-0", "variant:omitslideversion:1-0-0",
         "slide:visible:instructor", "slide:visible:during-course", "slide:visible:after-course",
+        "review:toggle", "review:note",
         "slide:before", "slide:after", "slide:duplicate", "slide:section_before", "move:0",
             "slide:remove"]
     if with_route:
@@ -698,6 +706,7 @@ def test_the_bulk_menu_moves_slides_into_a_section(make_list):
     menu = slide_list._bulk_menu()
     assert keys_of(menu) == [
         "slide:visible:instructor", "slide:visible:during-course", "slide:visible:after-course",
+        "review:toggle", "review:note",
         "move:0", "move:1", "move:2", "move:3", "slide:update_versions", "slide:reviewed", "compile:slides", "slide:clear", "slide:remove"]
     assert _entry(menu, "slide:remove")[2] == "Remove 2 from the deck"
     slide_list._on_menu_chosen("move:2")               # into the empty section
@@ -915,6 +924,36 @@ def test_duplicate_occurrence_focus_is_preserved_for_preview_and_tools(make_list
     slide_list.rebuild()
     assert window.state.focused_occurrence == row.key
     assert slide_list.tree.data_of(slide_list.tree.currentItem()).key == row.key
+
+
+@pytest.mark.parametrize("change", [None, "deck", "view", "language"])
+def test_rebuild_keeps_thumbnail_state_only_for_the_same_deck_view_and_language(make_list, monkeypatch, tmp_path, change):
+    listing, window, path = make_list('\\slide{abc-EN-One}\n\\slide{def-EN-Two}\n')
+    listing._apply_preview_rows([replace(section, rows=[
+        replace(row, thumbnail=tmp_path / f'{row.call.id}.png', thumbnail_verified=index == 0,
+                stale_preview=index != 0, thumbnail_note=f'Image {index}')
+        for index, row in enumerate(section.rows)]) for section in listing._outline])
+    previous = {row.key: row for row in listing.rows()}
+    listing._background_thumbnails = True
+    queued = Mock()
+    monkeypatch.setattr(listing, '_queue_preview_images', queued)  # no background result has returned
+    window.state.drop_outline()                                # a write invalidates the shared outline
+    if change == 'deck':
+        window.state.set_deck(replace(window.state.deck, path=path.with_name('other.tex')))
+    elif change == 'view':
+        window.state.set_view('during-course')
+    elif change == 'language':
+        window.state.set_language('DE')
+    else:
+        listing.rebuild()
+    queued.assert_called_once()
+    for item in listing.tree.slide_items():
+        row = listing.tree.data_of(item)
+        old = previous[row.key]
+        assert row is window.state.current_outline().row(row.call.id, row.key)
+        assert (row.thumbnail, row.thumbnail_verified, row.stale_preview, row.thumbnail_note) == (
+            (old.thumbnail, old.thumbnail_verified, old.stale_preview, old.thumbnail_note)
+            if change is None else (None, False, False, ''))
 
 
 def test_thumbnail_refresh_keeps_tree_selection_and_updates_view(make_list, monkeypatch):
@@ -1157,3 +1196,75 @@ def test_a_click_on_an_item_the_list_rebuilt_meanwhile_is_ignored(make_list):
     slide_list.tree._extends_selection = False
     slide_list.tree._on_clicked(None, 0)          # Qt passes None for an item deleted between press and release
     assert ids(slide_list) == ["aaa"]
+
+
+def test_the_placeholder_replaces_the_list_in_the_same_column_and_back_is_asked_for(make_list):
+    slide_list, window, _path = make_list("\\section{S}\n\\slide{a}\n")
+    slide_list.resize(300, 500)
+    slide_list.show()
+    before = (slide_list.size(), slide_list.find.geometry(), slide_list.stack.geometry())
+    asked = []
+    slide_list.back_requested.connect(lambda: asked.append(True))
+    slide_list.show_placeholder("SlideMage.bib has no slide list.", "Back to course")
+    assert slide_list.stack.currentWidget() is slide_list.placeholder
+    assert slide_list.placeholder_text.text() == "SlideMage.bib has no slide list."
+    assert not slide_list.find.isEnabled() and not slide_list.add_bar.isEnabled()
+    assert (slide_list.size(), slide_list.find.geometry(), slide_list.stack.geometry()) == before   # nothing jumps
+    slide_list.placeholder_back.click()
+    assert asked == [True]
+    slide_list.show_placeholder(None)
+    assert slide_list.stack.currentWidget() is slide_list.tree
+    assert slide_list.find.isEnabled() and slide_list.add_bar.isEnabled()
+
+
+def test_the_placeholder_offers_open_in_each_deck_that_uses_the_slide(make_list):
+    slide_list, window, _path = make_list("\\section{S}\n\\slide{a}\n")
+    first, second = window.state.deck, replace(window.state.deck, name="lecture")
+    asked = []
+    slide_list.open_in_requested.connect(asked.append)
+    slide_list.show_placeholder("abx is not in an open deck.", "Back to course", (first, second), "")
+    labels = [button.text() for button in slide_list.placeholder_deck_buttons]
+    assert labels == ["Open in course", "Open in lecture"]
+    slide_list.placeholder_deck_buttons[1].click()
+    assert asked == [second]
+    slide_list.show_placeholder("abx is not in an open deck.", "", (), "No deck uses this slide yet.")
+    assert slide_list.placeholder_deck_buttons == [] and slide_list.placeholder_note.text() == "No deck uses this slide yet."
+
+
+def test_a_slide_is_marked_for_review_in_its_deck_from_the_menu(make_list, monkeypatch):
+    slide_list, window, path = make_list("\\slide{aaa-EN-One}\n\\omitslide{bbb-EN-Two}\n\\slide{ccc-EN-Three}\n")
+    focus(slide_list, "aaa")
+    assert _entry(slide_list._slide_menu(), "review:toggle")[2] == "Mark for review in this deck"
+    slide_list._on_menu_chosen("review:toggle")
+    assert read(path).splitlines()[2] == "\\SMReview{\\slide{aaa-EN-One}}"
+    row = slide_list.tree.data_of(item_of(slide_list, "aaa"))
+    assert row.review and "review" in meta_text(row, "EN") and window.edits[-1].startswith("Marked aaa-EN-One for review")
+    slide_list.tree.grab()                              # the thumbnail's watermark paints
+    focus(slide_list, "aaa")
+    assert _entry(slide_list._slide_menu(), "review:toggle")[2] == "Clear review mark"
+
+    monkeypatch.setattr(slide_list_module.QInputDialog, "getText", lambda *a, **k: ("ask Anna", True))
+    select(slide_list, "aaa", "bbb")
+    assert _entry(slide_list._bulk_menu(), "review:toggle")[2] == "Mark for review in this deck"   # not all are marked
+    slide_list._on_menu_chosen("review:note")
+    assert read(path).splitlines()[2:4] == ["\\SMReview[ask Anna]{\\slide{aaa-EN-One}}",
+                                            "\\SMReview[ask Anna]{\\omitslide{bbb-EN-Two}}"]
+    assert slide_list.tree.data_of(item_of(slide_list, "bbb")).review_note == "ask Anna"
+
+    select(slide_list, "aaa", "bbb")
+    slide_list._on_menu_chosen("review:toggle")
+    assert "SMReview" not in read(path)
+    monkeypatch.setattr(slide_list_module.QInputDialog, "getText", lambda *a, **k: ("50% sure", True))
+    focus(slide_list, "ccc")
+    slide_list._on_menu_chosen("review:note")
+    assert "plain text" in make_list.errors[-1] and "SMReview" not in read(path)
+
+
+def test_a_deck_opened_from_the_menu_starts_on_its_first_slide_unless_it_has_a_focus(make_list):
+    slide_list, window, _path = make_list("\\slide{aaa-EN-One}\n\\slide{bbb-EN-Two}\n")
+    assert window.state.focused_slide is None                       # a rebuild alone focuses nothing
+    slide_list.focus_first_slide()
+    assert window.state.focused_slide == "aaa"
+    window.state.set_focused_slide("bbb")
+    slide_list.focus_first_slide()                                  # a deck returned to keeps its own focus
+    assert window.state.focused_slide == "bbb"

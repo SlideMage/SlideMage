@@ -1,11 +1,22 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Threads for network calls that outlive the sheet which asked for them.
+"""Threads for network calls and other long work that outlive the sheet which asked for them.
 
 A sheet closed while its request is still out must neither wait for the answer nor destroy a
 running QThread (that crashes the interpreter). `start_detached` keeps a reference until the
 thread has ended, and the application waits for it at quit; the sheet just drops its connections.
 `stop_worker` does the same for a worker that is asked to stop but may take a while to do so.
+
+Rules for a caller of `run_in_background*` with work that can take more than about half a second:
+1. Disable the control that started the work while it runs (one run at a time); never `processEvents()`.
+2. Show a kit `BusyIndicator` (start, show_progress, finish in `done`) when the user can carry on elsewhere;
+   use `BusySheet.run` (it runs the work itself) when the project's files are being rewritten.
+3. Make the work determinate when its steps are counted before it starts: the back-end function takes an
+   `on_progress` callback and the work passes `report` on.
+4. Give `busy_reason` for work that competes with background rendering for the disk (deletes, copies, imports).
+5. Tell the end as before (log line, toast, message box); an error arrives in `done(None, error)`.
+The work must not touch widgets; `report` is worker-safe; `progress` and `done` run on the GUI thread, even if
+the widget that asked is gone (a widget callback must cope with that, or pass `parent`).
 """
 from __future__ import annotations
 
@@ -17,6 +28,8 @@ from typing import Callable, Optional
 
 from PySide6.QtCore import QObject, QThread, Signal, Slot
 from PySide6.QtWidgets import QApplication
+
+from .. import busy
 
 _running: dict[QThread, "_Watch"] = {}
 
@@ -135,8 +148,11 @@ class Handle(QObject):
     done = Signal(object, object)         # result, exception; also a hook for GUI tests
     finished = Signal()                  # cleanup, even after stop() or destruction of the owner
 
-    def __init__(self, work, done, progress, parent, cancel, logger) -> None:
+    def __init__(self, work, done, progress, parent, cancel, logger, busy_reason=None) -> None:
         super().__init__()               # never parent the thread or receiver to a short-lived widget
+        self._busy_reason = busy_reason
+        if busy_reason:
+            busy.acquire(busy_reason)
         self.cancel_event = cancel if cancel is not None else threading.Event()
         self._done, self._progress = done, progress
         self._logger = logger or logging.getLogger(__name__)
@@ -203,19 +219,22 @@ class Handle(QObject):
                 self.done.emit(self._thread.result, self._thread.error)
         finally:
             self._done = self._progress = None
+            if self._busy_reason:
+                busy.release(self._busy_reason)
             self.finished.emit()
             self._thread.deleteLater()
 
 
 def run_in_background(work, done, *, parent: QObject | None = None, cancel: threading.Event | None = None,
-                      logger: logging.Logger | None = None) -> Handle:
+                      logger: logging.Logger | None = None, busy_reason: str | None = None) -> Handle:
     """Run work() off the GUI thread, then done(result, error) there through start_detached.
 
     A work function requiring one argument receives the handle's cancellation Event. A supplied cancel event
     lets existing operations share their cancellation checks. Destroying parent drops callbacks and cancels;
-    a sheet that merely closes should call handle.stop(). Call this helper on the GUI thread.
+    a sheet that merely closes should call handle.stop(). `busy_reason` holds busy.working(reason) until done
+    has run. Call this helper on the GUI thread.
     """
-    handle = Handle(work, done, None, parent, cancel, logger)
+    handle = Handle(work, done, None, parent, cancel, logger, busy_reason)
     try:
         inspect.signature(work).bind()
     except TypeError:
@@ -228,8 +247,8 @@ def run_in_background(work, done, *, parent: QObject | None = None, cancel: thre
 
 def run_in_background_with_progress(work, progress, done, *, parent: QObject | None = None,
                                     cancel: threading.Event | None = None,
-                                    logger: logging.Logger | None = None) -> Handle:
+                                    logger: logging.Logger | None = None, busy_reason: str | None = None) -> Handle:
     """Run work(report), queueing progress(value) on the GUI thread before done(result, error)."""
-    handle = Handle(work, done, progress, parent, cancel, logger)
+    handle = Handle(work, done, progress, parent, cancel, logger, busy_reason)
     start_detached(handle._thread, handle._finish)
     return handle

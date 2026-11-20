@@ -36,7 +36,7 @@ LOGO_SIZE = 32
 # wide enough in the full bar for names like "t-Uni-Masterdeck-Publishing" (1920 x 1080 shows the full bar;
 # at 125 % scaling, 1536 px, the narrow one), and for "slidemage-manual" down to the tight bar; the tiny one
 # (1024 px) keeps the room for the other controls.
-DECK_MAX_WIDTHS = {"full": 280, "narrow": 220, "tight": 200, "tiny": 170}
+DECK_MAX_WIDTHS = {"full": 280, "narrow": 220, "tight": 200, "tiny": 150}
 DECK_MAX_WIDTH = max(DECK_MAX_WIDTHS.values())
 # The narrowest bar each density is for, when its content fits: below 1400 px the labels shorten, and tighter
 # below 1100 px. (Until v8.61.0 the AI switch was in the bar too, which then needed 1500 and 1320 px.)
@@ -47,12 +47,14 @@ SHORT_VIEWS = {"instructor": "Instr.", "during-course": "During", "after-course"
 MODE_LABELS = {mode: mode.capitalize() for mode in MODES}
 SHORT_MODES = {"preview": "Prev.", "split": "Split", "source": "Src.", "details": "Info"}
 SOURCE_ONLY_TIP = ("This tab shows a file that is no slide, so it has only the Source view. "
-                   "Switch to the slide tab for Preview, Split and Details.")
+                   "Click here to go back to the slide tab in this view.")
 
 
 class TopBar(QWidget):
     command = Signal(str)
     mode_clicked = Signal()   # the user clicked Preview / Split / Source / Details (whatever it changed)
+    # the user clicked Preview / Split / Details on a tab that has the Source view alone: the way back to the slide tab
+    leave_source_only = Signal(str)
 
     def __init__(self, window, parent: QWidget | None = None) -> None:
         """`window` is the command context: its `state`, `commands` and `compiling`."""
@@ -121,7 +123,8 @@ class TopBar(QWidget):
         add(self._save)
 
         self._modes = SegmentedControl([(mode, mode.capitalize()) for mode in MODES], current=state.mode, roving=True)
-        self._modes.changed.connect(state.set_mode)
+        self._source_only = False
+        self._modes.changed.connect(self._pick_mode)
         self._modes.changed.connect(lambda _mode: self.mode_clicked.emit())
         add(self._modes)
 
@@ -132,6 +135,10 @@ class TopBar(QWidget):
         self._images.clicked.connect(lambda: self.command.emit("images"))
         self._images.hide()
         add(self._images)
+        self._library = IconButton("collections_bookmark", "Library")
+        self._library.setCheckable(True)
+        self._library.clicked.connect(lambda: self.command.emit("library"))
+        add(self._library)
         self._right_column = IconButton("last_page")
         self._right_column.setCheckable(True)
         self._right_column.clicked.connect(lambda: self.command.emit("column:right"))
@@ -179,7 +186,7 @@ class TopBar(QWidget):
         policy, whatever the density."""
         stops = [self._left_column, self._deck_button,
                  *self._views.buttons(), *self._languages.buttons(), *self._modes.buttons(), *self._compile.buttons(),
-                 self._images, self._right_column]
+                 self._images, self._library, self._right_column]
         for before, after in zip(stops, stops[1:]):
             QWidget.setTabOrder(before, after)
 
@@ -204,7 +211,7 @@ class TopBar(QWidget):
         tight = density in ("tight", "tiny")
         tiny = density == "tiny"
         # The full toolbar keeps a broader edge inset than its compact density modes.
-        margin = SPACE.md if tiny else SPACE.xl if tight else 2 * SPACE.xl
+        margin = SPACE.xs if tiny else SPACE.xl if tight else 2 * SPACE.xl
         self._row_layout.setContentsMargins(margin, 0, margin, 0)
         self._row_layout.setSpacing(SPACE.xs if tiny else SPACE.md if tight else SPACE.xl)
         self._view_as.setVisible(full)
@@ -247,16 +254,31 @@ class TopBar(QWidget):
     def set_dark(self, dark: bool) -> None:
         self._logo.setPixmap(QIcon(str(DARK_LOGO_PATH if dark else LOGO_PATH)).pixmap(LOGO_SIZE, LOGO_SIZE))
 
+    def _pick_mode(self, mode: str) -> None:
+        """A click on a mode. On a tab with the Source view alone, Preview, Split and Details are the way back to the
+        slide tab (the window shows it, then sets the mode); elsewhere it is the mode."""
+        if self._source_only and mode != "source":
+            self.leave_source_only.emit(mode)
+        else:
+            self._state.set_mode(mode)
+
     def set_source_only(self, source_only: bool) -> None:
-        """The tab shown has a file that is no slide (a deck's source, SlideMage.bib): it has the Source view alone,
-        so Preview, Split and Details are greyed out and say why instead of closing the file."""
+        """The tab shown has a file that is no slide (a deck's source, SlideMage.bib): it has the Source view alone.
+        Preview, Split and Details look unavailable and say why, but stay clickable: a click returns to the slide tab
+        in that view (a segment that did nothing left no visible way back)."""
+        self._source_only = source_only
         for mode in MODES:
             if mode != "source":
-                self._modes.set_unavailable(mode, SOURCE_ONLY_TIP if source_only else None)
+                self._modes.set_unavailable(mode, SOURCE_ONLY_TIP if source_only else None, clickable=True)
 
     def set_images_open(self, is_open: bool) -> None:
         self._images.setVisible(is_open)
         self._update_density()
+
+    def set_library_open(self, is_open: bool) -> None:
+        self._library.setChecked(is_open)
+        self._library.set_active(is_open)
+        self._library.setToolTip("Close library" if is_open else "Library")
 
     # -- reacting to the state ---------------------------------------------
 
@@ -300,12 +322,12 @@ class TopBar(QWidget):
 
     def _update_compile_label(self) -> None:
         deck = self._state.deck
-        label = "Compile PDF"
+        label = "Compile deck PDF"
         if deck is not None and deck.supports_version:
             label += " · " + VIEW_LABELS[self._state.view].replace(" course", "")
         self._compile.set_text(label if self._density == "full" else "Compile")
         versioned = deck is not None and deck.supports_version
-        self._compile.setToolTip("Compile PDF" + (" · " + VIEW_LABELS[self._state.view] if versioned else ""))
+        self._compile.setToolTip("Compile deck PDF" + (" · " + VIEW_LABELS[self._state.view] if versioned else ""))
         self._compile.setEnabled(deck is not None)
 
     def refresh_compile_menu(self) -> None:
@@ -329,5 +351,8 @@ class TopBar(QWidget):
     def _on_deck_picked(self, key: str) -> None:
         for deck in self._decks:
             if deck_key(deck) == key:
-                self._state.set_deck(deck)
+                if self._state.set_deck(deck):
+                    slide_list = getattr(self._window, "slide_list", None)
+                    if slide_list is not None:
+                        slide_list.focus_first_slide()
                 return

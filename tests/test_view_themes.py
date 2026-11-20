@@ -11,7 +11,7 @@ from slidemage.project import ProjectContext
 LINE = "% SlideMage view themes: instructor=uni-graz:dark, after-course=mci\n"
 PREAMBLE = "\\documentclass{beamer}\n\\input{SlideMage_template_slidemage}\n" + LINE
 DOC = PREAMBLE + "\\begin{document}\n\\slide{aaa-EN-One}\n\\end{document}\n"
-DARK = "\\newcommand{\\SMDarkMode}{}"
+DARK = "\\newcommand{\\SMModeOverride}{dark}"
 
 
 def test_the_line_is_read_and_written():
@@ -29,12 +29,12 @@ def test_malformed_entries_and_unknown_views_are_ignored():
     assert view_themes.parse(text) == {}
 
 
-def test_a_view_sees_its_own_template_and_dark_switch():
+def test_a_view_sees_its_own_template_and_mode():
     preamble = PREAMBLE
     instructor = view_themes.preamble_for_view(preamble, "instructor")
     assert "\\input{SlideMage_template_uni-graz}" in instructor and DARK in instructor
     assert view_themes.template_for(preamble, "after-course") == "mci"
-    assert "SMDarkMode" not in view_themes.preamble_for_view(preamble, "after-course")
+    assert "SMModeOverride" not in view_themes.preamble_for_view(preamble, "after-course")
     assert view_themes.preamble_for_view(preamble, "during-course") == preamble      # no entry: the deck's own
     assert view_themes.template_for(preamble, "during-course") == "slidemage"
     assert view_themes.templates_used(preamble) == {"slidemage", "uni-graz", "mci"}
@@ -44,8 +44,8 @@ def test_a_view_sees_its_own_template_and_dark_switch():
 def test_an_entry_without_mode_turns_a_dark_default_off():
     text = (DARK + "\n\\input{SlideMage_template_g}\n% SlideMage view themes: after-course=g\n"
             "\\begin{document}\n")
-    assert "SMDarkMode" not in view_themes.preamble_for_view(text, "after-course")
-    assert "SMDarkMode" in view_themes.preamble_for_view(text, "instructor")
+    assert "SMModeOverride" not in view_themes.preamble_for_view(text, "after-course")
+    assert "SMModeOverride" in view_themes.preamble_for_view(text, "instructor")
 
 
 def test_a_deck_without_the_line_or_a_template_input_is_untouched():
@@ -70,9 +70,9 @@ def test_the_wrapper_inlines_the_view_preamble_only_for_a_mapped_view(tmp_path):
     mapped = compiler.wrapper_text(ctx, job)
     assert "\\input{SlideMage_template_uni-graz}" in mapped and DARK in mapped
     unmapped = compiler.wrapper_text(ctx, replace(job, version="during-course"))
-    assert "\\input{SlideMage_template_slidemage}" in unmapped and "SMDarkMode" not in unmapped
+    assert "\\input{SlideMage_template_slidemage}" in unmapped and "SMModeOverride" not in unmapped
     after = compiler.wrapper_text(ctx, replace(job, version="after-course"))
-    assert "SlideMage_template_mci" in after and "SMDarkMode" not in after
+    assert "SlideMage_template_mci" in after and "SMModeOverride" not in after
 
 
 def test_units_of_views_with_different_themes_differ(tmp_path):

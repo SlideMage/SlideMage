@@ -148,10 +148,10 @@ def test_the_font_report_names_a_text_font_the_profile_does_not_load(tmp_path):
 
 @pytest.mark.skipif(not os.environ.get("SLIDEMAGE_TEX_TESTS") or not shutil.which("latexmk"),
                     reason="compiles the calibration deck: SLIDEMAGE_TEX_TESTS=1 and latexmk")
-def test_the_greyscale_template_deck_is_clean_and_uses_its_profiles_fonts_only(tmp_path):
-    out = tmp_path / "greyscale.pdf"
+def test_the_grayscale_template_deck_is_clean_and_uses_its_profiles_fonts_only(tmp_path):
+    out = tmp_path / "grayscale.pdf"
     proc = subprocess.run([sys.executable, str(ROOT / "tools" / "calibrate_font_profile.py"), "--profile", "lmroman",
-                           "--template", "greyscale", "--keep-pdf", str(out)], capture_output=True, text=True,
+                           "--template", "grayscale", "--keep-pdf", str(out)], capture_output=True, text=True,
                           errors="replace")
     assert proc.returncode == 0 and "FAIL" not in proc.stdout, proc.stdout + proc.stderr
     assert "counted): none" in proc.stdout

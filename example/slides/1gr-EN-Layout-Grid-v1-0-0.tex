@@ -11,8 +11,8 @@
 			% the page
 			\draw[c_primary_gray, line width=0.4pt] (0,0) rectangle (\paperwidth,-\paperheight);
 			% title bar and footer
-			\fill[c_primary_dark] (0,0) rectangle (\paperwidth-\SMLogoWidth-2\SMFrametitleRightPadding,-\SMTitleBarBottomAlign);
-			\fill[c_primary_dark] (0,-\paperheight) rectangle (\paperwidth,-\paperheight+\SMFooterBoxHeight);
+			\fill[c_text] (0,0) rectangle (\paperwidth-\SMLogoWidth-2\SMFrametitleRightPadding,-\SMTitleBarBottomAlign);
+			\fill[c_text] (0,-\paperheight) rectangle (\paperwidth,-\paperheight+\SMFooterBoxHeight);
 			% the margins
 			\draw[c_primary_highlight, densely dashed, line width=0.8pt]
 				(0,-\SMContentTopAlign) -- (\paperwidth,-\SMContentTopAlign)
@@ -24,7 +24,7 @@
 			\node[anchor=west, text=c_primary_highlight] at (60pt,-\paperheight+\SMContentBottomAlign+10pt) {Bottom Margin: \textbackslash SMContentBottomAlign};
 			\node[anchor=west, text=white] at (40pt,-0.55\SMTitleBarBottomAlign) {title bar: \textbackslash SMTitleBarBottomAlign};
 			% below the footer box: at this scale the box is thinner than the label
-			\node[anchor=north west, text=c_primary_dark] at (40pt,-\paperheight) {footer box: \textbackslash SMFooterBoxHeight};
+			\node[anchor=north west, text=c_text] at (40pt,-\paperheight) {footer box: \textbackslash SMFooterBoxHeight};
 			\node[anchor=west, rotate=90, text=c_primary_highlight] at (\SMFrametitleLeftPadding+10pt,-200pt) {Left Margin};
 			\node[anchor=west, rotate=90, text=c_primary_highlight] at (\paperwidth-\SMFrametitleRightPadding-10pt,-200pt) {Right Margin};
 			% a first line on the Top Margin

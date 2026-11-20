@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LATEX = ROOT / "latex"
 BS = chr(92)
 STRESS = ROOT / "tests" / "fixtures" / "template_stress"
-SHIPPED_TEMPLATES = [LATEX / "SlideMage_template_slidemage.tex", LATEX / "SlideMage_template_greyscale.tex"]
+SHIPPED_TEMPLATES = [LATEX / "SlideMage_template_slidemage.tex", LATEX / "SlideMage_template_grayscale.tex"]
 # Names setup defines for its own bookkeeping, not for a template to set.
 # The names that were hooks and are gone (v10.11.0): the setup layer holds an error-raising macro under each. The first three
 # moved nothing; the other two were renamed.
@@ -24,7 +24,8 @@ RENAMED = {"SMProgressStripHeight": "SMProgressStripRoom", "SMSideFootnoteTopSep
 # v0.16.0: the colour-mode layer (setup layer, section "Colour modes and role colours"): its internals, and the data lines a
 # theme writes (declared, not hooks a template reads).
 MODE_LAYER = {"SM@hexcolor", "SM@letcolor", "SM@activemode", "SM@basemode", "SM@ifmode", "SM@palettelines", "SM@preset@colorblind", "SM@preset@dark",
-              "SM@preset@grey", "SM@rolecolour", "SM@rolehook", "SM@togray", "SM@applymode",
+              "SM@preset@gray", "SM@rolecolour", "SM@rolehook", "SM@togray", "SM@applymode",
+              "SM@processline", "SM@inlinecode",   # set by the roles process_line and inline_code, not by a template
               "SMDeclareMode", "SMSetColor", "SMSetRole"}
 NOT_HOOKS = ({"SMSetupLoaded", "SM@derivedname", "SM@guardname", "SM@removedname", "SM@renamedname"} | REMOVED | set(RENAMED)
              | MODE_LAYER)
@@ -120,7 +121,7 @@ def test_every_catalog_hook_is_used_by_the_base_or_the_theme():
 def test_templates_set_catalog_names_only_and_define_none_of_their_own(template):
     before = settings_before_base(template)
     # a template defines no length, macro or switch of its own before the base: it sets what the catalog has
-    allowed_new = {"SMLayoutProfile", "SMDarkMode"}
+    allowed_new = {"SMLayoutProfile", "SMModeOverride"}
     new = defined(before, ("newlength", "newcommand", "newif", "newcounter", "newbox", "providecommand"))
     assert new <= allowed_new, f"{template.name} defines names of its own: {sorted(new - allowed_new)}"
     # a color of the template's own (a palette extra, say c_true_black) is not a setting; the catalog names are
@@ -276,7 +277,7 @@ def test_the_removed_and_renamed_names_are_errors_in_the_setup_layer_and_no_temp
 def test_the_body_size_table_matches_beamers_size_files():
     """\\SMBodyFontSize (v10.19.0): at 10pt, 11pt and 12pt the base's sizes and baseline skips are those of
     size10/11/12.clo (what beamer loads for its class option), except \\tiny at 10pt, which stays the 11pt option's
-    (v10.18.1's greyscale stopgap left it there). The other values follow the rule the setup file documents."""
+    (v10.18.1's grayscale stopgap left it there). The other values follow the rule the setup file documents."""
     base = read(LATEX / "SlideMage_base.tex")
     blocks = re.findall(
         r"\\ifdim\\SMBodyFontSize=(\d+)pt\s*((?:\\def\\SM@b[sl]@[nsfct]\{[\d.]+\}%?\s*)+)", base)

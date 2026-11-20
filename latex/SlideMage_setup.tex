@@ -14,8 +14,8 @@
 %   ... additions only: dark-mode beamer colors, citation format, project macros
 %
 % Rules for a template:
-%   1. Before this file: only \SMLayoutProfile (below; fira unless set) and \SMDarkMode
-%      (written into the deck by SlideMage). Both decide what this file computes.
+%   1. Before this file: only \SMLayoutProfile (below; fira unless set) and \SMModeOverride
+%      (the colour mode, written into the deck by SlideMage). Both decide what this file computes.
 %   2. Between this file and SlideMage_base: \setlength, \renewcommand,
 %      \definecolor and \colorlet on the names in this catalog. Every name
 %      exists already, so a misspelt \renewcommand is an error instead of a
@@ -45,7 +45,7 @@
 %             \newcommand{\SMLayoutProfile}{lmsans}   % before \input{SlideMage_setup}
 %   lmroman SlideMage_layout_lmroman.tex (v10.18.0): Latin Modern Roman, LaTeX's own serif
 %           text face, and Latin Modern Mono; written by tools/calibrate_font_profile.py --new.
-%           The greyscale template (SlideMage_template_greyscale.tex) uses it.
+%           The grayscale template (SlideMage_template_grayscale.tex) uses it.
 % A project may keep its own profile next to its templates: the TeX search path finds
 % SlideMage_layout_<name>.tex there. A template does not change a profile's numbers; it
 % picks a profile or ships its own.
@@ -176,8 +176,9 @@
 \IfFileExists{SlideMage_layout_\SMLayoutProfile.tex}
 	{\input{SlideMage_layout_\SMLayoutProfile}}
 	{\PackageError{SlideMage}{Layout profile '\SMLayoutProfile' not found}{%
-		No file SlideMage_layout_\SMLayoutProfile.tex on the TeX search path. SlideMage ships the profile
-		'fira' (the default); a profile of your own goes next to the template that names it.}}
+		File `SlideMage_layout_\SMLayoutProfile.tex' not found on the TeX search path.\MessageBreak
+		SlideMage ships the profile 'fira' (the default);\MessageBreak
+		a profile of your own goes next to the template that names it.}}
 
 % The beamer theme (beamerthemeSlideMage.sty, a modified fork of Romain Noel's
 % Gotham theme, LPPL 1.3c). Sets font sizes and the look; the font files come from
@@ -269,20 +270,21 @@
 % colours the template sets directly), and may add data lines for the others:
 %
 %   \SMDeclareMode{light}{}                 % the base mode: first declared, no derivation
-%   \SMDeclareMode{dark}{dark}              % {id}{derive}: derive = dark | grey | colorblind | empty
-%   \SMDeclareMode{grey}{grey}
+%   \SMDeclareMode{dark}{dark}              % {id}{derive}: derive = dark | gray | colorblind | empty
+%   \SMDeclareMode{gray}{gray}
 %   \SMSetRole{text}{dark}{c_true_white}    % {role}{mode}{colour}
-%   \SMSetColor{c_secondary_blue}{grey}{HTML}{8f8f8f}   % {palette colour}{mode}{model}{spec}
+%   \SMSetColor{c_secondary_blue}{gray}{HTML}{8f8f8f}   % {palette colour}{mode}{model}{spec}
 %
 % A line of another mode than the active one does nothing, so the lines need no \if. The
 % active mode is, in this order: \SMModeOverride, when the deck's wrapper defines it before this
-% file (\newcommand{\SMModeOverride}{dark}; SlideMage writes it for a view's `theme:mode`);
-% `dark` when the deck defines \SMDarkMode; else the base mode. A mode that is not the base
+% file (\newcommand{\SMModeOverride}{dark}; SlideMage writes it for the deck's mode and a view's
+% `theme:mode`); else the base mode. The older switch \SMDarkMode was removed in v0.16.0 and
+% stops the compile with a message. A mode that is not the base
 % starts from its derive preset, then the palette lines, then the role lines, so an explicit
 % line always wins:
 %   dark        canvas and card from c_primary_dark mixed with white (17 % and 23 %), text, line and
-%               link white, text on an accent fill black
-%   grey        every palette colour converted to its grey
+%               link white, text on an accent fill and on a button black, quote attribution muted
+%   gray        every palette colour converted to its grey
 %   colorblind  the accents (c_secondary_*) in the Okabe-Ito set, their tertiary 50 % towards white
 % Nothing applies until SlideMage_base calls \SMApplyColorRoles, after the template, so a role
 % sees the template's palette. In the base mode every role resolves to what it was before
@@ -313,8 +315,13 @@
 %   image_border             the border SMImageBorder draws          c_primary_highlight
 %   marker                   SMHighlight, SMDottedHighlight and the warning sign   c_custom_red
 %   citation                 the colour of a citation mark          black
-%   strip_fill               the \progressstrip's fill (its text is c_text_on_accent)   c_tertiary_yellow
+%   strip_fill               the \progressstrip's fill   c_tertiary_yellow
+%   strip_text               the \progressstrip's text   c_text_on_accent
 %   code_keyword, code_comment, code_panel, code_text   the \SMCodeFile colours (the optional colours above)
+%   button_text              the text of \beamergotobutton and its relatives   white
+% Roles that are off unless a mode sets them (v0.16.0): process_line (a border around SMProcess
+% boxes; none in the base) and inline_code (the colour of \SMCode and \SMCmd in body text; text
+% in another colour, on a title bar or a block title, keeps its colour).
 % Roles that set a hook of the catalog above (no colour name for slides): title_fill
 % (\SMTitleBoxColor), title_text, footer_fill (\SMFooterBoxColorDefault), footer_text, bullet,
 % alert, progress, block_title_text and, per kind, alerted_block_title_text, example_block_title_text,
@@ -332,8 +339,13 @@
 	\ifx\SM@basemode\@empty\gdef\SM@basemode{#1}\fi
 	\expandafter\gdef\csname SM@modederive@#1\endcsname{#2}}
 \newcommand{\SM@activemode}{%
-	\ifdefined\SMModeOverride\SMModeOverride
-	\else\ifdefined\SMDarkMode dark\else\SM@basemode\fi\fi}
+	\ifdefined\SMModeOverride\SMModeOverride\else\SM@basemode\fi}
+\ifdefined\SMDarkMode
+	\PackageError{SlideMage}{\string\SMDarkMode\space was removed in SlideMage v0.16.0}{%
+		Write \string\newcommand{\string\SMModeOverride}{dark} before the template instead
+		(Update project in SlideMage does it), and use a version of the theme made for v0.16.0
+		or later: it declares its modes with \string\SMDeclareMode.}
+\fi
 % \SM@ifmode{<id>}{<true>}{<false>}: whether <id> is the active mode.
 \newcommand{\SM@ifmode}[3]{%
 	\edef\SM@tmpa{\SM@activemode}\edef\SM@tmpb{#1}%
@@ -366,6 +378,7 @@
 \colorlet{SMMarkerColor}{c_custom_red}
 \colorlet{SMCitationColor}{black}
 \colorlet{SMStripFill}{c_tertiary_yellow}
+\colorlet{SMStripText}{c_text_on_accent}
 % Resolution, in this order: derived values (a non-base mode's preset), then the palette lines,
 % then the roles (an explicit line, else the derived value, else the base mode's source).
 \newcommand{\SM@togray}[1]{%
@@ -378,8 +391,12 @@
 	\gdef\SM@derived@text{c_true_white}%
 	\expandafter\gdef\csname SM@derived@text_muted\endcsname{c_primary_gray!60!white}%
 	\expandafter\gdef\csname SM@derived@text_on_accent\endcsname{c_true_black}%
-	\gdef\SM@derived@link{c_true_white}}
-\newcommand{\SM@preset@grey}{%
+	\gdef\SM@derived@link{c_true_white}%
+	% v0.16.5: a button is filled with the link colour, white here, so its text is black; the quote
+	% attribution (c_custom_gray in the base, a dark grey) is muted text
+	\expandafter\gdef\csname SM@derived@button_text\endcsname{c_true_black}%
+	\expandafter\gdef\csname SM@derived@quote_attribution\endcsname{c_primary_gray!60!white}}
+\newcommand{\SM@preset@gray}{%
 	\@for\SM@n:={c_primary_dark,c_primary_highlight,c_primary_gray,%
 		c_secondary_violet,c_tertiary_violet,c_secondary_blue,c_tertiary_blue,c_secondary_green,%
 		c_tertiary_green,c_secondary_red,c_tertiary_red,c_secondary_orange,c_tertiary_orange,%
@@ -444,6 +461,7 @@
 	\SM@rolecolour{marker}{SMMarkerColor}{c_custom_red}%
 	\SM@rolecolour{citation}{SMCitationColor}{black}%
 	\SM@rolecolour{strip_fill}{SMStripFill}{c_tertiary_yellow}%
+	\SM@rolecolour{strip_text}{SMStripText}{c_text_on_accent}%
 	\SM@rolecolour{code_keyword}{SMCodeKeywordColor}{SMCodeKeywordColor}%
 	\SM@rolecolour{code_comment}{SMCodeCommentColor}{SMCodeCommentColor}%
 	\SM@rolecolour{code_panel}{SMCodeBackgroundColor}{SMCodeBackgroundColor}%
@@ -461,7 +479,13 @@
 	\SM@rolehook{reference_block_title_text}\SMReferenceBlockTitleTextColor
 	\SM@rolehook{info_block_title_text}\SMInfoBlockTitleTextColor
 	\SM@rolehook{standout_text}\SMStandoutTextColor
-	\SM@rolecolour{standout_fill}{SMStandoutFill}{\SMTitleBoxColor}}
+	\SM@rolecolour{standout_fill}{SMStandoutFill}{\SMTitleBoxColor}%
+	\SM@rolecolour{button_text}{SMButtonText}{white}%
+	\SM@rolehook{process_line}\SM@processline
+	\SM@rolehook{inline_code}\SM@inlinecode}
+% process_line and inline_code: empty (off) unless the active mode sets them.
+\newcommand{\SM@processline}{none}
+\newcommand{\SM@inlinecode}{}
 \makeatother
 
 % ---------------------------------------------------------------------------

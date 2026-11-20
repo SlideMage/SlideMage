@@ -168,7 +168,7 @@ def test_the_slide_lists_edit_runs_the_cleanup_and_one_undo_takes_back_deck_and_
     assert restored == [WORK.text, (slide, "before", "after")]
     # an edit without a cleanup leaves a plain entry
     assert sl.edit("Failed", "Plain", lambda path, text: text + "y")
-    assert getattr(sl._undo[WORK.path][-1], "slide", None) is None
+    assert getattr(sl._undo[-1][1], "slide", None) is None
 
 
 def test_a_slide_with_edits_open_in_the_source_view_keeps_its_flag_until_they_are_written(window, monkeypatch):

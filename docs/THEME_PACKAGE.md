@@ -22,6 +22,7 @@ slidemage-theme-<key>/                    its own repository (or any folder)
                                           (key uni-graz: schemes/scheme_uni_graz/)
   SlideMage_layout_<name>.tex             optional: an own layout profile, when theme.toml's layout names one
   preview.png                             optional: the picture the catalogue shows
+  help.toml                               optional: hover help for the theme's own commands (below)
   LICENSE, README.md, CHANGELOG.md        required
   LICENSES/                               optional: licence texts (REUSE style)
 ```
@@ -57,7 +58,7 @@ Rules (the app and the packing tool apply the same ones; a broken rule is refuse
 - Every field is required and text. `api_version`, `needs` and `network` are refused: they belong to `plugin.toml`,
   and a theme runs no Python.
 - The `id` is the template key, hyphens and all (`uni-graz`), unlike a plugin's package folder.
-- The `id` may not be the key of a template SlideMage ships (today `slidemage` and, since v10.18.0, `greyscale`): a
+- The `id` may not be the key of a template SlideMage ships (today `slidemage` and, since v10.18.0, `grayscale`): a
   theme cannot replace a bundled template.
 - `requires_slidemage` must accept the running SlideMage, or the theme is not installed.
 - The template file `SlideMage_template_<id>.tex`, `README.md`, `CHANGELOG.md` and `LICENSE` must be there, and
@@ -67,6 +68,34 @@ Rules (the app and the packing tool apply the same ones; a broken rule is refuse
   deck, since installed themes are on TEXINPUTS ahead of the framework), and is refused.
 - Optional in the template: a `% SlideMage template name: <label>` line in its first 30 lines names it in the
   dialogs (as for any template).
+
+## help.toml (hover help for the theme's commands)
+
+Since v0.17.12 a theme can describe its own commands, so the Source view's hover help (and Shift+F1) explains them
+like SlideMage's. The file is data only; SlideMage's own entries win a name clash, so a theme cannot change what
+`\cornerfigure` says.
+
+```toml
+[[command]]
+name = "mytitle"                          # letters only, without the backslash
+signature = "\\mytitle[keys]{text}"      # a backslash is written twice in a TOML string
+summary = "The big title of this theme."
+example = "\\mytitle[color=red]{Hello}"   # optional
+
+[[command.keys]]                          # optional, one table per key of the [...] options
+name = "color"
+values = "red | blue"                     # optional
+text = "the title colour"
+
+[[environment]]                           # the same fields, for the environment mybox
+name = "mybox"
+signature = "\\begin{mybox} ... \\end{mybox}"
+summary = "A box."
+```
+
+At most 300 entries; the texts are plain text (no markup). The editor skips an entry that does not pass; the packing
+tools (`tools/make_theme_package.py`, the theme export) refuse the file, saying which entry. The help of the deck's
+render template (Settings → General) is the one shown.
 
 ## The release asset
 

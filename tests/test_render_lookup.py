@@ -37,7 +37,7 @@ def publish(request, rendered_at=1):
     png = BytesIO()
     Image.new("RGB", (1920, 1080), "red").save(png, format="PNG")
     key = resolver.fast_key(unit)
-    resolver.store.put(key, "background", pdf, [png.getvalue()] * 2, meta)
+    resolver.store.put(key, pdf, [png.getvalue()] * 2, meta)
     return key
 
 
@@ -52,7 +52,7 @@ def test_a_slide_moves_through_current_previous_reference_and_missing(lookup_req
     assert render_lookup.select(dict(resolver=resolver, unit=request["unit"])) == ("current", record)
     pages = store.pages(record)
     assert len(pages) == 2 and pages[-1] == store.page(record, record["pages"])
-    assert store.thumbnail_path(record).name == "thumb.png"
+    assert store.thumbnail_path(record).name == "thumb.webp"
 
     unit.source_path.write_text("edited slide", encoding="utf-8")
     request["spec"] = replace(request["spec"], revision=preview_requests.SourceRevision.capture(unit.source_path))

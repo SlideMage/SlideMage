@@ -114,6 +114,32 @@ def test_input_watcher_tracks_new_dialogs_but_not_private_qobjects(qapp, monkeyp
         dialog.deleteLater()
 
 
+def test_input_watcher_reaches_children_and_top_levels_added_later(qapp, monkeypatch):
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QLineEdit, QWidget
+
+    monkeypatch.setattr(background_previews, "USE_WIDGET_INPUT_WATCHER", True)
+    monkeypatch.setattr(QApplication, "allWidgets", lambda: pytest.fail("the watcher must not walk allWidgets"))
+    inputs = []
+    parent = QWidget()
+    watcher = background_previews._InputWatcher(lambda: inputs.append(True), parent)
+    other = QWidget()
+    try:
+        child = QLineEdit(parent)       # added after the watcher started: ChildAdded
+        QTest.keyClick(child, Qt.Key.Key_A)
+        assert inputs
+
+        inputs.clear()
+        edit = QLineEdit(other)         # a top-level with no watched parent: found by the next timer tick
+        other.show()
+        QTest.qWait(300)
+        QTest.keyClick(edit, Qt.Key.Key_B)
+        assert inputs
+    finally:
+        watcher.stop()
+        other.close()
+
+
 def test_application_input_watcher_needs_no_widget_polling_and_is_removed_on_stop(qapp, monkeypatch):
     from PySide6.QtCore import QEvent, QObject
     from PySide6.QtGui import QKeyEvent
@@ -615,8 +641,8 @@ def test_interrupting_the_sweep_keeps_the_build_the_pane_waits_for(window, monke
     started, release = threading.Event(), threading.Event()
     r = window.background.renderer
     service = window.centre.preview._renders
-    assert r.renders is service and service._renderer(window.project) is r
-    assert service._renderer(window.project).store is window.background.store
+    assert r.renders is service and service.renderer(window.project) is r
+    assert service.renderer(window.project).store is window.background.store
     tex = FakeTeX(window.project)
 
     def render(unit, cancel):
@@ -625,7 +651,7 @@ def test_interrupting_the_sweep_keeps_the_build_the_pane_waits_for(window, monke
         assert not cancel.is_set()
         return tex(unit, cancel)
 
-    monkeypatch.setattr(r, '_render', render)
+    monkeypatch.setattr(r, 'render_override', render)
     deck = next(deck for deck in window.decks if deck.name == 'slidemage-manual')
     unit = background_renders.deck_units(window.project, deck, 'instructor', 'EN')[0]
     target = preview_target.PreviewTarget(window.project, unit.macro, unit.id_slug, unit.version, unit.conditions,
@@ -695,7 +721,7 @@ def test_the_pane_shows_the_choosers_current_and_previous_page(window, monkeypat
         pdf.with_suffix('.inputs.json').write_text(json.dumps([str(unit.source_path), str(dependency)]))
         return pdf
 
-    monkeypatch.setattr(renderer, '_render', render)
+    monkeypatch.setattr(renderer, 'render_override', render)
     monkeypatch.setattr(preview_target, 'render_text', lambda *a, **kw: render(unit, kw['cancel']))
     select, calls = render_lookup.select, []
 

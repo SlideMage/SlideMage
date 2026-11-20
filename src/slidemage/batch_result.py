@@ -61,7 +61,7 @@ class BatchResult:
         parts = [f"{self.count(DONE)} {'drafted' if self.kind == DRAFT else 'translated'}" if self.count(DONE) else "",
                  f"{self.count(KEPT)} kept as you edited it" if self.count(KEPT) else "",
                  f"{self.count(FAILED)} failed" if self.count(FAILED) else "",
-                 f"{self.count(CANCELLED)} cancelled" if self.count(CANCELLED) else ""]
+                 f"{self.count(CANCELLED)} canceled" if self.count(CANCELLED) else ""]
         return (" · ".join(part for part in parts if part) + ". Each finished item was saved as it completed; "
                 "nothing is rolled back." + (" Retry runs only the failed ones, as a new run on the current route."
                                              if self.failed else ""))

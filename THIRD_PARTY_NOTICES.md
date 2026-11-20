@@ -12,6 +12,7 @@ built with.
 | opentelemetry-api | 1.45.1 | Apache-2.0 | https://github.com/open-telemetry/opentelemetry-python/tree/main/opentelemetry-api |
 | pillow | 13.0.0 | MIT-CMU (HPND) | https://pillow.readthedocs.io/en/stable/releasenotes/index.html |
 | pymupdf | 1.28.2 | AGPL-3.0-or-later (MuPDF, Artifex Software) | https://pymupdf.readthedocs.io/ |
+| pyspellchecker | 0.9.1 | MIT | https://github.com/barrust/pyspellchecker |
 | PySide6 | 6.12.0 | LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only (Qt for Python, The Qt Company) | https://pyside.org |
 | PySide6_Addons | 6.12.0 | LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only (Qt for Python, The Qt Company) | https://pyside.org |
 | PySide6_Essentials | 6.12.0 | LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only (Qt for Python, The Qt Company) | https://pyside.org |
@@ -21,6 +22,7 @@ built with.
 | pywinpty | 3.1.0 | MIT License | https://github.com/andfoy/pywinpty/blob/main/CHANGELOG.md |
 | segno | 1.6.6 | BSD-3-Clause | https://github.com/heuer/segno/ |
 | shiboken6 | 6.12.0 | LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only (Qt for Python, The Qt Company) | https://pyside.org |
+| spylls | 0.1.7 | MPL-2.0 | https://github.com/zverok/spylls |
 | truststore | 0.10.5 | MIT | https://truststore.readthedocs.io |
 | typing_extensions | 4.16.0 | PSF-2.0 | https://github.com/python/typing_extensions/issues |
 | xlsxwriter | 3.2.9 | BSD-2-Clause | https://github.com/jmcnamara/XlsxWriter |

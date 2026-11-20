@@ -68,9 +68,9 @@ def test_the_projects_templates_are_its_personal_themes(project_dir):
 
 def test_a_personal_theme_says_what_it_wins_over(project_dir, installed_sample):
     template(project_dir, "sample-theme")
-    template(project_dir, "greyscale")
+    template(project_dir, "grayscale")
     replaced = {t.key: t.replaces for t in slide_templates.personal_themes(project_dir)}
-    assert replaced == {"greyscale": "the shipped template", "sample-theme": "an installed theme"}
+    assert replaced == {"grayscale": "the shipped template", "sample-theme": "an installed theme"}
 
 
 def test_no_personal_theme_without_a_template_file(project_dir):

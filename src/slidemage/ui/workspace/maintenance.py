@@ -28,23 +28,27 @@ from functools import partial
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtWidgets import QApplication, QMessageBox, QProgressDialog
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from ... import alt_images, app_settings, bundled_copies, compat, housekeeping, open_path, project, project_access
-from ... import slide_preview, slide_rename, updater
-from ... import citation_sources, citations, diagnostics, slide_templates, theme_sources, themes, view_themes
+from ... import slide_preview, slide_rename, timing, updater
+from ... import citation_sources, diagnostics, slide_templates, theme_sources, view_themes
 from ... import version as version_mod
+from ...progress import Progress
 from ...plugins import catalogue as plugin_catalogue
 from ...plugins import session as plugin_session
 from ...plugins import updates as plugin_updates
 from ...plugins import upgrade as plugin_upgrade
+from ..background import run_in_background
 from ..dialogs.about import AboutSheet
 from ..dialogs.housekeeping import ARCHIVE_PAGE, LIST_PAGE, HousekeepingJobs, HousekeepingSheet
 from ..dialogs.open_project import NewerProjectSheet
 from ..dialogs.plugin_offer import PluginOfferSheet
 from ..dialogs.project_compat import DONT_ASK, MARK_READ, UPDATE, CompatSheet, ProjectUpdatedSheet
-from ..dialogs.settings_plugins import ask_citation_update, ask_theme_update, download_release, install_downloaded
+from ..dialogs.settings_plugins import (ask_citation_update, ask_plugin_update, ask_theme_update, download_release,
+                                        install_downloaded)
+from ..kit.widgets import BusySheet
 from . import compile_actions
 
 STARTUP_UPDATE_CHECK_DELAY_MS = 3000
@@ -127,7 +131,8 @@ def check_project_compat(window) -> None:
         return
     app_version = version_mod.VERSION_NUMBER
     try:
-        evaluation = compat.evaluate(window.project.root, app_version)
+        with timing.span("compat.evaluate", when="startup"):
+            evaluation = compat.evaluate(window.project.root, app_version)
     except Exception as exc:  # noqa: BLE001 -- a broken detector must not stop the app
         window.log(f"Couldn't check the project's compatibility: {exc}")
         return
@@ -198,30 +203,42 @@ def compat_update(window, evaluation) -> None:
             "Some edits in the Source view could not be saved. Resolve that first, so the update and "
             "an editor can't overwrite each other.")
         return
-    result = compat.run_update(window.project.root, evaluation.loud)
-    for rel in result.changed:
-        window.log(f"Updated {rel}")
-    if result.backup:
-        window.log(f"  backup: {result.backup}")
-    for error in result.errors:
-        window.log(f"*** update failed: {error} ***")
-    window.refresh_open_deck_editors()
-    remaining = compat.evaluate(window.project.root, app_version)
-    if remaining.loud or result.errors:
-        compat_report(window, remaining)
-        QMessageBox.warning(
-            window, "Update project",
-            f"{len(result.changed)} file(s) updated. Some changes need work by hand; the "
-            "report lists where, and has a prompt for an AI tool.")
-    else:
-        compat.acknowledge(window.project.root, app_version)
-        QMessageBox.information(window, "Update project",
-                                f"{len(result.changed)} file(s) updated. Backups are in "
-                                ".slidemage/backups/.")
+    root = window.project.root
+
+    def work(report):
+        return compat.run_update(root, evaluation.loud, on_progress=report), compat.evaluate(root, app_version)
+
+    def done(outcome, error) -> None:
+        if error is not None:
+            window.log(f"*** update failed: {error} ***")
+            QMessageBox.warning(window, "Update project", f"The update failed: {error}")
+            return
+        result, remaining = outcome
+        for rel in result.changed:
+            window.log(f"Updated {rel}")
+        if result.backup:
+            window.log(f"  backup: {result.backup}")
+        for problem in result.errors:
+            window.log(f"*** update failed: {problem} ***")
+        window.refresh_open_deck_editors()
+        if remaining.loud or result.errors:
+            compat_report(window, remaining)
+            QMessageBox.warning(
+                window, "Update project",
+                f"{len(result.changed)} file(s) updated. Some changes need work by hand; the "
+                "report lists where, and has a prompt for an AI tool.")
+        else:
+            compat.acknowledge(root, app_version)
+            QMessageBox.information(window, "Update project",
+                                    f"{len(result.changed)} file(s) updated. Backups are in "
+                                    ".slidemage/backups/.")
+
+    BusySheet.run(window, "Updating the project…", work, done, busy_reason="updating the project")
 
 
 def on_project_compat(window) -> None:
-    evaluation = compat.evaluate(window.project.root, version_mod.VERSION_NUMBER)
+    with timing.span("compat.evaluate", when="menu"):
+        evaluation = compat.evaluate(window.project.root, version_mod.VERSION_NUMBER)
     show_compat(window, evaluation, review=True)
 
 
@@ -230,30 +247,27 @@ def on_open_version_history(window) -> None:
 
 
 def on_check_for_updates(window) -> None:
-    QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-    try:
-        releases = updater.fetch_releases()
-    except updater.UpdateError as exc:
-        QMessageBox.warning(window, "Check for updates", str(exc))
-        return
-    finally:
-        QApplication.restoreOverrideCursor()
+    def done(releases, error) -> None:
+        if error is not None:
+            QMessageBox.warning(window, "Check for updates", str(error))
+            return
+        current = version_mod.VERSION_NUMBER
+        plan = updater.plan_update(releases, current, need_asset=updater.can_self_update())
+        if plan.latest is None:
+            QMessageBox.information(
+                window, "Check for updates", f"SlideMage {current} is up to date.")
+            return
+        if not updater.can_self_update():
+            QMessageBox.information(
+                window, "Update available",
+                f"SlideMage {plan.latest.tag} is available (you have {current}).\n\n"
+                "This copy runs from source, so it can't replace itself -- "
+                f"update it with git pull, or download the release from:\n{plan.latest.page_url}",
+            )
+            return
+        offer_update(window, plan, updater.get_update_mode(), manual=True)
 
-    current = version_mod.VERSION_NUMBER
-    plan = updater.plan_update(releases, current, need_asset=updater.can_self_update())
-    if plan.latest is None:
-        QMessageBox.information(
-            window, "Check for updates", f"SlideMage {current} is up to date.")
-        return
-    if not updater.can_self_update():
-        QMessageBox.information(
-            window, "Update available",
-            f"SlideMage {plan.latest.tag} is available (you have {current}).\n\n"
-            "This copy runs from source, so it can't replace itself -- "
-            f"update it with git pull, or download the release from:\n{plan.latest.page_url}",
-        )
-        return
-    offer_update(window, plan, updater.get_update_mode(), manual=True)
+    BusySheet.run(window, "Checking for updates…", lambda _report: updater.fetch_releases(), done)
 
 
 def schedule_bundled_copies_check(window) -> None:
@@ -268,6 +282,7 @@ def schedule_bundled_copies_check(window) -> None:
 @_logged
 def sweep_old_renders(window) -> None:
     threading.Thread(target=slide_preview.sweep_renders, args=(window.project,), daemon=True).start()
+    threading.Thread(target=housekeeping.prune_render_stores, args=(window.project,), daemon=True).start()
 
 
 def bundled_parts(window) -> list:
@@ -279,16 +294,22 @@ def bundled_parts(window) -> list:
 
 @_logged
 def check_bundled_copies(window) -> None:
+    """Compares the copies on a worker (it hashes every file; nobody waits, so no indicator), then asks."""
     app_version = version_mod.VERSION_NUMBER
-    if bundled_copies.is_dismissed(window.project.root, app_version):
-        return
-    try:
-        parts = bundled_parts(window)
-    except OSError as exc:
-        window.log(f"Couldn't compare the project's framework/manual copies: {exc}")
-        return
-    if not parts:
-        return
+
+    def work() -> list:
+        return [] if bundled_copies.is_dismissed(window.project.root, app_version) else bundled_parts(window)
+
+    def done(parts, error) -> None:
+        if error is not None:
+            window.log(f"Couldn't compare the project's framework/manual copies: {error}")
+        elif parts:
+            offer_bundled_parts(window, parts, app_version)
+
+    run_in_background(work, done, parent=window)
+
+
+def offer_bundled_parts(window, parts: list, app_version: str) -> None:
     lines = [line for part in parts for line in bundled_copies.summary_lines(part)]
     box = QMessageBox(window)
     box.setIcon(QMessageBox.Icon.Information)
@@ -321,20 +342,35 @@ def check_bundled_copies(window) -> None:
 
 
 def apply_bundled_parts(window, parts: list) -> None:
-    for part in parts:
-        try:
-            backup = bundled_copies.apply_update(window.project, part, version_mod.VERSION_NUMBER)
-        except OSError as exc:
-            QMessageBox.critical(window, "Update failed", f"{part.label}: {exc}")
-            continue
-        except alt_images.NewerStoreError as exc:
-            QMessageBox.warning(window, "Update not applied", f"{part.label}: {exc}")
-            continue
-        for line in bundled_copies.summary_lines(part):
-            window.log(f"Updated -- {line}")
-        if part.update or part.remove:
-            window.log(f"  backup: {backup}")
-    window.reload_decks()
+    """Copies every part in one worker, behind a BusySheet; the boxes, log lines and the reload are in `done`."""
+    def work(report) -> list:
+        outcomes = []
+        for part in parts:
+            try:
+                outcomes.append((part, bundled_copies.apply_update(
+                    window.project, part, version_mod.VERSION_NUMBER, on_progress=report), None))
+            except (OSError, alt_images.NewerStoreError) as exc:
+                outcomes.append((part, None, exc))
+        return outcomes
+
+    def done(outcomes, error) -> None:
+        if error is not None:
+            window.log(f"*** framework/manual update failed: {error} ***")
+            QMessageBox.critical(window, "Update failed", str(error))
+        for part, backup, exc in outcomes or []:
+            if isinstance(exc, alt_images.NewerStoreError):
+                QMessageBox.warning(window, "Update not applied", f"{part.label}: {exc}")
+            elif exc is not None:
+                QMessageBox.critical(window, "Update failed", f"{part.label}: {exc}")
+            else:
+                for line in bundled_copies.summary_lines(part):
+                    window.log(f"Updated -- {line}")
+                if part.update or part.remove:
+                    window.log(f"  backup: {backup}")
+        window.reload_decks()
+
+    title = "Adding the manual…" if all(part.new_install for part in parts) else "Updating the framework and manual…"
+    BusySheet.run(window, title, work, done, busy_reason="copying the framework")
 
 
 def can_add_manual(window) -> bool:
@@ -503,41 +539,46 @@ def confirm_safe_update(window, release: updater.Release) -> bool:
 
 
 def download_and_install_update(window, release: updater.Release) -> None:
+    """Downloads and installs on a worker behind a BusySheet; Cancel ends the download, not the install."""
     executable = Path(sys.executable)
     binary_name = updater.asset_names()[1]
     folder_build = updater.install_flavour() == updater.FOLDER
-    staging: Optional[Path] = None
-    progress = QProgressDialog(
-        f"Downloading SlideMage {release.tag}…", "Cancel", 0, 0, window)
-    progress.setWindowTitle("Updating SlideMage")
-    progress.setWindowModality(Qt.WindowModality.WindowModal)
-    progress.setMinimumDuration(0)
-    progress.show()
+    cancel = threading.Event()
+    canceled = object()                  # work's result when Cancel ended the download (None: installed, no staging)
 
-    def on_progress(done: int, total: int) -> bool:
-        if total:
-            progress.setMaximum(total)
-            progress.setValue(done)
-        QApplication.processEvents()
-        return not progress.wasCanceled()
+    def work(report):
+        def on_progress(done: int, total: int) -> bool:
+            sizes = f" ({done / 1e6:.1f} of {total / 1e6:.1f} MB)" if total else ""
+            report(Progress(f"Downloading SlideMage {release.tag}…{sizes}", done / total if total else None))
+            return not cancel.is_set()
 
-    with tempfile.TemporaryDirectory(prefix="slidemage-update-") as tmp:
-        zip_path = Path(tmp) / "update.zip"
-        try:
-            updater.download(release, zip_path, on_progress)
-            progress.setLabelText("Installing…")
-            progress.setCancelButton(None)
-            QApplication.processEvents()
+        with tempfile.TemporaryDirectory(prefix="slidemage-update-") as tmp:
+            zip_path = Path(tmp) / "update.zip"
+            try:
+                updater.download(release, zip_path, on_progress)
+            except updater.UpdateError:
+                if cancel.is_set():
+                    return canceled
+                raise
+            report(Progress("Installing…"))
             if folder_build:
-                staging = updater.stage_folder_update(zip_path, executable.parent, binary_name)
-            else:
-                updater.install_zip(zip_path, executable, binary_name)
-        except updater.UpdateError as exc:
-            progress.close()
-            QMessageBox.warning(window, "Update failed", str(exc))
-            return
-    progress.close()
+                return updater.stage_folder_update(zip_path, executable.parent, binary_name)
+            updater.install_zip(zip_path, executable, binary_name)
 
+    def done(staging, error) -> None:
+        if error is not None:
+            QMessageBox.warning(window, "Update failed", str(error))
+            return
+        if staging is canceled:
+            window.log(f"Update to {release.tag} canceled.")
+            return
+        restart_after_update(window, release, executable, binary_name, folder_build, staging)
+
+    BusySheet.run(window, "Updating SlideMage", work, done, cancel=cancel)
+
+
+def restart_after_update(window, release: updater.Release, executable: Path, binary_name: str,
+                         folder_build: bool, staging: Optional[Path]) -> None:
     reply = QMessageBox.question(
         window, "Update installed",
         f"SlideMage {release.tag} is {'ready to be installed in' if folder_build else 'installed in'} "
@@ -582,7 +623,13 @@ def on_housekeeping(window) -> None:
         compile_actions.update_previews(window)
 
 
-def empty_pdf_folder(window) -> None:
+def _failed(window, what: str, error) -> None:
+    window.log(f"*** {what} failed: {error} ***")
+    QMessageBox.warning(window, "Housekeeping", f"{what} failed: {error}")
+
+
+def empty_pdf_folder(window, then=None) -> None:
+    """Asks, then deletes on a worker behind a BusySheet; `then()` runs afterwards (the Housekeeping sheet's refresh)."""
     files = housekeeping.pdf_files(window.project)
     if not files:
         QMessageBox.information(window, "Nothing to do", "pdf/ is already empty (or doesn't exist yet).")
@@ -590,11 +637,20 @@ def empty_pdf_folder(window) -> None:
     reply = QMessageBox.question(window, "Empty folder", f"Delete all {len(files)} file(s) in pdf/?")
     if reply != QMessageBox.StandardButton.Yes:
         return
-    housekeeping.delete_files(files)
-    window.log(f"Emptied pdf/ ({len(files)} file(s) deleted)")
+
+    def done(_result, error) -> None:
+        if error is not None:
+            return _failed(window, "Emptying pdf/", error)
+        window.log(f"Emptied pdf/ ({len(files)} file(s) deleted)")
+        if then:
+            then()
+
+    BusySheet.run(window, "Emptying pdf/…", lambda report: housekeeping.delete_files(files, report), done,
+                  busy_reason="housekeeping")
 
 
-def remove_temp_files(window) -> None:
+def remove_temp_files(window, then=None) -> None:
+    """As empty_pdf_folder: the confirm question here, the removal on a worker."""
     if window.compiling:
         QMessageBox.information(
             window, "Busy", "Can't remove temp files while a compile run is in progress."
@@ -615,13 +671,22 @@ def remove_temp_files(window) -> None:
     )
     if reply != QMessageBox.StandardButton.Yes:
         return
-    housekeeping.remove_temp_files(window.project, found)
-    window.log(
-        f"Removed {found.count - len(found.scratch)} temp item(s) "
-        f"({len(found.build)} build item(s) in .build/, "
-        f"{len(found.wrappers)} wrapper file(s) in decks/) "
-        f"and {len(found.scratch)} item(s) in .temp/"
-    )
+
+    def done(_result, error) -> None:
+        if error is not None:
+            return _failed(window, "Removing temp files", error)
+        window.log(
+            f"Removed {found.count - len(found.scratch)} temp item(s) "
+            f"({len(found.build)} build item(s) in .build/, "
+            f"{len(found.wrappers)} wrapper file(s) in decks/) "
+            f"and {len(found.scratch)} item(s) in .temp/"
+        )
+        if then:
+            then()
+
+    BusySheet.run(window, "Removing temp files…",
+                  lambda report: housekeeping.remove_temp_files(window.project, found, report), done,
+                  busy_reason="housekeeping")
 
 
 def on_archive_unused_content(window) -> None:
@@ -632,22 +697,27 @@ def on_archive_unused_content(window) -> None:
     sheet.exec()
 
 
-def on_sync_translation_links(window) -> int:
-    """Refreshes translation cross-reference comments from current
-    disk state -- pure text scanning over slides/, no compile
-    involved, so (unlike Update previews) this runs synchronously rather
-    than on a background thread. Returns the number of files updated."""
-    changed, missing = slide_rename.regenerate_translation_links(window.project)
-    window.log(f"Sync translation links: {changed} file(s) updated")
-    for line in missing:
-        window.log(f"    (unresolved: {line})")
-    if missing:
-        QMessageBox.warning(
-            window, "Sync translation links",
-            f"{changed} file(s) updated. {len(missing)} link(s) could "
-            "not be resolved -- see the log pane for details.",
-        )
-    return changed
+def on_sync_translation_links(window, then=None) -> None:
+    """Refreshes translation cross-reference comments from current disk state (it reads every slide, so on a
+    worker behind a BusySheet); `then(files updated)` runs afterwards."""
+    def done(result, error) -> None:
+        if error is not None:
+            return _failed(window, "Sync translation links", error)
+        changed, missing = result
+        window.log(f"Sync translation links: {changed} file(s) updated")
+        for line in missing:
+            window.log(f"    (unresolved: {line})")
+        if missing:
+            QMessageBox.warning(
+                window, "Sync translation links",
+                f"{changed} file(s) updated. {len(missing)} link(s) could "
+                "not be resolved -- see the log pane for details.",
+            )
+        if then:
+            then(changed)
+
+    BusySheet.run(window, "Syncing translation links…",
+                  lambda _report: slide_rename.regenerate_translation_links(window.project), done)
 
 
 # -- plugins: the first-start sheet and the plugin updates ------------------------------------------
@@ -754,55 +824,108 @@ def plugin_update_check(window) -> None:
 
 
 class PluginUpdates:
-    """What one plugin update check found: (id, installed version, release) for each update, the "name version"
-    texts installed in auto mode, and what failed."""
+    """What one plugin update check found: (id, installed version, release) for each update to offer (not skipped,
+    not installed automatically), the "name version" texts installed automatically, and what failed."""
 
     def __init__(self, names: dict[str, str], updates: list, installed: list[str], failed: list[str]) -> None:
         self.names, self.updates, self.installed, self.failed = names, updates, installed, failed
 
 
 def plugin_update_work(mode: str) -> PluginUpdates | Exception:
-    """Fetch the catalogue and compare (a worker thread's job); in auto mode also download and install each update,
-    hash checked. Failures are returned, not raised: they are only logged."""
+    """Fetch the catalogue and compare (a worker thread's job). A plugin that updates automatically (its own choice,
+    else the app's update mode) is downloaded and installed here, hash checked; the others are returned to be
+    offered, without the versions the user skipped. Failures are returned, not raised: they are only logged."""
     try:
         fresh = plugin_catalogue.fetch()
     except plugin_catalogue.CatalogueError as exc:
         return exc
     loaded = plugin_session.loaded()
     names = {p.id: p.manifest.name for p in plugin_updates.installed_plugins(loaded)}
-    found = plugin_updates.available_updates(loaded, fresh)
-    installed: list[str] = []
-    failed: list[str] = []
-    if mode == updater.UPDATE_MODE_AUTO:
-        for plugin_id, _have, release in found:
-            try:
-                manifest = install_downloaded(download_release(release), release)
-            except Exception as exc:        # one plugin failing must not stop the others
-                failed.append(f"{names[plugin_id]}: {exc}")
-            else:
-                installed.append(f"{manifest.name} {manifest.version}")
-    return PluginUpdates(names, found, installed, failed)
+    found = plugin_updates.offered_updates(plugin_updates.available_updates(loaded, fresh))
+    offered, installed, failed = [], [], []
+    for plugin_id, have, release in found:
+        if not plugin_updates.wants_auto_update(plugin_id, mode):
+            offered.append((plugin_id, have, release))
+            continue
+        try:
+            manifest = install_downloaded(download_release(release), release)
+        except Exception as exc:        # one plugin failing must not stop the others
+            failed.append(f"{names[plugin_id]}: {exc}")
+            offered.append((plugin_id, have, release))       # offered by hand instead
+        else:
+            installed.append(f"{manifest.name} {manifest.version}")
+    return PluginUpdates(names, offered, installed, failed)
 
 
 def on_plugin_updates_done(window, result) -> None:
-    """Quiet by design: a failed check is only logged and tried again at the next start."""
+    """A failed check is only logged and tried again at the next start. Updates installed automatically are said in a
+    notice; each other update is offered in a dialog that stays until answered (Install now / Not now / Skip this
+    version), and is kept in `window.plugin_updates_pending` for the assistant's note until it is installed or
+    skipped. The check runs at most once a day, so a "Not now" is asked again the next day."""
     if isinstance(result, Exception):
         window.log(f"Plugin update check failed: {result}")
         return
     plugin_updates.mark_checked()
     for line in result.failed:
         window.log(f"Plugin update failed: {line}")
-    mode = updater.get_update_mode()
-    if mode == updater.UPDATE_MODE_OFF or not result.updates:
+    if result.installed:
+        window.log("Plugin updates installed: " + ", ".join(result.installed))
+        window.toast.show_message("Plugin updates installed: " + ", ".join(result.installed)
+                                  + ". They take effect after a restart.", timeout_ms=10000)
+    if updater.get_update_mode() == updater.UPDATE_MODE_OFF:
         return
-    if mode == updater.UPDATE_MODE_AUTO:
-        if result.installed:
-            window.log("Plugin updates installed: " + ", ".join(result.installed))
-            window.toast.show_message("Plugin updates installed; they take effect after a restart", timeout_ms=7000)
-        return
-    text = ", ".join(f"{result.names.get(plugin_id, plugin_id)} {release.version}"
-                     for plugin_id, _have, release in result.updates)
-    window.toast.show_message(f"Plugin updates: {text}", [(OPEN_PLUGINS, "Open Extensions")], timeout_ms=12000)
+    pending = getattr(window, "plugin_updates_pending", None)
+    if pending is None:
+        pending = window.plugin_updates_pending = {}
+    for plugin_id, have, release in result.updates:
+        pending[plugin_id] = (result.names.get(plugin_id, plugin_id), have, release)
+    plugin_updates_changed(window)
+    for plugin_id, have, release in result.updates:
+        offer_plugin_update(window, plugin_id, result.names.get(plugin_id, plugin_id), have, release)
+
+
+def plugin_updates_changed(window) -> None:
+    """The pending plugin updates changed: the assistant's note follows."""
+    header = getattr(getattr(window, "assistant", None), "header", None)
+    if header is not None and hasattr(header, "refresh_update_note"):
+        header.refresh_update_note()
+
+
+def offer_plugin_update(window, plugin_id: str, name: str, have: str, release) -> None:
+    """Install now / Not now / Skip this version for one plugin update."""
+    choice = ask_plugin_update(window, name, have, release)
+    if choice == "install":
+        install_plugin_update(window, plugin_id, release)
+    elif choice == "skip":
+        try:
+            plugin_updates.skip_version(plugin_id, release.version)
+        except OSError as exc:
+            window.log(f"Couldn't save the skipped plugin version: {exc}")
+        window.plugin_updates_pending.pop(plugin_id, None)
+        plugin_updates_changed(window)
+        window.log(f"Plugin {name} {release.version} skipped; a later version is offered")
+    else:
+        window.log(f"Plugin {name} {release.version} is available; not installed for now")
+
+
+def install_plugin_update(window, plugin_id: str, release) -> None:
+    """Download and install `release` on a thread (the window stays usable); the outcome comes back through
+    `plugin_updates_done` as a PluginUpdates of what was installed or failed."""
+    name = getattr(window, "plugin_updates_pending", {}).get(plugin_id, (plugin_id,))[0]
+    window.toast.show_message(f"Downloading {name} {release.version}…", timeout_ms=4000)
+
+    def work() -> None:
+        try:
+            manifest = install_downloaded(download_release(release), release)
+        except Exception as exc:        # reported, never raised in the thread
+            outcome = PluginUpdates({plugin_id: name}, [], [], [f"{name}: {exc}"])
+        else:
+            outcome = PluginUpdates({plugin_id: name}, [], [f"{manifest.name} {manifest.version}"], [])
+        window.plugin_updates_done.emit(outcome)
+
+    window.plugin_updates_pending.pop(plugin_id, None)
+    plugin_updates_changed(window)
+    threading.Thread(target=work, name="plugin-update", daemon=True).start()
 
 
 def schedule_theme_update_check(window) -> None:
@@ -828,8 +951,8 @@ def theme_update_check(window) -> None:
 
 
 def on_theme_updates_done(window, result) -> None:
-    """A failed check is only logged (Settings → Extensions → Themes says why); a newer release is offered, never
-    installed silently, whatever the update mode."""
+    """A failed check is only logged (Settings → Extensions says why); a newer release is offered, or installed
+    when the theme's own "Update automatically" is on (2026-11-16), whatever the app's update mode."""
     if isinstance(result, Exception):
         window.log(f"Theme update check failed: {result}")
         return
@@ -841,7 +964,39 @@ def on_theme_updates_done(window, result) -> None:
             offer.fetched.discard()
         return
     for offer in offers:
-        offer_theme_update(window, offer)
+        if _auto(theme_sources, offer.key):
+            install_theme_update(window, offer)
+        else:
+            offer_theme_update(window, offer)
+
+
+def _auto(sources, key: str) -> bool:
+    source = sources.read_source(key)
+    return bool(source and source.auto_update)
+
+
+def _install_update(window, install, offer: theme_sources.Offer, noun: str, installed, auto: bool) -> None:
+    """Install the fetched update of a theme or citation format on a worker (it unpacks and checks the package):
+    said in a notice when it was automatic, in the log when the user chose it."""
+    def done(manifest, error: Exception | None) -> None:
+        if error is not None:
+            window.log(f"{noun.capitalize()} update failed: {error}")
+            window.toast.show_message(f"The {noun} {offer.name} could not be updated: {error}", error=True,
+                                      timeout_ms=10000)
+            return
+        by = " automatically" if auto else ""
+        window.log(f"{noun.capitalize()} {manifest.name} updated to {manifest.version}{by} "
+                   f"(from {offer.fetched.release.repository})")
+        if auto:
+            window.toast.show_message(f"The {noun} {manifest.name} was updated to {manifest.version}.", timeout_ms=8000)
+        installed(manifest.id)
+
+    run_in_background(partial(install, offer.fetched), done)
+
+
+def install_theme_update(window, offer: theme_sources.Offer, auto: bool = True) -> None:
+    """The theme updates: automatically (a notice) or because the user chose Install now."""
+    _install_update(window, theme_sources.install, offer, "theme", window.theme_installed, auto)
 
 
 def offer_theme_update(window, offer: theme_sources.Offer) -> None:
@@ -849,16 +1004,7 @@ def offer_theme_update(window, offer: theme_sources.Offer) -> None:
     release = offer.fetched.release
     choice = ask_theme_update(window, offer)
     if choice == "install":
-        try:
-            manifest = theme_sources.install(offer.fetched)
-        except themes.ThemeError as exc:
-            window.log(f"Theme update failed: {exc}")
-            window.toast.show_message(f"The theme {offer.name} could not be updated: {exc}", error=True,
-                                      timeout_ms=10000)
-            return
-        window.log(f"Theme {manifest.name} updated to {manifest.version} (from {release.repository})")
-        window.theme_installed(manifest.id)
-        return
+        return install_theme_update(window, offer, auto=False)
     offer.fetched.discard()
     if choice == "skip":
         try:
@@ -893,8 +1039,8 @@ def citation_update_check(window) -> None:
 
 
 def on_citation_updates_done(window, result) -> None:
-    """A failed check is only logged (Settings → Extensions says why); a newer release is offered, never installed
-    silently, whatever the update mode."""
+    """A failed check is only logged (Settings → Extensions says why); a newer release is offered, or installed
+    when the format's own "Update automatically" is on (2026-11-16), whatever the app's update mode."""
     if isinstance(result, Exception):
         window.log(f"Citation format update check failed: {result}")
         return
@@ -906,7 +1052,15 @@ def on_citation_updates_done(window, result) -> None:
             offer.fetched.discard()
         return
     for offer in offers:
-        offer_citation_update(window, offer)
+        if _auto(citation_sources, offer.key):
+            install_citation_update(window, offer)
+        else:
+            offer_citation_update(window, offer)
+
+
+def install_citation_update(window, offer: theme_sources.Offer, auto: bool = True) -> None:
+    """The citation format updates: automatically (a notice) or because the user chose Install now."""
+    _install_update(window, citation_sources.install, offer, "citation format", window.citation_installed, auto)
 
 
 def offer_citation_update(window, offer: theme_sources.Offer) -> None:
@@ -914,16 +1068,7 @@ def offer_citation_update(window, offer: theme_sources.Offer) -> None:
     release = offer.fetched.release
     choice = ask_citation_update(window, offer)
     if choice == "install":
-        try:
-            manifest = citation_sources.install(offer.fetched)
-        except citations.CitationError as exc:
-            window.log(f"Citation format update failed: {exc}")
-            window.toast.show_message(f"The citation format {offer.name} could not be updated: {exc}", error=True,
-                                      timeout_ms=10000)
-            return
-        window.log(f"Citation format {manifest.name} updated to {manifest.version} (from {release.repository})")
-        window.citation_installed(manifest.id)
-        return
+        return install_citation_update(window, offer, auto=False)
     offer.fetched.discard()
     if choice == "skip":
         try:

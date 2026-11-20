@@ -188,46 +188,54 @@ def test_footer_elements_left_out_are_written_and_read_back():
 
 
 @pytest.mark.parametrize("newline", ["\n", "\r\n"])
-def test_dark_mode_round_trip_places_switch_before_template_and_keeps_line_endings(newline):
+def test_dark_mode_round_trip_places_the_mode_line_before_template_and_keeps_line_endings(newline):
     text = DECK.replace("\n", newline)
     old = read(text)
     new = read(text)
-    new.dark_mode = True
+    new.mode = "dark"
     dark = deck_settings.apply_settings(text, old, new)
-    assert read(dark).dark_mode
-    assert dark.index(r"\newcommand{\SMDarkMode}{}") < dark.index(r"\input{SlideMage_template_")
+    assert read(dark).mode == "dark"
+    assert dark.index(r"\newcommand{\SMModeOverride}{dark}") < dark.index(r"\input{SlideMage_template_")
+    assert "SMDarkMode" not in dark
     if newline == "\r\n":
         assert "\n" not in dark.replace("\r\n", "")
     assert deck_settings.apply_settings(dark, read(dark), old) == text
 
 
 @pytest.mark.parametrize("declaration", [
-    r"\newcommand{\SMDarkMode}{}", r"\newcommand*{\SMDarkMode}{}",
-    r"\def\SMDarkMode{}", r"\providecommand\SMDarkMode{enabled}",
+    r"\newcommand{\SMModeOverride}{dark}", r"\newcommand*{\SMModeOverride}{dark}",
+    r"\def\SMModeOverride{dark}", r"\providecommand\SMModeOverride{dark}",
 ])
-def test_dark_mode_reads_existing_switches_and_ignores_comments_and_body(declaration):
+def test_the_mode_line_is_read_and_comments_and_the_body_are_ignored(declaration):
     marker = r"\input{SlideMage_template_acme}"
-    assert read(DECK.replace(marker, declaration + "\n" + marker)).dark_mode
+    assert read(DECK.replace(marker, declaration + "\n" + marker)).mode == "dark"
     ignored = "% " + declaration + "\n" + DECK + "\n" + declaration
-    assert not read(ignored).dark_mode
-    assert deck_settings.set_dark_mode(ignored, False) == ignored
+    assert read(ignored).mode == ""
+    assert deck_settings.set_mode(ignored, "") == ignored
 
 
-def test_enabling_dark_mode_moves_a_late_switch_before_the_template():
-    text = DECK.replace(r"\begin{document}", "\\newcommand{\\SMDarkMode}{}\n\\begin{document}")
-    assert not read(text).dark_mode
-    dark = deck_settings.set_dark_mode(text, True)
-    assert read(dark).dark_mode
-    assert dark.count(r"\newcommand{\SMDarkMode}{}") == 1
-    assert deck_settings.set_dark_mode(dark, True) == dark
+def test_the_old_dark_switch_is_no_longer_a_setting():
+    marker = r"\input{SlideMage_template_acme}"
+    text = DECK.replace(marker, r"\newcommand{\SMDarkMode}{}" + "\n" + marker)
+    assert read(text).mode == ""
+    assert not hasattr(read(text), "dark_mode")
 
 
-def test_disabling_dark_mode_preserves_inline_comments_and_other_commands():
-    line = "\\def\\SMDarkMode{}\\newcommand{\\KeepMe}{yes} % keep this\n"
+def test_setting_a_mode_moves_a_late_mode_line_before_the_template():
+    text = DECK.replace(r"\begin{document}", r"\newcommand{\SMModeOverride}{dark}" + "\n" + r"\begin{document}")
+    assert read(text).mode == ""
+    dark = deck_settings.set_mode(text, "dark")
+    assert read(dark).mode == "dark"
+    assert dark.count(r"\newcommand{\SMModeOverride}{dark}") == 1
+    assert deck_settings.set_mode(dark, "dark") == dark
+
+
+def test_the_base_mode_preserves_inline_comments_and_other_commands():
+    line = r"\def\SMModeOverride{dark}\newcommand{\KeepMe}{yes} % keep this" + "\n"
     text = line + DECK
-    light = deck_settings.set_dark_mode(text, False)
-    assert light == "\\newcommand{\\KeepMe}{yes} % keep this\n" + DECK
-    assert not read(light).dark_mode
+    light = deck_settings.set_mode(text, "")
+    assert light == r"\newcommand{\KeepMe}{yes} % keep this" + "\n" + DECK
+    assert read(light).mode == ""
 
 
 def test_removing_a_setting_keeps_what_follows_it_on_its_line():
@@ -236,15 +244,15 @@ def test_removing_a_setting_keeps_what_follows_it_on_its_line():
     assert deck_settings.set_output_folder(text, "presenter", "") == "\\deckappendixtoc % the comment goes with it\n \\def\\SMFooterHide{date}\n"
 
 
-def test_dark_mode_form_does_not_depend_on_a_template_name():
-    assert form(dark_mode=True).dark_mode
-    assert form(template="custom-college", dark_mode=True).dark_mode
+def test_the_mode_form_does_not_depend_on_a_template_name():
+    assert form(mode="dark").mode == "dark"
+    assert form(template="custom-college", mode="dark").mode == "dark"
 
 
 def test_dark_mode_support_is_discovered_from_template_headers(tmp_path):
     template = tmp_path / "SlideMage_template_custom-college.tex"
-    template.write_text("% SlideMage dark mode: true\n")
+    template.write_text("% SlideMage modes: light, dark\n")
     assert deck_settings.template_supports_dark_mode(tmp_path, "custom-college")
-    template.write_text("% SlideMage dark mode: false\n")
+    template.write_text("% SlideMage dark mode: true\n")          # the header of before v0.16.0 means nothing
     assert not deck_settings.template_supports_dark_mode(tmp_path, "custom-college")
     assert not deck_settings.template_supports_dark_mode(tmp_path, "missing")

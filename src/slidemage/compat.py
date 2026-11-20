@@ -50,11 +50,12 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
-from . import (compat_bibliography, compat_citation_format, compat_color_roles, compat_hooks, compat_names,
-               compat_own_theme, compat_project_macros, project)
+from . import (compat_bibliography, compat_citation_format, compat_color_cut, compat_color_roles, compat_hooks,
+               compat_names, compat_own_theme, compat_project_macros, project)
 from .fileio import atomic_write
+from .progress import Progress
 from .tex_source import is_commented
 from .updater import parse_version
 
@@ -80,6 +81,20 @@ def _detect_omitslide(root: Path) -> list[Finding]:
                 findings.append(Finding(path.relative_to(root).as_posix(),
                                         text.count("\n", 0, match.start()) + 1,
                                         "Instructor-only slide is skipped in student deck versions."))
+    return findings
+
+
+def _detect_blocks_and_appendix_views(root: Path) -> list[Finding]:
+    """v0.17.20: the decks that use topic blocks (\\slideblock) or name views in \\deckappendixtoc[...], which
+    SlideMage v0.16 and older cannot compile."""
+    findings = []
+    for path in compat_bibliography.decks(root):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for match in re.finditer(r"\\slideblock\s*\{|\\deckappendixtoc\s*\[", text):
+            if not is_commented(text, match.start()):
+                what = "a topic block" if "slideblock" in match.group() else "an appendix limited to some views"
+                findings.append(Finding(path.relative_to(root).as_posix(), text.count("\n", 0, match.start()) + 1,
+                                        f"Uses {what}: SlideMage v0.16 or older cannot compile this deck."))
     return findings
 
 
@@ -394,7 +409,19 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
     detect=lambda root: [Finding(".slidemage/project.json", 0, "Flat slide snapshots removed.")]
         if project.read_project_json(root).get("flat_snapshots_removed") else [],
     automatic=True,
-), compat_color_roles.CHANGE]
+), compat_color_roles.CHANGE, compat_color_cut.CHANGE, Change(
+    id="topic-blocks-and-appendix-views",
+    since="v0.17.20",
+    severity=BREAKS,
+    title="Decks with topic blocks or an appendix for some views need SlideMage v0.17",
+    description=(
+        "Topic blocks (\\slideblock, v0.17.0) and an appendix limited to some views (\\deckappendixtoc[instructor], "
+        "v0.17.13) are not known to SlideMage v0.16 or older: a deck that uses them does not compile there. "
+        "Nothing changes in this SlideMage."),
+    fix="Nothing to change in the project. Update SlideMage on every computer that opens it.",
+    detect=_detect_blocks_and_appendix_views,
+    automatic=True,
+)]
 
 # Releases from this one on need a registry entry for every "BREAKING:"
 # paragraph of their version.py history (tests/test_compat.py).
@@ -519,10 +546,11 @@ class UpdateResult:
     errors: list[str] = field(default_factory=list)
 
 
-def run_update(root: Path, pending: list[Pending], *, dry_run: bool = False,
-               now: Optional[datetime] = None) -> UpdateResult:
+def run_update(root: Path, pending: list[Pending], *, dry_run: bool = False, now: Optional[datetime] = None,
+               on_progress: Optional[Callable[[Progress], None]] = None) -> UpdateResult:
     """Run the migrations of `pending`. Every file that changes is copied to
     .slidemage/backups/<time>/compat/ first; with dry_run nothing is written.
+    `on_progress` gets one step per file backed up and one per file written.
     A deck snapshot (deck_snapshot.py) is never migrated: it stays as it was."""
     result = UpdateResult()
     if project.is_snapshot(root) and not dry_run:
@@ -549,7 +577,9 @@ def run_update(root: Path, pending: list[Pending], *, dry_run: bool = False,
         return result
     # Back everything up before the first change, so a failure leaves the project as it was.
     try:
-        for path, rel, _data in todo:
+        for n, (path, rel, _data) in enumerate(todo, 1):
+            if on_progress:
+                on_progress(Progress.step(n, len(todo), "Backing up"))
             if path.is_file():
                 (backup / rel).parent.mkdir(parents=True, exist_ok=True)
                 (backup / rel).write_bytes(path.read_bytes())
@@ -560,7 +590,10 @@ def run_update(root: Path, pending: list[Pending], *, dry_run: bool = False,
         return result
     done: list[tuple[Path, Optional[bytes]]] = []        # (file, what it held before; None = it did not exist)
     try:
-        for path, _rel, data in sorted(todo, key=lambda item: item[2] is None):    # writes first, removals last
+        writes_first = sorted(todo, key=lambda item: item[2] is None)    # removals last
+        for n, (path, _rel, data) in enumerate(writes_first, 1):
+            if on_progress:
+                on_progress(Progress.step(n, len(todo), "Updating"))
             before = path.read_bytes() if path.is_file() else None
             if data is None:
                 path.unlink()

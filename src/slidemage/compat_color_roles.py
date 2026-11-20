@@ -315,10 +315,10 @@ def plan_text(text: str, rel: str = "") -> _FileResult:
                      else "c_text")
                 continue
             if macro in _REPORTED_MACROS:
-                report(pos, name, f"\\{macro} is a fill or a colour of the slide's own")
+                report(pos, name, f"\\{macro} is a fill or a color of the slide's own")
                 continue
             # \setbeamercolor{x}{fg=..} has the key form and is handled as an option list above
-        report(pos, name, "not in a TikZ option list or a colour command")
+        report(pos, name, "not in a TikZ option list or a color command")
     result.edits.sort(key=lambda e: e.start)
     return result
 
@@ -415,7 +415,7 @@ def detect(root: Path) -> list[Finding]:
     for rel, (new, result) in _plans(root).items():
         if new is not None:
             shown = ", ".join(f"{k} ({v})" for k, v in sorted(result.counts.items()))
-            findings.append(Finding(rel.as_posix(), 0, "colours rewritten to roles: " + shown))
+            findings.append(Finding(rel.as_posix(), 0, "colors rewritten to roles: " + shown))
         findings += result.findings
     return sorted(findings, key=lambda f: (f.file, f.line, f.message))
 
@@ -428,19 +428,19 @@ CHANGE = Change(
     id=CHANGE_ID,
     since="v0.15.14",
     severity=APPEARANCE,
-    title="Slides name the colour's role (c_text, c_text_on_accent, c_canvas) instead of c_primary_dark",
+    title="Slides name the color's role (c_text, c_text_on_accent, c_canvas) instead of c_primary_dark",
     description=(
-        "A theme's colour modes (dark, grey, colour-blind) change what a role colour is, not the palette. "
-        "c_primary_dark is the palette's dark colour; used as the ink of text, lines and rules it should be c_text, "
-        "used as dark text on a coloured fill c_text_on_accent, and the white text of an ink-filled box c_canvas. "
-        "In the theme's base mode the roles give exactly the colours of today, so nothing changes there; in a dark "
+        "A theme's color modes (dark, gray, color-blind) change what a role color is, not the palette. "
+        "c_primary_dark is the palette's dark color; used as the ink of text, lines and rules it should be c_text, "
+        "used as dark text on a colored fill c_text_on_accent, and the white text of an ink-filled box c_canvas. "
+        "In the theme's base mode the roles give exactly the colors of today, so nothing changes there; in a dark "
         "mode a slide that keeps c_primary_dark keeps dark ink on a dark slide once the dark-mode flip of "
         "c_primary_dark is removed."),
     fix=(
         "In slides (also the frozen -vX-Y-Z versions), snippets, decks and the project macros: \\draw[c_primary_dark] "
         "by \\draw[c_text]; text=c_primary_dark next to fill=c_primary_highlight by text=c_text_on_accent; "
         "fill=c_primary_dark!85, text=white by fill=c_text!85, text=c_canvas. Update project does it for you and "
-        "lists the uses it could not classify (c_custom_gray outside a list of colours, a \\colorbox, an unknown key)."),
+        "lists the uses it could not classify (c_custom_gray outside a list of colors, a \\colorbox, an unknown key)."),
     detect=detect,
     migrate=migrate,
 )

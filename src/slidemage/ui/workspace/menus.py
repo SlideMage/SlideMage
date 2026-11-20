@@ -125,7 +125,7 @@ def build_compile_menu(parent: QWidget, ctx: Context) -> PopoverMenu:
     deck at once. Entries a deck cannot use are disabled instead of hidden."""
     menu = PopoverMenu(parent, min_width=300)
     add_commands(menu, ctx, [f"compile:{view}" for view in VIEWS] + [
-        "compile:all", "compile:chapters", "compile:presenter", "compile:slides", "compile:pages",
+        "compile:all", "compile:mode", "compile:chapters", "compile:presenter", "compile:slides", "compile:pages",
         "compile:several", "compile:everything"], "PDF")
     add_commands(menu, ctx, [f"transcript:{version}" for version in STUDENT_VERSIONS],
                  "Accessible transcript")
@@ -151,7 +151,7 @@ MENU_BAR = (
                ("", ("deck_settings", "deck_tags", "deck_source")),
                ("", ("add_slide", "duplicate_deck", Submenu("Export", ("export_pptx", "export_latex")),
                      "create_snapshot")),
-               ("", ("update_deck_versions", "rerender_deck_previews", "deck:readability")),
+               ("", ("update_deck_versions", "rerender_deck_previews", "deck:readability", "deck:spelling")),
                ("", ("archive_deck",)))),
     ("&Slide", (("", ("slide:open", "slide:preview", "slide:open_tab", "slide:images")),
                 ("", ("slide:before", "slide:after", "slide:section_before", "slide:duplicate", "slide:translate")),
@@ -159,11 +159,11 @@ MENU_BAR = (
                 ("", ("slide:reviewed", "slides:unreviewed", "slide:compare", "slide:readability")),
                 ("", (Submenu("Section", ("section:*",)),)),
                 ("", ("slide:remove",)))),
-    ("&View", (("View as", ("view:*",)), ("Language", ("language:*",)), ("Centre", ("mode:*",)),
-               ("", ("column:left", "column:right", Submenu("Side panel", ("panel:*",)), "images", "log")),
+    ("&View", (("View as", ("view:*",)), ("Language", ("language:*",)), ("Center", ("mode:*",)),
+               ("", ("column:left", "column:right", Submenu("Side panel", ("panel:*",)), "images", "library", "log")),
                ("Tabs", ("tab:*",)), ("", ("render_buffer", "preview:*")))),
     ("&Build", (("", ("compile:current",)),
-                ("PDF", (*(f"compile:{view}" for view in VIEWS), "compile:all", "compile:chapters", "compile:presenter",
+                ("PDF", (*(f"compile:{view}" for view in VIEWS), "compile:all", "compile:mode", "compile:chapters", "compile:presenter",
                          "compile:slides", "compile:pages", "compile:several", "compile:everything")),
                 ("Accessible transcript", ("transcript:*",)),
                 ("", ("stop", "build_options")))),

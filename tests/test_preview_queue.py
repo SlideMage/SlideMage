@@ -11,6 +11,7 @@ from threading import Thread as WorkerThread
 import pymupdf
 import pytest
 
+from slidemage.deck_scan import Deck
 from slidemage import preview_target, slide_snapshot
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.workspace import preview_view
@@ -89,7 +90,7 @@ def test_a_focused_render_prepares_other_views_for_a_store_hit_until_the_next_ed
         return pdf
 
     monkeypatch.setattr(preview_target, 'render_text', render)
-    renderer = view._renders._renderer(target.context)
+    renderer = view._renders.renderer(target.context)
     renderer.gate.force()
     view.buffer[0] = '\\setSlideVersion{1-0-0+}\nunsaved edit'
     text = view.buffer[0]
@@ -140,7 +141,7 @@ def test_pane_pixels_arrive_before_png_encoding_and_put_and_equal_the_stored_pag
     pdf.with_suffix('.inputs.json').write_text('[]')
     monkeypatch.setattr(preview_target, 'render_text', lambda *a, **kw: pdf)
     request = view._renders.request(target, 'BODY', 'instructor', 'EN', view.app.log)
-    renderer = view._renders._renderer(target.context)
+    renderer = view._renders.renderer(target.context)
     encoding, release, pixels = threading.Event(), threading.Event(), threading.Event()
     stages, decoding_threads = [], []
     ask, put, span = preview_raster_client.RasterClient.ask, renderer.store.put, timing.span
@@ -191,7 +192,9 @@ def test_pane_pixels_arrive_before_png_encoding_and_put_and_equal_the_stored_pag
     assert request.error is None and 'put' in stages
     record = renderer.store.find(renderer.resolver.fast_key(request.spec.unit, 'BODY'))
     assert record['pages'] == 2
-    stored = QImage.fromData(renderer.store.page(record, 2)).convertToFormat(QImage.Format.Format_RGB888)
+    stored_bytes = renderer.store.page(record, 2)
+    assert request.wait()[1] == stored_bytes
+    stored = QImage.fromData(stored_bytes).convertToFormat(QImage.Format.Format_RGB888)
     assert shown == stored
 
 
@@ -571,7 +574,7 @@ def test_composite_show_focuses_slide_and_displays_returned_image_in_student_vie
     path = tmp_path / "slides" / f"bbb-{language}-New-current.tex"
     path.write_text("BODY")
     target = preview_target.for_path(state.project, path)
-    deck = SimpleNamespace(path=tmp_path / "decks" / "open.tex", text=f"\\slide{{bbb-{language}-New}}\n", chapters=[])
+    deck = Deck("open", tmp_path / "decks" / "open.tex", False, f"\\slide{{bbb-{language}-New}}\n", False, False, None, [], {})
     state.deck = deck
     state.focused_slide_changed.connect(lambda _: view.show_slide(target, None, "New", ""))
     window = SimpleNamespace(project=state.project, state=state, centre=SimpleNamespace(preview=view, show_slide_tab=lambda: None))
@@ -662,7 +665,7 @@ def test_tool_and_pane_share_one_build(pane, tmp_path, monkeypatch, debounce):
     response = box.execute(ToolCall('1', 'render_preview', {}))
     assert not response.is_error
     from slidemage import render_lookup
-    renderer = view._renders._renderer(target.context)
+    renderer = view._renders.renderer(target.context)
     spec = job.request.spec
     state, record = render_lookup.select(dict(resolver=renderer.resolver, unit=spec.unit, spec=spec), strict=True)
     assert state == 'current' and response.images == [renderer.store.page(record, record['pages'])]
@@ -1005,7 +1008,7 @@ def test_a_scoped_render_stays_temporary(pane, tmp_path, monkeypatch, qapp):
     assert job.request.done.wait(10)
     qapp.processEvents()
     view._refresh()
-    renderer = view._renders._renderer(target.context)
+    renderer = view._renders.renderer(target.context)
     assert render_lookup.select(dict(resolver=renderer.resolver, unit=job.request.spec.unit,
                                      spec=job.request.spec), strict=True) == ('missing', None)
     assert renderer.store.count() == 0 and view._record is None

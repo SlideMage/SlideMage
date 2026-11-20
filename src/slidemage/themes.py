@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from functools import partial
 from pathlib import Path, PurePosixPath
 
-from . import packages, project
+from . import latex_help, packages, project
 from .packages import os as os, shutil as shutil, uuid as uuid, zipfile as zipfile
 from .plugins import installer
 from .plugins.manifest import REQUIRES_RE, VERSION_RE, ManifestError, _text, matches
@@ -43,7 +43,8 @@ KEY_RE = re.compile(r"^[a-z][a-z0-9-]{1,31}$")
 LAYOUT_RE = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
 # The files a package holds besides its template, scheme folder and layout profile.
 REQUIRED_FILES = ("README.md", "CHANGELOG.md", "LICENSE")
-OPTIONAL_FILES = ("preview.png",)
+HELP_NAME = latex_help.HELP_FILE_NAME      # optional: hover help for the theme's own commands (THEME_PACKAGE.md)
+OPTIONAL_FILES = ("preview.png", HELP_NAME)
 OPTIONAL_DIRS = ("LICENSES",)       # REUSE-style licence texts
 # TeX finds these on TEXINPUTS; only the template and the layout profile may be one.
 TEX_CODE_SUFFIXES = frozenset({".tex", ".sty", ".cls", ".lua", ".def", ".cfg", ".fd", ".clo", ".ltx", ".dtx", ".ins"})
@@ -188,18 +189,85 @@ def check_manifest(manifest: ThemeManifest, app_version: str = VERSION_NUMBER) -
         raise ThemeError(f"The theme needs SlideMage {manifest.requires_slidemage}; this is {app_version}.")
 
 
+# v0.16.0 removed the dark switch \SMDarkMode: a theme reads its mode from \SMDeclareMode and \SMSetRole lines instead
+# (latex/SlideMage_setup.tex). A template that still tests the switch was made for an older SlideMage.
+_OLD_DARK_SWITCH = re.compile(r"\\SMDarkMode(?![A-Za-z@])")
+OUTDATED_PROBLEM = ("it was made for SlideMage before v0.16.0 (it still uses \\SMDarkMode, which is gone); "
+                    "install a newer version of the theme")
+_contents_cache: dict[Path, tuple[int, str]] = {}
+
+
+def check_contents(folder: Path, key: str) -> str:
+    """The problem of a theme's template that this SlideMage cannot use, "" when there is none. Cached by the file's
+    modification time, since installed_dirs() asks for every compile."""
+    from .tex_source import is_commented
+
+    path = folder / template_file(key)
+    try:
+        stamp = path.stat().st_mtime_ns
+    except OSError:
+        return ""
+    cached = _contents_cache.get(path)
+    if cached is not None and cached[0] == stamp:
+        return cached[1]
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    problem = OUTDATED_PROBLEM if any(not is_commented(text, m.start()) for m in _OLD_DARK_SWITCH.finditer(text)) else ""
+    _contents_cache[path] = (stamp, problem)
+    return problem
+
+
 # Keep the public package API here; callers and package tools need no knowledge of the shared store.
 KIND = packages.PackageKind(
     name="theme", folder=lambda: themes_dir(), manifest_name=MANIFEST_NAME, suffix=PACKAGE_SUFFIX,
     error=ThemeError, parse_manifest=lambda text: parse_manifest(text),
     check_names=lambda names, manifest: check_names(names, manifest),
     check_manifest=lambda manifest, app_version: check_manifest(manifest, app_version),
-    key_re=KEY_RE, tex_file=template_file, contents_name="theme")
+    key_re=KEY_RE, tex_file=template_file, contents_name="theme", check_contents=check_contents)
 
 InstalledTheme = packages.InstalledPackage
 read_manifest = partial(packages.read_manifest, KIND)
 folder_names = partial(packages.folder_names, KIND)
-check_folder = partial(packages.check_folder, KIND)
+_check_package_folder = partial(packages.check_folder, KIND)
+
+
+def check_folder(folder: Path, app_version: str = VERSION_NUMBER, skip_hidden: bool = False):
+    """packages.check_folder, and the theme's help.toml, if it has one, read strictly: the packing tools refuse a
+    help file the editor would only skip entries of."""
+    manifest = _check_package_folder(folder, app_version, skip_hidden)
+    try:
+        latex_help.parse_help((folder / HELP_NAME).read_text(encoding="utf-8"), strict=True)
+    except FileNotFoundError:
+        pass
+    except (OSError, UnicodeDecodeError) as e:
+        raise ThemeError(f"{HELP_NAME} cannot be read: {e}") from None
+    except latex_help.HelpFileError as e:
+        raise ThemeError(str(e)) from None
+    return manifest
+
+
+_help_cache: dict[Path, tuple[int, latex_help.HelpSet]] = {}
+
+
+def help_of(folder: Path) -> latex_help.HelpSet:
+    """The hover help a theme folder's help.toml supplies (nothing without one); entries that do not pass are
+    skipped. Cached by the file's modification time: the editor asks on each tooltip."""
+    path = folder / HELP_NAME
+    try:
+        stamp = path.stat().st_mtime_ns
+    except OSError:
+        return latex_help.NO_EXTRA
+    cached = _help_cache.get(path)
+    if cached is not None and cached[0] == stamp:
+        return cached[1]
+    try:
+        found = latex_help.parse_help(path.read_text(encoding="utf-8"), strict=False)
+    except (OSError, UnicodeDecodeError):
+        found = latex_help.NO_EXTRA
+    _help_cache[path] = (stamp, found)
+    return found
 package_name = partial(packages.package_name, KIND)
 peek = partial(packages.peek, KIND)
 installed = partial(packages.installed, KIND)
@@ -209,6 +277,48 @@ theme_of = partial(packages.owner_of, KIND)
 install_file = partial(packages.install_file, KIND)
 remove = partial(packages.remove, KIND)
 cleanup = partial(packages.cleanup, KIND)
+
+
+SHIPPED_STARTS = (("slidemage", "SlideMage (the default look)"), ("grayscale", "Grayscale (sets more settings)"))
+
+
+def check_new_key(key: str, root: Path) -> str:
+    """"" when `key` can name a new personal theme in the project at `root`, else why not."""
+    if not KEY_RE.match(key):
+        return "A key is 2 to 32 characters: lower-case letters, digits and -, starting with a letter."
+    if key in {start for start, _ in SHIPPED_STARTS}:
+        return f"{key} is a theme SlideMage ships: pick another key."
+    if (root / template_file(key)).exists():
+        return f"The project has a theme {key} already."
+    if any(folder.name == key for folder in installed_dirs()):
+        return f"An installed theme is called {key}: a personal one of that key would replace it in this project."
+    return ""
+
+
+def new_theme(key: str, name: str, root: Path, start: str = "slidemage") -> Path:
+    """A new personal theme (docs/plans/theme-editor.md, section 3.4): the shipped template `start` copied into the
+    project folder as SlideMage_template_<key>.tex, with `name` as its name line. Raises ThemeError when the key cannot
+    be used or the shipped template is not found."""
+    from . import slide_templates
+    from .theme_file import ThemeFile
+
+    problem = check_new_key(key, root)
+    if problem:
+        raise ThemeError(problem)
+    if start not in {s for s, _ in SHIPPED_STARTS}:
+        raise ThemeError(f"Unknown starting point {start!r}.")
+    source = next((folder / template_file(start) for folder in slide_templates.framework_dirs(root)
+                   if (folder / template_file(start)).is_file()), None)
+    if source is None:
+        raise ThemeError(f"The shipped template {template_file(start)} was not found.")
+    theme = ThemeFile(source.read_bytes().decode("utf-8"))
+    theme.set("header:name", (name.strip() or key)[:40])
+    target = root / template_file(key)
+    try:
+        target.write_bytes(theme.text.encode("utf-8"))
+    except OSError as exc:
+        raise ThemeError(f"Could not write {target.name}: {exc}") from None
+    return target
 
 
 def copy_to_project(key: str, root: Path) -> Path:

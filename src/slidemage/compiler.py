@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import logging
 import os
+import queue
 import re
 import signal
 import shutil
@@ -179,7 +180,7 @@ def resolve_output_location(ctx: project.ProjectContext, job: "CompileJob") -> t
     path = Path(raw)
     resolved = path if path.is_absolute() else ctx.root / path
     if resolved.suffix:
-        return resolved.parent, resolved.stem
+        return resolved.parent, resolved.stem + (f"-{job.mode}" if job.mode else "")
     return resolved, job.jobname
 
 
@@ -203,6 +204,8 @@ def job_label(job: CompileJob) -> str:
         label += f", chapter {job.chapter.order}: {job.chapter.title}"
     if job.language:
         label += f" · {job.language.upper()}"
+    if job.mode:
+        label += f" · {job.mode} colors"
     return label
 
 
@@ -231,6 +234,7 @@ def deck_pdfs(ctx: project.ProjectContext, deck: Deck) -> list[DeckPdf]:
     jobs: list[CompileJob] = []
     for version in versions:
         jobs.append(CompileJob(deck, version, None))
+        jobs += [CompileJob(deck, version, None, mode=mode_id) for mode_id, _ in other_modes(ctx, deck, version)]
     presenter_version = "instructor" if deck.supports_version else None
     jobs.append(CompileJob(deck, presenter_version, None, presenter=True))
     chapter_version = "after-course" if deck.supports_version else None
@@ -297,6 +301,23 @@ def display_path(ctx: project.ProjectContext, path: Path) -> str:
 # in case some other invocation path (e.g. a hand-run compile without
 # -file-line-error) ever produces the classic format instead.
 FATAL_ERROR_RE = re.compile(r"^!|^\S.*:[0-9]+: ", re.MULTILINE)
+MISSING_INPUT_RE = re.compile(r"(?:LaTeX Error: |^)File [`']([^\n]+?)' not found", re.M)
+
+
+def first_tex_error(log_text: str) -> str:
+    """The first error of a TeX log as "! message" and its context up to the line after "l.N", or "". With
+    -file-line-error the error line is "file:N: message" (its file name can wrap onto the line before)."""
+    match = FATAL_ERROR_RE.search(log_text)
+    if match is None:
+        return ""
+    lines = log_text[match.start():].splitlines()
+    first = re.sub(r"^\S.*?:[0-9]+: ", "", lines[0]) if not lines[0].startswith("!") else lines[0][1:].strip()
+    excerpt = ["! " + first]
+    for line in lines[1:12]:
+        excerpt.append(line)
+        if re.match(r"l\.[0-9]+", line):
+            break
+    return "\n".join(excerpt)
 
 LogCallback = Callable[[str], None]
 
@@ -428,6 +449,20 @@ class CancelToken:
                 proc.kill()
 
 
+STOP_GRACE_SECONDS = 10.0       # how long run_streamed waits for a stopped process's output to end
+
+
+def _pump_lines(stream, lines: "queue.Queue") -> None:
+    """Put the lines of `stream` in `lines`, None at the end (also when reading fails)."""
+    try:
+        for line in stream:
+            lines.put(line)
+    except (OSError, ValueError):
+        pass
+    finally:
+        lines.put(None)
+
+
 def run_streamed(
     cmd: list[str] | str, *, cwd: Path, env: dict, log: LogCallback,
     cancel: Optional[CancelToken] = None, on_line: Optional[LogCallback] = None,
@@ -453,11 +488,36 @@ def run_streamed(
         if cancel is not None:
             cancel._set_process(proc)
         assert proc.stdout is not None
-        for line in proc.stdout:
+        # The output is read on a thread of its own, so that a stopped run can end although the pipe stays open: a
+        # process the kill missed (a helper that MiKTeX started, say) keeps the pipe's write end, the read never
+        # returns, and the render job hung for hours with "Render now" unable to do anything (2026-11-19).
+        lines: queue.Queue = queue.Queue()
+        threading.Thread(target=_pump_lines, args=(proc.stdout, lines), daemon=True, name="process-output").start()
+        abandon_at = None
+        while True:
+            try:
+                line = lines.get(timeout=0.5)
+            except queue.Empty:
+                if cancel is not None and cancel.is_set():
+                    if abandon_at is None:
+                        abandon_at = time.monotonic() + STOP_GRACE_SECONDS
+                    elif time.monotonic() >= abandon_at:
+                        cancel._kill(proc)              # once more, then let go of whatever still holds the pipe
+                        diagnostics.event(_log, "process output abandoned after a stop", pid=proc.pid)
+                        break
+                continue
+            if line is None:
+                break
             if on_line is not None:
                 on_line(line)
             log(line.rstrip("\n"))
-        returncode = proc.wait()
+        if abandon_at is None:
+            returncode = proc.wait()
+        else:
+            try:
+                returncode = proc.wait(timeout=STOP_GRACE_SECONDS)
+            except subprocess.TimeoutExpired:
+                returncode = -1
         return returncode
     finally:
         diagnostics.event(_log, "process ended", program=cmd if isinstance(cmd, str) else cmd[0], exit=returncode,
@@ -556,7 +616,15 @@ class CompileJob:
     # change in between, from later ones. None: not stamped.
     run_id: Optional[str] = None
     language: Optional[str] = None   # EN/DE override; None uses the deck's setting
+    # A one-off colour mode for this build (v0.16.4, the Compile menu's "Current view in another colour mode"):
+    # a mode id of the view's template, written as \SMModeOverride instead of the deck's and the view's own (the
+    # template's base mode removes it). The PDF gets the mode as a suffix, so the view's usual PDF stays. None: the
+    # deck's and the view's mode.
+    mode: Optional[str] = None
     resolve_translations: bool = True   # False for a maintenance deck rendering each file independently
+    # This run typesets the slides with a "+" as they are now, whatever Settings -> General says (issue #97: the
+    # notice before a deck compile offers it). False: the setting decides (saved_versions()).
+    current_edits: bool = False
 
     @property
     def _appendix_applies(self) -> bool:
@@ -578,6 +646,8 @@ class CompileJob:
             from .deck_settings import read_settings
             if self.language.lower() != read_settings(self.deck.text).language.lower():
                 parts.append(self.language.lower())
+        if self.mode:
+            parts.append(self.mode)
         # No "-appendix" suffix (2026-10-03, direct instruction; it used to
         # mark a compile with the generated appendix): with or without the
         # appendix a job writes the same file.
@@ -643,10 +713,35 @@ def override_lines(ctx: project.ProjectContext, job: CompileJob, *, appendix_lin
     if job.language:
         lines.append(f"\\def\\decklanguageoverride{{{job.language.lower()}}}")
 
-    if saved_versions and not app_settings.get(ctx, slide_versioning.RENDER_CHANGES_SETTING_KEY, False):
+    if saved_versions and uses_saved_versions(ctx, job):
         from . import deck_language
         lines += slide_versioning.saved_version_lines(ctx, job.deck, deck_language.language_for_job(job))
     return lines
+
+
+def uses_saved_versions(ctx: project.ProjectContext, job: CompileJob) -> bool:
+    """Whether `job` typesets each slide with a "+" from its last version (slide_versioning.saved_versions): Settings
+    -> General does not compile the changes, and this run was not asked to (job.current_edits)."""
+    return not job.current_edits and not app_settings.get(ctx, slide_versioning.RENDER_CHANGES_SETTING_KEY, False)
+
+
+def with_mode(ctx: project.ProjectContext, preamble: str, mode: str) -> str:
+    """`preamble` in colour mode `mode` of its template: \\SMModeOverride written, or removed for the template's base
+    mode; unchanged when the preamble has no template line."""
+    from . import deck_settings
+    modes = deck_settings.template_modes(ctx.root, slide_templates.detect_template(preamble))
+    try:
+        return deck_settings.set_mode(preamble, deck_settings.mode_to_settings(modes, mode))
+    except ValueError:
+        return preamble
+
+
+def other_modes(ctx: project.ProjectContext, deck: Deck, view: Optional[str]) -> list[tuple[str, str]]:
+    """[(mode id, label)] of the template `view` uses, without the mode that view already compiles in."""
+    from . import deck_settings
+    modes = deck_settings.template_modes(ctx.root, view_themes.template_for(deck.text, view))
+    current = deck_settings.settings_mode(modes, view_themes.mode_for(deck.text, view))
+    return [(mode_id, label) for mode_id, label in modes if mode_id != current]
 
 
 def wrapper_text(ctx: project.ProjectContext, job: CompileJob, *, resolver=None) -> str:
@@ -659,6 +754,8 @@ def wrapper_text(ctx: project.ProjectContext, job: CompileJob, *, resolver=None)
     preamble = job.deck.preamble_text if job.deck.preamble_end is not None else ""
     # Themes per view (view_themes): this view's template and mode, which need the inlined preamble.
     view_preamble = view_themes.preamble_for_view(preamble, job.version or "instructor")
+    if job.mode is not None and view_preamble:
+        view_preamble = with_mode(ctx, view_preamble, job.mode)
     themed = view_preamble != preamble
     preamble = view_preamble
     language_lines = deck_language.language_lines(ctx, language if job.language else None, deck=language)

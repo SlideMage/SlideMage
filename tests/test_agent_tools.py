@@ -14,7 +14,7 @@ from agent_fakes import FakeWorkspace, call
 from conftest import SLIDE_TEXT
 
 from slidemage import ai_review, compiler, preview_target, batch_render
-from slidemage.ai import agent_context
+from slidemage.ai import agent_context, translation_style
 from slidemage.ai.agent_types import (
     EDIT_ASK,
     EDIT_AUTO,
@@ -401,7 +401,7 @@ def test_render_preview_returns_the_image_of_the_buffer(box, root, monkeypatch):
     assert not result.is_error and len(result.images) == 1
     from slidemage import render_lookup
     spec, = box.ws.prepare_preview_batch(root / SLIDE, 'instructor')
-    renderer = box.ws.preview_service()._renderer(box.ws.project)
+    renderer = box.ws.preview_service().renderer(box.ws.project)
     state, record = render_lookup.select(dict(resolver=renderer.resolver, unit=spec.unit, spec=spec), strict=True)
     assert state == 'current' and result.images == [renderer.store.page(record, record['pages'])]
     monkeypatch.setattr(preview_target, 'render_text', lambda *a, **k: pytest.fail('a current store hit must not compile'))
@@ -634,6 +634,15 @@ def test_read_guide_returns_a_frame_example_and_rejects_unknown_topics(box):
     frames = box.ok("read_guide", topic="frames")
     assert "\\begin{sideimageframe}{Title}{media/your-image.pdf}" in frames
     assert "must be one of" in box.error("read_guide", topic="everything")
+
+
+def test_the_translation_guide_gives_the_form_of_address_and_the_glossary(box, root):
+    assert "formally in every language (German: Sie)" in box.ok("read_guide", topic="translation")
+    (root / ".slidemage").mkdir(exist_ok=True)
+    (root / ".slidemage" / "glossary.md").write_text("| EN | DE |\n|---|---|\n| slide | Folie |\n", encoding="utf-8")
+    translation_style.set_address(ProjectContext.at(root), "informal")
+    guide = box.ok("read_guide", topic="translation")
+    assert "informally in every language (German: du)" in guide and "| slide | Folie |" in guide
 
 
 # -- the context block ----------------------------------------------------------------------------

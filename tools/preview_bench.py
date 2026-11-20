@@ -185,7 +185,7 @@ def instrument():
     where another module imported them by name. Functions that no longer exist are skipped."""
     from slidemage import compiler, preview_build, preview_format, render_evidence, render_key, render_store, slide_snapshot
     targets = [(render_evidence, 'configuration_state'), (render_evidence, 'search_state'),
-               (render_evidence, 'file_state'), (render_evidence, 'input_state'), (render_evidence, 'thumbnail_png'),
+               (render_evidence, 'file_state'), (render_evidence, 'input_state'), (render_evidence, 'webp'),
                (render_store.RenderStore, 'put'), (render_store.RenderStore, 'evict'),
                (render_key.Resolver, 'capture'),
                (preview_build, 'configuration_key'), (preview_build, 'prune_unused'), (preview_build, 'publish_preview'),
@@ -218,7 +218,7 @@ def instrument():
 
 class Bench:
     def __init__(self, args, root):
-        from slidemage import deck_editor, deck_scan, deck_settings, preview_requests, project
+        from slidemage import deck_language, deck_scan, deck_settings, preview_requests, project
         self.args, self.root = args, root
         self.ctx = project.ProjectContext.at(root)
         decks = [d for d in deck_scan.scan_decks(self.ctx) if not d.archived and not d.name.startswith('_')]
@@ -226,7 +226,7 @@ class Bench:
         if self.deck is None:
             raise SystemExit(f'no deck {args.deck or ""} in {root}'.replace('  ', ' '))
         self.language = (args.language or deck_settings.read_settings(self.deck.text).language).upper()
-        used = {call.id for call in deck_editor.parse_slide_calls(self.deck) if not deck_editor.is_commented_out(self.deck.text, call)}
+        used = {call.id for call in deck_language.active_calls(self.deck)}
         slides = sorted(self.ctx.slides_dir.glob('*-current.tex'))
         self.slide = next((p for p in slides if (p.stem.startswith(args.slide) if args.slide else p.stem.split('-')[0] in used)), None)
         if self.slide is None:
@@ -333,7 +333,7 @@ class Bench:
             renderer = background_renders.BackgroundRenderer(self.ctx, store, gate=gate, decks=lambda: [self.deck])
             renderer.batch_size = lambda size=size: size
             try:
-                renderer.scheduler.submit(warm.label, ((warm,), background_renders.ORIGIN_BACKGROUND), background_renders.P_IDLE)
+                renderer.scheduler.submit(warm.label, ((warm,), ()), background_renders.P_IDLE)
                 renderer.scheduler.run_next()     # warm the format, unreported
                 renderer._plan = [((n,), unit) for n, unit in enumerate(units)]
                 before, own, start = children(), time.process_time(), time.perf_counter()

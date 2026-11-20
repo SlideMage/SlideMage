@@ -3,6 +3,8 @@
 """What the Preview renders: the call, the deck context, the view and language."""
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from slidemage import batch_render, deck_editor, preview_target, slide_preview
@@ -15,7 +17,7 @@ PREAMBLE = "\\documentclass{beamer}\n\\input{SlideMage_template_acme-two}\n\\beg
 
 def make_deck(body):
     text = PREAMBLE + "\n" + body + "\\end{document}\n"
-    return Deck(name="course", path=None, archived=False, text=text, supports_version=True,
+    return Deck(name="course", path=Path("course.tex"), archived=False, text=text, supports_version=True,
                 uses_biblatex=False, preamble_end=len(PREAMBLE), chapters=parse_chapters(text),
                 output_folders={})
 
@@ -215,6 +217,7 @@ def test_for_call_with_the_resolved_outline_builds_the_target_the_resolver_does(
     (ctx.slides_dir / 'ddd-DE-Vier-current.tex').write_text('%% Translation of: aaa-EN-One\nbody')
     deck = make_deck('\\slide{aaa-EN-One}\n\\conditionalslide[instructor]{bbb-EN-Two}\n\\slidestep{ccc-EN-Three}[instructor]{1}\n'
                      '\\slidestep{ccc-EN-Three}[during-course]{1}\n\\slide{ddd-DE-Vier}\n\\slide{aaa-EN-One}\n')
+    deck.path = ctx.decks_dir / "course.tex"
     outline = deck_outline.resolve_outline(ctx, deck, view, language)
     assert any(r.hidden for r in outline.rows)
     for row in outline.rows:

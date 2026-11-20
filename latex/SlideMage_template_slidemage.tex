@@ -1,5 +1,6 @@
 % SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 % SPDX-License-Identifier: LPPL-1.3c+
+% SlideMage modes: light, dark=Dark slides
 % Template of the generic SlideMage look (2026-10-03, direct
 % instruction): the look of SlideMage itself rather than of an institution --
 % the SlideMage logo, the app's own colors, dark title and footer boxes with
@@ -29,6 +30,25 @@
 \colorlet{SMCodeKeywordColor}{c_primary_highlight}
 \definecolor{SMCodeCommentColor}{HTML}{5f5f5f}
 \definecolor{SMCodeBackgroundColor}{HTML}{f0f0f0}
+
+% ---------------------------------------------------------------------------
+% Colour modes (SlideMage_setup.tex, 'Colour modes and role colours'): light, the colours
+% above, is the base mode; dark starts from the framework's dark preset (canvas #444444 from
+% c_primary_dark, white text). On it the highlight blue and the custom colours, which slides
+% write as text and lines (\textcolor{c_primary_highlight}, \textcolor{c_custom_red}), are too
+% dark (1.7:1 to 2.2:1), so dark mode gives them lighter values, each at least 4.4:1 on the
+% canvas (v0.16.5); bullets, rules, image borders and markers follow, as they are made of them.
+% No slide uses these colours as a fill behind white text (a node that does writes text=c_canvas,
+% white in light mode). Code keywords keep the dark blue: \colorlet above copies it before the
+% mode applies, and the code panel stays light. A deck picks the mode in Deck settings -> Colours.
+% ---------------------------------------------------------------------------
+\SMDeclareMode{light}{}
+\SMDeclareMode{dark}{dark}
+\SMSetColor{c_primary_highlight}{dark}{HTML}{8BBCEC}      % 4.9:1 on the dark canvas
+\SMSetColor{c_custom_red}{dark}{HTML}{FF9090}             % 4.5:1
+\SMSetColor{c_custom_green}{dark}{HTML}{7FD07F}           % 5.2:1
+\SMSetColor{c_custom_brown}{dark}{HTML}{E0B060}           % 4.9:1
+\SMSetRole{alert}{dark}{c_secondary_orange}                % ffb74d, 5.6:1
 
 \input{SlideMage_base}
 

@@ -47,8 +47,12 @@ from ..kit.widgets import Button, Chip, ElidedLabel, IconButton, Popover, Popove
 from .insert_popovers import CitationPopover, CodeFilePopover, LinkPopover
 from .selection_tasks import PROOFREAD, REWRITE, add_menu_items
 from .source_file import REPLACE_KEY, SourceFile, autosave_on
+from . import spell_check
 
 LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+# The Tools menu's note on what Reindent does, per SourceFile.reindent_kind.
+REINDENT_META = {"slide": "one tab per \\begin level", "deck": "per \\begin, \\if and { level",
+                 "bib": "one tab per field"}
 
 
 VERSION_TIP = ("Make the slide as it is now a version: it is frozen, and decks can keep using it. "
@@ -76,6 +80,7 @@ class SourcePane(Surface):
         self._held: dict[Path, int] = {}    # files a tab needs, and how many do: not dropped when out of view
         self._current: Optional[SourceFile] = None
         self._dirty = False
+        self._spelling = None              # the SpellingSession of the project open (spelling_session())
         self._lint_errors = 0
 
         layout = QVBoxLayout(self)
@@ -132,6 +137,9 @@ class SourcePane(Surface):
         self._find_button = IconButton("search", f"Find and replace ({keys})")
         self._find_button.clicked.connect(lambda: self._with_file(lambda f: f.find_bar.show_find()))
         top.addWidget(self._find_button)
+        self._spell_button = IconButton("spellcheck", "")
+        self._spell_button.clicked.connect(lambda: self.set_spell_check(not spell_check.spell_check_on()))
+        top.addWidget(self._spell_button)
         # Update version, and in the caret's menu the way back to the last version (revert_version).
         self._version_button = SplitButton("Update version")
         self._version_button.clicked.connect(self.update_version)
@@ -257,6 +265,11 @@ class SourcePane(Surface):
         file.lint_changed.connect(self._emit_lint_errors)
         file.editor.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         file.editor.customContextMenuRequested.connect(self._on_context_menu)
+        file.attach_spell_check(self.spelling_session, spell_check.spell_check_on())
+        if file.spell_check is not None:
+            file.spell_check.status_changed.connect(self._update_toolbar)
+            file.spell_check.word_list_changed.connect(self.recheck_spelling)
+            file.editor.spelling_menu_requested.connect(self._on_spelling_key)
         file.fix_panel.running_changed.connect(self._on_modified)
         file.saved.connect(lambda p=path: self.saved.emit(p))
         file.written.connect(lambda p=path: self.written.emit(p))
@@ -361,6 +374,8 @@ class SourcePane(Surface):
         return file.path not in self._held and not file.keep_open
 
     def _drop(self, file: SourceFile) -> None:
+        if file.spell_check is not None:
+            file.spell_check.stop()
         del self._files[file.path]
         self._stack.removeWidget(file)
         file.deleteLater()
@@ -407,6 +422,58 @@ class SourcePane(Surface):
         for file in self._files.values():
             file.editor.set_tab_width(chars)
 
+    def set_hover_help(self, on: bool) -> None:
+        for file in self._files.values():
+            file.editor.set_hover_help(on)
+
+    # -- spelling (spell_check.py) -----------------------------------------------------
+
+    def spelling_session(self):
+        """The SpellingSession of the open project: one for every file, so the dictionaries, the cache and the
+        words ignored for this session are shared. A new project gets a new one (its own word lists)."""
+        from ...spelling.dictionary_checker import DictionaryChecker
+        from ...spelling.session import SpellingSession
+
+        root = self.app.project.root
+        if self._spelling is None or self._spelling.root != root:
+            checker = self._spelling.checker if self._spelling is not None else DictionaryChecker()
+            self._spelling = SpellingSession(checker, root)
+        return self._spelling
+
+    def set_spell_check(self, on: bool) -> None:
+        """The toolbar switch: remembered for this user, applied to every open slide."""
+        spell_check.set_spell_check_on(on)
+        for file in self._files.values():
+            if file.spell_check is not None:
+                file.spell_check.set_enabled(on)
+        self._update_toolbar()
+
+    def recheck_spelling(self) -> None:
+        """Check every open slide again (a word was ignored or added to the word list, the German variant changed)."""
+        for file in self._files.values():
+            if file.spell_check is not None and file.spell_check.enabled:
+                file.spell_check.check_now()
+
+    def _spell_tip(self, file: Optional[SourceFile]) -> str:
+        on = spell_check.spell_check_on()
+        tip = ("Check spelling: on. Unknown words in the slide's text are underlined; right-click one, or press "
+               "Ctrl+. at it, for suggestions." if on else "Check spelling: off. Click to underline unknown words.")
+        if on and file is not None and file.spell_check is not None and file.spell_check.status:
+            tip += "\n" + file.spell_check.status
+        return tip
+
+    def _on_spelling_key(self, offset: int, point: QPoint) -> None:
+        """Ctrl+. in the editor: the spelling rows for the word at the cursor, if it is underlined."""
+        file = self._current
+        if file is None or file.spell_check is None:
+            return
+        menu = PopoverMenu(self, min_width=240, focus_first=True)
+        if not file.spell_check.add_menu_rows(menu, offset):
+            menu.deleteLater()
+            return
+        menu.triggered.connect(self._on_context_chosen)
+        self._popup_at(menu, point)
+
     def refresh_model_preferences(self, models: list[str]) -> None:
         for file in self._files.values():
             file.refresh_model_preference(models)
@@ -436,6 +503,10 @@ class SourcePane(Surface):
         self._elsewhere_chip.set_text(f"{len(others)} more not saved" if len(others) > 1 else "1 more not saved")
         self._elsewhere_chip.setToolTip("Click to show the next file whose edits could not be saved.")
         self._find_button.setEnabled(has)
+        self._spell_button.setVisible(has and file.spell_check is not None)
+        self._spell_button.set_active(spell_check.spell_check_on())
+        self._spell_button.set_faint(not spell_check.spell_check_on())
+        self._spell_button.setToolTip(self._spell_tip(file))
         self._version_button.setVisible(has and file.is_current_slide)
         changes, why_not = self._changes_since_version(file) if has and file.is_current_slide else (False, "")
         self._version_button.setEnabled(changes and not read_only)
@@ -563,21 +634,33 @@ class SourcePane(Surface):
         menu.popup_below(anchor)
 
     def _deck_swatches(self) -> dict[str, str]:
-        """The Color menu's colours under the open deck's theme (the project's render template with no deck), read
-        when the menu opens, so a switched deck or a changed theme shows at once."""
+        """The Color menu's colours under the open deck's theme and colour mode in the view shown (the project's
+        render template in its base mode with no deck), read when the menu opens, so a switched deck, view, mode or
+        theme shows at once."""
         state = getattr(self.app, "state", None)
         deck = getattr(state, "deck", None)
         project = self.app.project
+        mode = ""
         if deck is not None:
-            template = view_themes.template_for(deck.text, getattr(state, "view", None))
+            view = getattr(state, "view", None)
+            template = view_themes.template_for(deck.text, view)
+            mode = view_themes.mode_for(deck.text, view)
         else:
             template = slide_templates.render_template(project)
-        return theme_colors.swatches(template, project.root)
+        return theme_colors.swatches(template, project.root, mode)
 
     def _open_color_menu(self) -> None:
-        menu = PopoverMenu(self, min_width=220)
-        for name, swatch in self._deck_swatches().items():
-            menu.add_item(name, name, swatch=swatch)
+        menu = PopoverMenu(self, min_width=300)
+        swatches = self._deck_swatches()
+        roles = [name for name in swatches if theme_colors.role_hint(name)]
+        if roles:
+            menu.add_header("Follows the color mode")
+            for name in roles:
+                menu.add_item(name, name, meta=theme_colors.role_hint(name), swatch=swatches[name])
+            menu.add_header("Palette")
+        for name, swatch in swatches.items():
+            if name not in roles:
+                menu.add_item(name, name, swatch=swatch)
         menu.triggered.connect(lambda name: self._wrap(f"textcolor{{{name}}}"))
         self._popup(menu, self._color_button)
 
@@ -649,8 +732,8 @@ class SourcePane(Surface):
     def _open_tools_menu(self) -> None:
         file = self._current
         menu = PopoverMenu(self, min_width=240)
-        menu.add_item("reindent", "Reindent", meta="one tab per \\begin level",
-                      enabled=file.is_slide and not file.editor.is_read_only())
+        menu.add_item("reindent", "Reindent", meta=REINDENT_META.get(file.reindent_kind, ""),
+                      enabled=file.reindent_kind is not None and not file.editor.is_read_only())
         if routes.all():
             menu.add_item("chat", "Ask the chat…", meta="about this slide", enabled=file.is_slide)
         menu.triggered.connect(self._on_tool_chosen)
@@ -664,15 +747,19 @@ class SourcePane(Surface):
 
     def reindent(self) -> None:
         file = self._current
-        self.app.log(f"Reindented {file.path.name}" if file.editor.reindent()
+        if file.reindent_kind is None or file.editor.is_read_only():
+            return
+        self.app.log(f"Reindented {file.path.name}" if file.editor.reindent(file.reindent_kind)
                      else f"{file.path.name}: indentation already correct")
 
     def _on_context_menu(self, pos: QPoint) -> None:
-        """Right-click in the editor: the edit commands and, in a slide, Rewrite selection and Proofread selection
+        """Right-click in the editor (`pos` is in the viewport's coordinates, which start right of the line numbers): the edit commands and, in a slide, Rewrite selection and Proofread selection
         (enabled when the selection can be worked on)."""
         editor = self._current.editor
         selected, writable = editor.textCursor().hasSelection(), not editor.is_read_only()
         menu = PopoverMenu(self, min_width=240)
+        if self._current.spell_check is not None:    # also with a selection: a double-clicked word is selected
+            self._current.spell_check.add_menu_rows(menu, editor.offset_at(pos))
         menu.add_item("undo", "Undo", meta="Ctrl+Z", enabled=writable)
         menu.add_item("redo", "Redo", meta="Ctrl+Y", enabled=writable)
         menu.add_separator()
@@ -689,9 +776,12 @@ class SourcePane(Surface):
                 usable = False
             add_menu_items(menu, usable)
         menu.triggered.connect(self._on_context_chosen)
-        self._popup_at(menu, editor.mapToGlobal(pos))
+        self._popup_at(menu, editor.viewport().mapToGlobal(pos))
 
     def _on_context_chosen(self, key: str) -> None:
+        if self._current is not None and self._current.spell_check is not None \
+                and self._current.spell_check.handle_choice(key):
+            return
         if key == PROOFREAD:
             self.app.assistant.proofread_selection()
         elif key.startswith(REWRITE):

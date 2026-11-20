@@ -36,7 +36,7 @@ def test_cancel_waiting_build_releases_reservations(tmp_path, monkeypatch):
         assert entered.wait(2)
         cancel.request_stop()
         worker.join(2)
-        assert not worker.is_alive() and errors == ['Preview cancelled']
+        assert not worker.is_alive() and errors == ['Preview canceled']
     with preview_build.build_lock(lock, blocking=False) as acquired:
         assert acquired
     assert not preview_build.is_active(ctx.build_dir)
@@ -70,7 +70,7 @@ def test_cancel_running_latexmk_kills_children_and_frees_lock(tmp_path, monkeypa
     finally:
         cancel.request_stop()
         worker.join(5)
-    assert not worker.is_alive() and errors == ['Preview cancelled']
+    assert not worker.is_alive() and errors == ['Preview canceled']
     assert not cancel._processes and not preview_build.is_active(ctx.build_dir)
     for lock in ctx.build_dir.rglob('build.lock'):
         with preview_build.build_lock(lock, blocking=False) as acquired:
@@ -98,7 +98,7 @@ def test_tool_wait_cancels_shared_running_request(tmp_path, monkeypatch, timeout
     if not timeout:
         stopper = threading.Thread(target=lambda: (started.wait(2), cancel.request_stop()))
         stopper.start()
-    with pytest.raises(RuntimeError, match='timed out' if timeout else 'cancelled'):
+    with pytest.raises(RuntimeError, match='timed out' if timeout else 'canceled'):
         request.wait(cancel, timeout=.1 if timeout else 5)
     assert request.done.wait(2) and request.cancel.is_set() and not service._requests
     if not timeout:
@@ -144,7 +144,7 @@ def test_cancel_preamble_build_propagates_and_releases_format_lock(tmp_path, mon
         return -1
 
     monkeypatch.setattr(preview_format, 'run_streamed', run)
-    with pytest.raises(RuntimeError, match='cancelled'):
+    with pytest.raises(RuntimeError, match='canceled'):
         preview_format.ensure(r'\documentclass{beamer}', 'key', project_root=tmp_path,
                               build_dir=tmp_path / '.build', env={}, log=lambda _: None,
                               lock=preview_build.build_lock, cancel=cancel)

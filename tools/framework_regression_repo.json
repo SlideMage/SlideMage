@@ -6,6 +6,6 @@
   "decks": [
     {"deck": "decks/slidemage-manual.tex"},
     {"deck": "decks/slidemage-manual-copy.tex"},
-    {"deck": "decks/slidemage-manual.tex", "template": "greyscale"}
+    {"deck": "decks/slidemage-manual.tex", "template": "grayscale"}
   ]
 }

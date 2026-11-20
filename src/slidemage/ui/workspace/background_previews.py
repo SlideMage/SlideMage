@@ -15,11 +15,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+import logging
 import os
 import sys
 from weakref import WeakSet
 from typing import Optional
 
+import shiboken6
 from PySide6.QtCore import QEvent, QObject, QPoint, QRectF, QSize, QTimer, Qt, Signal
 from PySide6.QtGui import QColor, QCursor, QFont, QPainter, QPen
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QDialog, QHBoxLayout, QHeaderView, QLabel, QMessageBox,
@@ -31,6 +33,8 @@ from ...plugins import session
 from ...plugins.host import plugin_render_priority
 from ..kit.widgets import Chip
 from ..kit.tokens import LIGHT, Tokens
+
+_log = logging.getLogger("slidemage.background")
 
 NO_BACKGROUND_ENV = "SLIDEMAGE_NO_BACKGROUND_PREVIEWS"     # set by the tests: nothing renders by itself
 REFRESH_MS = 1000
@@ -290,8 +294,10 @@ class _InputWatcher(QObject):
     """Watch input application-wide, using widget filters on Linux.
 
     On Linux, an application event filter can crash in Shiboken while wrapping
-    Qt WebEngine's private focus objects. Discover widgets periodically there;
-    other platforms keep the application filter without a polling timer.
+    Qt WebEngine's private focus objects. There, each widget gets its own filter:
+    a widget's later children are caught by ChildAdded, and the timer only looks
+    at the top-level widgets (menus, popups and dialogs have no parent to send
+    ChildAdded). Other platforms keep the application filter without a timer.
     """
 
     def __init__(self, on_input, parent: QObject) -> None:
@@ -306,34 +312,42 @@ class _InputWatcher(QObject):
         self._cursor = QCursor.pos()
         self._timer = QTimer(self)
         self._timer.setInterval(250)
-        self._timer.timeout.connect(self._watch_widgets)
-        self._watch_widgets()
+        self._timer.timeout.connect(self._poll)
+        self._poll()
         self._timer.start()
 
-    def _watch_widgets(self) -> None:
+    def _watch(self, widget: QWidget) -> None:
+        if widget in self._watched:
+            return
+        for each in (widget, *widget.findChildren(QWidget)):
+            if each not in self._watched:
+                each.installEventFilter(self)
+                self._watched.add(each)
+
+    def _poll(self) -> None:
         # Widgets without mouse tracking discard unpressed mouse moves before
         # their filters run. Poll movement while this application is active too.
         cursor = QCursor.pos()
         if cursor != self._cursor and QApplication.activeWindow() is not None:
             self._on_input()
         self._cursor = cursor
-        for widget in QApplication.allWidgets():
-            if widget not in self._watched:
-                widget.installEventFilter(self)
-                self._watched.add(widget)
+        for widget in QApplication.topLevelWidgets():
+            self._watch(widget)
 
     def stop(self) -> None:
         if self._timer is None:
             QApplication.instance().removeEventFilter(self)
             return
         self._timer.stop()
-        for widget in QApplication.allWidgets():
-            if widget in self._watched:
+        for widget in self._watched:
+            if shiboken6.isValid(widget):
                 widget.removeEventFilter(self)
         self._watched.clear()
 
     def eventFilter(self, watched, event) -> bool:      # noqa: N802 -- Qt's name
         kind = event.type()
+        if kind == QEvent.Type.ChildAdded and isinstance(event.child(), QWidget):
+            self._watch(event.child())
         if kind not in INPUT_EVENTS:
             return False
         if kind == QEvent.Type.MouseMove:
@@ -474,6 +488,8 @@ class BackgroundPreviews(QObject):
         if renderer is None or self.store is None or ctx.root != self.project.root:
             return
         record = compile_records.read_record(ctx.build_dir, job.jobname)
+        if record is None:
+            _log.info("deck compile %s: no compile record, so no pages go to the store", job.jobname)
         if record is not None and renderer.ingest_compile(job, pdf, record):
             self.changed.emit()
             self.ingested.emit()
@@ -621,6 +637,7 @@ class BackgroundPreviews(QObject):
         self.refresh()
 
     def render_now(self) -> None:
+        self.renderer.trace("Render now clicked")
         self.renderer.gate.paused = False
         self.renderer.gate.force()
         self.renderer.replan()

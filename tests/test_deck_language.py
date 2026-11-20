@@ -7,7 +7,7 @@ import pytest
 
 from slidemage import compile_progress, compiler, deck_language, deck_outline, deck_scan, latex_lint, preview_target, slide_language
 from slidemage.project import ProjectContext
-from conftest import EXAMPLE_PROJECT
+from conftest import EXAMPLE_PROJECT, write_test_file
 
 
 @pytest.fixture
@@ -30,7 +30,7 @@ def project(tmp_path, monkeypatch):
 
 def deck(root, body, language="en"):
     path = root / "decks" / "course.tex"
-    path.write_text("\\documentclass{beamer}\n" + f"\\decklanguage[{language}]\n"
+    write_test_file(path, "\\documentclass{beamer}\n" + f"\\decklanguage[{language}]\n"
                     + "\\begin{document}\n" + body + "\\end{document}\n")
     return next(d for d in deck_scan.scan_dir(path.parent, False) if d.path == path)
 
@@ -356,3 +356,37 @@ def test_slidestep_slide_counts_as_used():
 
     unused = {p.name for p in unused_content.find_unused_slides(EXAMPLE_PROJECT)}
     assert "1mu-EN-Slidestep-Demo-current.tex" not in unused
+
+
+@pytest.mark.parametrize("folder", ["decks", "decks/archive"])
+def test_slideblock_expands_to_the_same_calls_as_inline(project, folder):
+    ctx = ProjectContext.at(project)
+    ctx.slide_ids_csv.write_text('"id"\n')
+    ctx.blocks_dir.mkdir()
+    calls = (
+        "\\slide{aaa-EN-One}\n"
+        "\\slideversion{aaa-EN-One}{1-0-0}\n"
+        "\\omitslide{bbb-EN-Two}\n"
+        "\\omitslideversion{aaa-EN-One}{1-0-0}\n"
+        "\\slidefinal{ccc-mult-Three}\n"
+        "\\conditionalslide[instructor]{bbb-EN-Two}\n"
+        "\\slidestep{ccc-mult-Three}[during-course]{1,2}"
+    )
+    block = ctx.blocks_dir / "topic.tex"
+    write_test_file(block, calls + "% trailing comment")
+    inline = deck(project, "\\section{Topic}\n" + calls + "\n")
+    path = project / folder / "linked.tex"
+    path.parent.mkdir(exist_ok=True)
+    write_test_file(path, inline.text.replace(calls, r"\slideblock{topic}"))
+    linked = deck_scan.read_deck(path)
+    before = path.read_bytes(), block.read_bytes()
+
+    expanded, dependencies = deck_language.expand_fragments(linked, strict_includes=True)
+
+    assert [(deck_language.call_text(c), c.chapter.title) for c in deck_language.active_calls(expanded)] == [
+        (deck_language.call_text(c), c.chapter.title) for c in deck_language.active_calls(inline)]
+    assert dependencies == [block]
+    for language in ("EN", "DE"):
+        assert [deck_language.call_text(s.call) for s in deck_language.deck_slots(ctx, expanded, language)] == [
+            deck_language.call_text(s.call) for s in deck_language.deck_slots(ctx, inline, language)]
+    assert (path.read_bytes(), block.read_bytes()) == before

@@ -43,8 +43,8 @@ from PySide6.QtWidgets import (
 
 from ... import background_renders, power_status, preview_build, timing
 from ...stall_monitor import StallMonitor
-from ... import (app_settings, bibliography, deck_headers, deck_outline, latex_edit, project, readability_check,
-                 slide_templates, themes, updater)
+from ... import (app_settings, bibliography, deck_headers, deck_outline, latex_edit, latex_help, project,
+                 readability_check, slide_language, slide_templates, themes, updater)
 from ... import version as version_mod
 from ...ai import ai_profile, resolver, routes
 from ...deck_groups import DEFAULT_GROUPS, DeckGroup, load as load_deck_groups
@@ -59,6 +59,7 @@ from ..kit.kit_qss import WARNING_LABEL
 from ..kit.theme import ThemeManager
 from ..kit.widgets import Toast
 from ..pages.images import ImagesPage
+from ..pages.library.page import LibraryPage
 from ..pages.no_decks import NoDecksPage
 from ..text import plural
 from . import compile_actions, side_panels, slide_list, source_file
@@ -136,8 +137,6 @@ class WorkspaceWindow(QMainWindow):
         super().__init__()
         self.theme = theme
         self.project = project_context
-        from .wizard_portal import review_snapshot
-        self._wizard_review = review_snapshot(self)
         self.compile = CompileController(project_context, self)
         self.readability_known = readability_check.KnownFindings()    # what the readability checks found, per slide text
         self.setWindowTitle(f"SlideMage — {version_mod.VERSION}")
@@ -208,6 +207,9 @@ class WorkspaceWindow(QMainWindow):
         self.images_page = ImagesPage(self, self.state, self.centre)
         self.images_page.closed.connect(self._toggle_images)
         self.stack.addWidget(self.images_page)
+        self.library_page = LibraryPage(self)
+        self.library_page.closed.connect(self._toggle_library)
+        self.stack.addWidget(self.library_page)
         self.stack.currentChanged.connect(self._on_page_changed)
         for column in (self.slide_list, self.stack, self.side_panels):
             self.splitter.addWidget(column)
@@ -288,6 +290,11 @@ class WorkspaceWindow(QMainWindow):
         self.centre.preview.rendered_target.connect(self.slide_list.preview_source_changed)
         self.centre.source.file_closed.connect(self._on_source_closed)
         self.centre.source_only_changed.connect(self.topbar.set_source_only)
+        self.centre.context_changed.connect(self._on_tab_context)
+        self.state.before_switch = self._leaving_deck       # the centre keeps the deck's work; the list's part is added here
+        self.slide_list.back_requested.connect(self.centre.show_slide_tab)
+        self.slide_list.open_in_requested.connect(self._open_in_deck)
+        self.topbar.leave_source_only.connect(self._leave_source_only)
         self.centre.source.buffer_changed.connect(lambda _path: self.assistant.header.on_typing())
         self.centre.source.buffer_changed.connect(self.slide_list.preview_source_changed)
         self.centre.versions_changed.connect(self.side_panels.refresh)
@@ -363,10 +370,10 @@ class WorkspaceWindow(QMainWindow):
         self._apply_column_visibility()
 
     def _apply_column_visibility(self) -> None:
-        # Images temporarily uses both columns' room without changing the user's preferences.
-        is_images = self.stack.currentWidget() is self.images_page
-        self.slide_list.setVisible(not is_images and not self.left_column_hidden)
-        self.side_panels.setVisible(not is_images and not self.right_column_hidden)
+        # Pages temporarily use both columns' room without changing the user's preferences.
+        is_workspace = self.stack.currentWidget() is self.centre
+        self.slide_list.setVisible(is_workspace and not self.left_column_hidden)
+        self.side_panels.setVisible(is_workspace and not self.right_column_hidden)
         if self._columns_sized:
             self.set_column_widths(left=slide_list.remembered_width(), right=side_panels.remembered_width(self.project))
         self.topbar.refresh_column_toggles()
@@ -375,6 +382,31 @@ class WorkspaceWindow(QMainWindow):
         self.set_column_widths(left=slide_list.WIDTH if index == 1 else None,
                                right=side_panels.WIDTH if index == 2 else None)
         self._on_splitter_moved(0, index)
+
+    def about_to_change_context(self) -> bool:
+        """Before the deck on show changes under a tab switch (tab-contexts.md R4): everything typed lands in the context
+        it was typed in. The side panels' pending edits are saved, the slide list's inline edit is finished, and the files
+        of the Source view are written. Whether all of it was saved (a file in conflict with the disk is not)."""
+        self.side_panels.flush()
+        self.slide_list.commit_editors()
+        return self.centre.source.flush_all()
+
+    def _leaving_deck(self) -> None:
+        """Another deck is about to replace the deck on show, whichever way it was asked for: what was typed lands in this
+        deck, and its working tab keeps it as it is, the list's scroll, closed sections and Find text included."""
+        self.about_to_change_context()
+        self.centre._keep_work(self.slide_list.work())
+
+    def _on_tab_context(self, tab) -> None:
+        """The tab on show has a deck or none: the left column shows its slide list or a placeholder of the same size."""
+        placeholder = self.centre.list_placeholder(tab)
+        self.slide_list.show_placeholder(*placeholder) if placeholder else self.slide_list.show_placeholder(None)
+
+    def _open_in_deck(self, deck) -> None:
+        """The placeholder's "Open in <deck>": the tab on show gets that deck (CentreColumn.adopt_deck), and the side
+        panels show its slide as that deck calls it."""
+        self.centre.adopt_deck(deck)
+        self.side_panels.refresh()
 
     def _on_splitter_moved(self, _pos: int, _index: int) -> None:
         # The Images page hides the columns: not the user's choice.
@@ -397,15 +429,19 @@ class WorkspaceWindow(QMainWindow):
 
     # -- decks -----------------------------------------------------------------
 
+    @slide_language.shared_links()
     def reload_decks(self) -> None:
         """Rescans the decks. The current deck stays (a fresh object for the
         same file), follows its file when archived, or falls back to the one
         that was open last time, else the first active deck."""
+        old_names = {deck.path: deck.name for deck in self.decks}
         with timing.span("reload_decks.scan"):
             self.deck_groups = load_deck_groups(self.project)
             self.decks = scan_decks(self.project)
+        self.centre.decks_rescanned(old_names, self.decks)      # each working tab follows its deck, or closes with it
         self.topbar.set_decks(self.decks, self.deck_groups)
-        self.body.setCurrentWidget(self.no_decks if not self.decks else self.body.widget(0))
+        self.body.setCurrentWidget(self.no_decks if not self.decks and self.stack.currentWidget() is not self.library_page
+                                   else self.body.widget(0))
         if not self.decks:
             self.no_decks.refresh()
         timing.caller("reload_decks")
@@ -450,12 +486,13 @@ class WorkspaceWindow(QMainWindow):
     # -- the centre column's pages ---------------------------------------------
 
     def _on_page_changed(self, index: int) -> None:
-        """Tell the top bar whether Images is open; the page takes the room of the slide list and the
-        side panels, and scans the slides when it is first shown. Both write the same image store: a
-        pending edit of the panel is saved before the page shows, one of the page when it is left, and
-        what the other wrote shows then."""
+        """Full-width pages load on first opening. Images shares its store with the side panels:
+        save pending edits when switching pages so the other view sees them."""
         is_images = self.stack.widget(index) is self.images_page
+        is_library = self.stack.widget(index) is self.library_page
         self.topbar.set_images_open(is_images)
+        self.topbar.set_library_open(is_library)
+        self.body.setCurrentWidget(self.body.widget(0) if is_library or self.decks else self.no_decks)
         self._apply_column_visibility()
         if is_images:
             self.side_panels.flush()
@@ -466,9 +503,26 @@ class WorkspaceWindow(QMainWindow):
             except Exception as exc:  # noqa: BLE001 -- the edits stay in the page (and in the close prompt)
                 QMessageBox.critical(self, "Save failed", f"Could not save image edits: {exc}")
             self.side_panels.refresh()
+        if is_library:
+            self.library_page.ensure_loaded()
 
     def _toggle_images(self) -> None:
         self.stack.setCurrentWidget(self.centre if self.stack.currentWidget() is self.images_page else self.images_page)
+
+    def show_library(self, *, block: str | None = None) -> None:
+        self.stack.setCurrentWidget(self.library_page)
+        if block is not None:
+            self.library_page.show_block(block)
+
+    def _toggle_library(self) -> None:
+        self.stack.setCurrentWidget(self.centre if self.stack.currentWidget() is self.library_page else self.library_page)
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() == Qt.Key.Key_Escape and self.stack.currentWidget() is self.library_page:
+            self.stack.setCurrentWidget(self.centre)
+            event.accept()
+        else:
+            super().keyPressEvent(event)
 
     def open_images_for_slide(self, id_slug: str) -> None:
         """The slide list's "Images" entry: opens the Images page and lands on that slide's images."""
@@ -545,9 +599,10 @@ class WorkspaceWindow(QMainWindow):
             return
         timing.caller("after_version_updates", files=len(paths))
         self._after_write.stop()
-        self.slide_list.rebuild(preserve_focus=True)
-        self.centre.refresh()
-        self.side_panels.refresh()
+        with slide_language.shared_links():
+            self.slide_list.rebuild(preserve_focus=True)
+            self.centre.refresh()
+            self.side_panels.refresh()
         for path in paths:
             self._live_render(path)
 
@@ -591,6 +646,7 @@ class WorkspaceWindow(QMainWindow):
         self.centre.source.stop_ai_checks()   # no worker thread outlives the window
         self.assistant.shutdown()
         self.images_page.shutdown()
+        self.library_page.shutdown()
         self.palette.stop_search(5000)
         self.compile.shutdown()
         self.background.stop()
@@ -774,6 +830,24 @@ class WorkspaceWindow(QMainWindow):
         app_settings.set(self.project, latex_edit.TAB_WIDTH_SETTING_KEY, chars)
         self.centre.set_tab_width(chars)
 
+    def set_hover_help(self, on: bool) -> None:
+        """Settings -> General's "Show help for LaTeX commands on hover" (latex_help.py): persist it and switch
+        every open source editor at once. Shift+F1 shows the help either way."""
+        app_settings.set(self.project, latex_help.HOVER_HELP_SETTING_KEY, bool(on))
+        self.centre.set_hover_help(bool(on))
+
+    def set_spelling_variant(self, language: str, variant: str) -> None:
+        """Settings -> General's "English spelling" and "German spelling" (spelling/settings.py, per user): every
+        open slide checks again against that dictionary."""
+        from ...spelling import settings as spelling_settings
+        spelling_settings.set_variant(language, variant)
+        self.centre.source.recheck_spelling()
+
+    def spelling_session(self):
+        """The window's SpellingSession (the Source view's): one set of dictionaries, word lists and ignored words
+        for the editor, the deck's spelling list and the Images page."""
+        return self.centre.source.spelling_session()
+
     def after_deck_edit(
         self, deck_path: Path, summary: str, previous_text: Optional[str] = None
     ) -> None:
@@ -790,8 +864,6 @@ class WorkspaceWindow(QMainWindow):
             self.log(summary)
 
     def refresh_ai_review(self) -> None:
-        from .wizard_portal import note_review_updates
-        note_review_updates(self)
         self.slide_list.rebuild(preserve_focus=True)
         if self.state.mode == "details":
             self.centre.refresh()
@@ -839,6 +911,12 @@ class WorkspaceWindow(QMainWindow):
             f"==== Header sync: {changed} slide file(s) updated across {n_decks} deck(s) ===="
         )
 
+    def _leave_source_only(self, mode: str) -> None:
+        """A click on Preview, Split or Details in a tab that has the Source view alone: back to the slide tab, in
+        the view that was clicked (the tab keeps the mode it was last shown in until then)."""
+        self.centre.show_slide_tab()
+        self.state.set_mode(mode)
+
     def open_deck_source_editor(self, deck: Deck) -> None:
         """Deck → "Source" ("Edit deck source" until v9.2.0) -- opens the deck's raw .tex file in the same
         editor used for a slide's own source. A save is routed through the same
@@ -867,6 +945,18 @@ class WorkspaceWindow(QMainWindow):
             QMessageBox.warning(self, "Copy theme to the project", str(exc))
             return
         self.log(f"Copied the theme {key} into the project: {path.name}")
+        self.open_theme_editor(path)
+        self.reload_decks()     # the project's template list has a file more
+
+    def new_theme(self, key: str, name: str, start: str = "slidemage") -> None:
+        """Settings → Themes → "New theme…": a shipped template copied into the project under `key` with `name`, then
+        opened with the theme form beside it."""
+        try:
+            path = themes.new_theme(key, name, self.project.root, start)
+        except themes.ThemeError as exc:
+            QMessageBox.warning(self, "New theme", str(exc))
+            return
+        self.log(f"Made the theme {key} from the {start} template: {path.name}")
         self.open_theme_editor(path)
         self.reload_decks()     # the project's template list has a file more
 

@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Optional
 
 from . import preview_raster_client
-from .background_renders import ALL_PAGES
+from .batch_render import ALL_PAGES
 from .deck_editor import DEFAULT_CONDITIONS, SlideCall, expand_steps
 
 # Every step page as wide as the Preview's own image (slide_snapshot.FULL_SIZE): at 130 dpi a 16:9 page was

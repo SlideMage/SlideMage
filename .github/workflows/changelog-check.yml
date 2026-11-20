@@ -1,0 +1,28 @@
+name: Changelog check
+
+# The Release workflow refuses a tag when any version since the previous release lacks a NEW: paragraph of "- "
+# bullets in src/slidemage/CHANGELOG.md (packaging/release_notes.py, exit 3). That failure only showed after the
+# merge (v0.14.49, v0.16.45, v0.17.38), so the same check runs here on every PR to develop.
+
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - "src/slidemage/CHANGELOG.md"
+      - "src/slidemage/version.py"
+      - "packaging/release_notes.py"
+
+jobs:
+  notes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Release notes build
+        run: |
+          tag=$(sed -n 's/^VERSION_NUMBER = "\(v[^"]*\)".*/\1/p' src/slidemage/version.py)
+          python packaging/release_notes.py "$tag" --previous "$(git tag --sort=-v:refname | grep -vx "$tag" | head -1)" > /dev/null
