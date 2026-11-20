@@ -133,7 +133,10 @@ def archive(handover: Path, dry_run: bool = False) -> str:
         if TASK_LINES_TITLE not in archived:
             archived += (aeol + "---" + aeol + aeol + TASK_LINES_TITLE + aeol + aeol + "TASKS lines of finished tasks, moved "
                          "out of `handover.md` by `docs/handover_archive.py`." + aeol + aeol + fence + fence)
-        at = archived.rindex(fence + fence) + len(fence)
+        # Before the closing fence of the task-lines block, which already holds the lines of earlier runs and may be
+        # followed by sections archived since.
+        opening = archived.index(fence, archived.index(TASK_LINES_TITLE)) + len(fence)
+        at = archived.index(fence, opening)
         archived = archived[:at] + aeol.join(move_tasks) + aeol + archived[at:]
     summary = f"{len(move_tasks)} task lines, {len(move_titles)} sections" + "".join(f"\n  - {t}" for t in move_titles)
     if not dry_run:
