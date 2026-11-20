@@ -113,6 +113,8 @@ def problems(fragment: Fragment, changes: Optional[Iterable] = None) -> list[str
         found.append(f"kind is {fragment.kind!r}, not one of {', '.join(KINDS)}")
     if not fragment.reason:
         found.append("no 'reason:' line (why the change was made: direct request, issue #N, ...)")
+    elif "(" in fragment.reason or ")" in fragment.reason:
+        found.append("the reason goes into the entry's parentheses: no parentheses inside it")
     if not fragment.technical:
         found.append("no technical description (a paragraph before NEW:)")
     if fragment.new_paragraphs != 1 or not fragment.news:

@@ -73,6 +73,7 @@ def test_a_breaking_fragment_names_its_compat_change():
     (FIXED.replace("kind: fixed", "kind: minor"), "kind is"),
     (FIXED.replace("reason: direct request: Render now did nothing\n", ""), "reason"),
     (FIXED.replace("kind: fixed", "kind: fixed\nversion: v1"), "header line"),
+    (FIXED.replace("Render now did nothing", "Render now (the button) did nothing"), "parentheses"),
     (FIXED.split("NEW:")[0], "NEW:"),
     (FIXED + "\nNEW:\n- twice\n", "NEW:"),
     (FIXED.replace("NEW: Render now works again.\n- Clicking Render now renders the slide.\n- A second bullet\n"

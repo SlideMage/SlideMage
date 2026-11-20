@@ -71,9 +71,11 @@ def parse_news(paragraph: str) -> tuple[str, list[str]]:
     return " ".join(summary_lines), bullets
 
 
-def parse_history() -> list[HistoryEntry]:
-    """Every per-bump entry in CHANGELOG.md, oldest first."""
-    text = Path(__file__).with_name("CHANGELOG.md").read_text(encoding="utf-8")
+def parse_history(text: str | None = None) -> list[HistoryEntry]:
+    """Every entry in CHANGELOG.md (or in `text`), oldest first: one per release from issue #247 on, one per
+    version bump before."""
+    if text is None:
+        text = Path(__file__).with_name("CHANGELOG.md").read_text(encoding="utf-8")
     entries = []
     for match in _HISTORY_ENTRY_RE.finditer(text):
         version, meta, body = match.group(1), match.group(2), match.group(3)
