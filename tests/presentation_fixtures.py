@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""A presenter-like PDF built without LaTeX: double-width pages, the slide (a colour block) on the left and a
+"""A presenter-like PDF built without LaTeX: double-width pages, the slide (a color block) on the left and a
 note on the right, as SlideMage's Presenter compile makes them (measured in docs/plans/presentation-mode.md)."""
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ SLIDE_WIDTH = 453.54           # 16:9
 
 
 def page_color(index: int) -> tuple[float, float, float]:
-    """The slide colour of page `index` (0-based), as 0..1 floats; each page is told apart by its red."""
+    """The slide color of page `index` (0-based), as 0..1 floats; each page is told apart by its red."""
     return (0.15 + 0.12 * index, 0.3, 0.55)
 
 

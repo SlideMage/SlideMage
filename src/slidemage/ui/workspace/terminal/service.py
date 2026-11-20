@@ -122,7 +122,7 @@ class TerminalSession(PtySession):
 
 
 class TerminalService:
-    """Makes terminal views and sessions. `tokens` gives the current design tokens (the terminal's colours; the
+    """Makes terminal views and sessions. `tokens` gives the current design tokens (the terminal's colors; the
     window's theme), `root` is the folder programs start in unless told otherwise."""
 
     def __init__(self, root: Path, tokens: Callable[[], Tokens] | None = None) -> None:

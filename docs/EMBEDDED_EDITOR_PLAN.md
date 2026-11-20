@@ -177,13 +177,13 @@ Overleaf equivalent.** This is the Phase 2 porting checklist:
 | --- | --- |
 | Enter after `\begin{env}` inserts `\end{env}`; Enter after `\item` continues the list (`LatexPlainTextEdit._smart_return`) | Overleaf closes environments during completion, not on Enter. Port it, or decide deliberately to adopt Overleaf's behaviour. |
 | Wrap selection in `\textit`, `\textbf`, `\underline`, `\texttt`, `\source`, `\footnote`, and in environments, including multi-line selections (`_wrap_or_insert`, `_wrap_environment`) | Buttons stay; logic becomes an editor command. |
-| Colour dropdown with swatches, insert-command dropdown (`INSERT_COMMANDS`), hyperlink, multilingual insert | Qt dropdowns stay; insertion becomes an editor command. |
+| Color dropdown with swatches, insert-command dropdown (`INSERT_COMMANDS`), hyperlink, multilingual insert | Qt dropdowns stay; insertion becomes an editor command. |
 | Header-comment fold: folded on open, line numbers skip it (`_set_header_folded`) | CodeMirror folds, but this exact behaviour must be built. |
 | Find/replace bar: Ctrl+F, Ctrl+H, Esc, Previous/Next, Replace, Replace All | Design decision: keep the Qt bar and forward calls, or adopt CodeMirror's search panel (different look and keys). |
 | A–Z jump bar in `.bib` tabs (`_jump_to_bib_letter`) | Buttons stay; jumps go through `reveal_position`. |
 | Reindent (`_on_reindent`) | Own logic, to be ported. |
 | Minimal replacement on save: version-marker change keeps cursor, selection, scroll and undo (`_apply_minimal_text_replace`) | Port carefully; covered by the verification matrix. |
-| Highlighting in the app's theme colours, including TODO/FIXME in comments, light/dark (`LatexSyntaxHighlighter`) | Rebuild as a CodeMirror theme; Overleaf has no TODO highlighting. |
+| Highlighting in the app's theme colors, including TODO/FIXME in comments, light/dark (`LatexSyntaxHighlighter`) | Rebuild as a CodeMirror theme; Overleaf has no TODO highlighting. |
 
 Ctrl+/ commenting and brace matching already exist in Overleaf/CodeMirror.
 

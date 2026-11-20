@@ -347,7 +347,7 @@ end
 -- a bullet dot somewhere inside is not a picture.
 local function is_picture(box)
   -- a TikZ/pgf picture is always an hbox; a vbox holding a literal (a
-  -- minipage with a colour or overlay operator in it) is a text container
+  -- minipage with a color or overlay operator in it) is a text container
   if box.id ~= HLIST then
     return false
   end
@@ -837,7 +837,7 @@ end
 --   the first ink: the top of the topmost visible thing in the column: a
 --     letter (at its font's cap height, v0.14.41, not the glyph's own ink,
 --     so parentheses, accents and ascenders do not push the figure up), a rule
---     (a table's \toprule), an image. Colour, transparency and drawing
+--     (a table's \toprule), an image. Color, transparency and drawing
 --     literals carry no size and are passed over; invisible overlay text
 --     (\uncover) counts, as it is where the text will be.
 -- The figure is lowered by the distance between the two, so its top meets

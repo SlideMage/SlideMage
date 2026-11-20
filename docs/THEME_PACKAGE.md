@@ -85,7 +85,7 @@ example = "\\mytitle[color=red]{Hello}"   # optional
 [[command.keys]]                          # optional, one table per key of the [...] options
 name = "color"
 values = "red | blue"                     # optional
-text = "the title colour"
+text = "the title color"
 
 [[environment]]                           # the same fields, for the environment mybox
 name = "mybox"

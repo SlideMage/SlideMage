@@ -2,14 +2,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """A deck's deck-wide settings: the lines of its preamble the Deck settings sheet
 (ui/dialogs/deck_settings.py) reads and writes -- template, language, footer
-text, course link, output folders, colour mode and the appendix TOC.
+text, course link, output folders, color mode and the appendix TOC.
 
 Everything here is plain text in, text out, so the dialog can apply all its
 changes in one stale-checked write (deck_editor.apply). Only a live line
 (not %-commented) counts, and a setting the deck does not have yet is added
 just before \\begin{document}, after the preamble \\input{} that defines the
 (inert) macros -- the same rule deck_editor.set_deck_tags() follows.
-The colour mode is the exception: its line goes before the template input.
+The color mode is the exception: its line goes before the template input.
 """
 from __future__ import annotations
 
@@ -29,8 +29,8 @@ from .tex_source import braced_argument, is_commented
 
 # \input{SlideMage_template_<template>} -- which template the deck uses.
 TEMPLATE_INPUT_RE = re.compile(r"\\input\{SlideMage_template_([^}\s]+)\}")
-# The deck's colour mode when it is not the template's base mode: \newcommand{\SMModeOverride}{dark}, before the
-# template (latex/SlideMage_setup.tex, "Colour modes and role colours"). Group 1 is the mode id. The older dark switch
+# The deck's color mode when it is not the template's base mode: \newcommand{\SMModeOverride}{dark}, before the
+# template (latex/SlideMage_setup.tex, "Color modes and role colors"). Group 1 is the mode id. The older dark switch
 # \SMDarkMode is gone since v0.16.0; compat_color_cut.py rewrites it to this line.
 MODE_RE = re.compile(
     r"\\(?:(?:(?:re)?newcommand|providecommand)\*?\s*(?:\{\\SMModeOverride\}|\\SMModeOverride\b)"
@@ -63,7 +63,7 @@ class DeckSettings:
     # the footer elements left out: any of FOOTER_ELEMENTS (text = the left text, id = the slide id
     # block, deck = "instructor deck" etc.)
     footer_hide: tuple[str, ...] = ()
-    # the template's colour mode when it is not the base mode ("" for the base): \SMModeOverride before the template
+    # the template's color mode when it is not the base mode ("" for the base): \SMModeOverride before the template
     mode: str = ""
     # themes per view (view_themes): {view: (template key, mode)}; a view without an entry uses the deck's own
     view_themes: dict[str, tuple[str, str]] = field(default_factory=dict)
@@ -259,7 +259,7 @@ def set_template(text: str, template: str) -> str:
 
 
 def set_mode(text: str, mode: str) -> str:
-    """Set the colour mode (`\\SMModeOverride`) before the template input; "" (the base mode) removes it. Other commands on its
+    """Set the color mode (`\\SMModeOverride`) before the template input; "" (the base mode) removes it. Other commands on its
     line stay."""
     mode = mode.strip()
     if mode and not re.fullmatch(r"[A-Za-z0-9_]+", mode):

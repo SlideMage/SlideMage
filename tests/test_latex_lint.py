@@ -312,7 +312,7 @@ def test_lex_golden(text, expected):
     assert _lex(text) == tuple(expected)
 
 
-def test_a_colour_under_a_colour_name_macros_name_is_warned_about(ctx):
+def test_a_color_under_a_color_name_macros_name_is_warned_about(ctx):
     text = ("\\colorlet{SMTitleBoxColor}{c_secondary_blue}\n% \\colorlet{SMBulletColor}{red}\n"
             "\\definecolor{SMBulletColor}{HTML}{112233}\n\\colorlet{SMCodeKeywordColor}{c_secondary_blue}\n"
             "\\renewcommand{\\SMTitleBoxColor}{c_secondary_blue}\n")

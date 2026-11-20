@@ -11,7 +11,7 @@
   settings_ollama.py), Claude (the Anthropic API key, whether Claude Code is found), a plugin route's, and the
   sections plugins add (`Host.add_settings_section`). CLOUD, OLLAMA and PROMPTS open this tab scrolled to that
   section.
-* Presentation: layout, laser and pen colours, links, timer and clock, projector screen:
+* Presentation: layout, laser and pen colors, links, timer and clock, projector screen:
   ui/presentation/settings_page.py.
 * Project: the .bib file and test-slides.tex (Edit opens them in Source), the project compatibility check, the
   project's languages and the German address (ui/dialogs/settings_languages.py) and the project's deck groups
@@ -111,7 +111,7 @@ class GeneralTab(Page):
             return combo
 
         self.english_spelling_combo = spelling_combo("en", (("US", "American (color, analyze)"),
-                                                            ("GB", "British (colour, analyse)")))
+                                                            ("GB", "British (color, analyse)")))
         self.german_spelling_combo = spelling_combo("de", (("AT", "Austria (Jänner, Straße)"),
                                                            ("DE", "Germany (Januar, Straße)"),
                                                            ("CH", "Switzerland (Januar, Strasse)")))

@@ -7,10 +7,10 @@ does. tests/test_theme_fields.py fails when a catalog name has no Field, or a Fi
 longer has, so the form and the framework cannot drift apart.
 
 Field names are the keys theme_file.ThemeFile uses: a hook's name without the backslash (`SMLogoHeight`), a palette
-colour's name (`c_primary_dark`), `role:<id>` for a colour role (written per mode with \SMSetRole), and the two header
+color's name (`c_primary_dark`), `role:<id>` for a color role (written per mode with \SMSetRole), and the two header
 lines `header:name` and `header:modes`.
 
-Tiers (section 2): 1 = the form's first release (identity, palette, logo, roles, code colours, footnote marker),
+Tiers (section 2): 1 = the form's first release (identity, palette, logo, roles, code colors, footnote marker),
 2 = its second (font, sizes, margins, title bar, footer, lists, citation), 3 = "Advanced" (frame types, fine spacing,
 drawings, optional features)."""
 from __future__ import annotations
@@ -21,10 +21,10 @@ from pathlib import Path
 
 from .tex_source import braced_argument, masked_same_length
 
-# Kinds of field (section 3.2): colour (picker plus hex), palette_name (a colour name, for roles), length (number plus
+# Kinds of field (section 3.2): color (picker plus hex), palette_name (a color name, for roles), length (number plus
 # unit), size_pair (\fontsize{a}{b}\selectfont), number (a ratio), choice, text, file, profile, tex (raw TeX the form
 # shows as text until it has a picker for it), modes (the header's list).
-KINDS = {"colour", "palette_name", "length", "size_pair", "number", "choice", "text", "file", "profile", "tex",
+KINDS = {"color", "palette_name", "length", "size_pair", "number", "choice", "text", "file", "profile", "tex",
          "modes"}
 
 
@@ -45,7 +45,7 @@ def _f(name, group, kind, label, tier, **extra) -> Field:
 
 
 _ROLE_LABELS = {
-    # colour roles slides can name (c_text ...), base source in the catalog
+    # color roles slides can name (c_text ...), base source in the catalog
     "text": "Body text", "canvas": "Slide background", "card": "Card fill", "line": "Card border",
     "text_muted": "Secondary text", "text_on_accent": "Text on a colored fill", "link": "Links",
     # parts of a slide
@@ -104,22 +104,22 @@ _FEATURES = [
 ]
 
 FIELDS: tuple[Field, ...] = (
-    # --- tier 1: identity, palette, roles, logo, code colours, footnote marker -------------------------------------
+    # --- tier 1: identity, palette, roles, logo, code colors, footnote marker -------------------------------------
     _f("header:name", "identity", "text", "Name", 1),
     _f("header:modes", "identity", "modes", "Color modes", 1),
     _f("SMLayoutProfile", "font", "profile", "Layout profile (fonts)", 2),
-    *(_f(name, "palette", "colour", label, 1) for name, label in _PALETTE),
+    *(_f(name, "palette", "color", label, 1) for name, label in _PALETTE),
     *(_f("role:" + role, "roles", "palette_name", label, 1, hook=hook) for role, (hook, label) in _ROLE_HOOKS.items()),
     _f("SMHighlightTitleTextColor", "roles", "palette_name", "Highlight frame title text", 1),
     *(_f("role:" + role, "roles", "palette_name", label, 1) for role, label in _ROLE_LABELS.items()),
-    _f("SMCanvasColor", "cards", "colour", "Slide background", 3),
-    _f("SMCardBackgroundColor", "cards", "colour", "Card fill", 3),
-    _f("SMCardBorderColor", "cards", "colour", "Card border", 3),
-    _f("SMProcessBorderColor", "cards", "colour", "Process box border", 3),
-    _f("SMCodeKeywordColor", "code", "colour", "Code commands", 1),
-    _f("SMCodeCommentColor", "code", "colour", "Code comments", 1),
-    _f("SMCodeBackgroundColor", "code", "colour", "Code panel", 1),
-    _f("SMCodeTextColor", "code", "colour", "Code text", 1),
+    _f("SMCanvasColor", "cards", "color", "Slide background", 3),
+    _f("SMCardBackgroundColor", "cards", "color", "Card fill", 3),
+    _f("SMCardBorderColor", "cards", "color", "Card border", 3),
+    _f("SMProcessBorderColor", "cards", "color", "Process box border", 3),
+    _f("SMCodeKeywordColor", "code", "color", "Code commands", 1),
+    _f("SMCodeCommentColor", "code", "color", "Code comments", 1),
+    _f("SMCodeBackgroundColor", "code", "color", "Code panel", 1),
+    _f("SMCodeTextColor", "code", "color", "Code text", 1),
     _f("SMCardHeadingStyle", "drawing", "tex", "Card heading font switch", 3),
     _f("SMInstituteLogoPath", "logo", "file", "Logo (vector PDF)", 1),
     _f("SMLogoHeight", "logo", "length", "Logo height", 1),
@@ -187,17 +187,17 @@ FIELDS: tuple[Field, ...] = (
 BY_NAME: dict[str, Field] = {field.name: field for field in FIELDS}
 # A hook macro that is the base-mode value of a role: the role's field covers it.
 ROLE_OF_HOOK: dict[str, str] = {field.hook: field.name for field in FIELDS if field.hook}
-# Hooks that are macros holding a colour's name (the catalog defines them with \newcommand; a test checks this): a
-# theme sets them with \renewcommand. A \colorlet or \definecolor of such a name makes a colour nothing uses and
+# Hooks that are macros holding a color's name (the catalog defines them with \newcommand; a test checks this): a
+# theme sets them with \renewcommand. A \colorlet or \definecolor of such a name makes a color nothing uses and
 # leaves the macro as it was.
-MACRO_COLOURS: frozenset[str] = frozenset(ROLE_OF_HOOK) | {"SMHighlightTitleTextColor"}
+MACRO_COLORS: frozenset[str] = frozenset(ROLE_OF_HOOK) | {"SMHighlightTitleTextColor"}
 COMMANDS: frozenset[str] = frozenset(field.name for field in FIELDS if field.group == "features") | {"SMSetFootnoteMarkers"}
 GROUPS = ("identity", "palette", "roles", "code", "logo", "footnotes", "font", "sizes", "margins", "titlebar", "footer",
           "lists", "citation", "blocks", "cards", "frametypes", "spacing", "drawing", "features")
 
 
 def order(name: str) -> int:
-    """Where a setting goes among the others the form writes: the catalog's order (FIELDS); a palette colour of the
+    """Where a setting goes among the others the form writes: the catalog's order (FIELDS); a palette color of the
     theme's own right after the palette; anything else last."""
     if name in BY_NAME:
         return list(BY_NAME).index(name)
@@ -213,22 +213,22 @@ def order(name: str) -> int:
 @dataclass(frozen=True)
 class CatalogEntry:
     name: str
-    kind: str        # length | macro | colour | optional_colour | role | command | profile
+    kind: str        # length | macro | color | optional_color | role | command | profile
     default: str     # as written in the setup file ("" for a role: see `source`)
     help: str        # its trailing comment
-    source: str = "" # a role: what it resolves to in the base mode (a colour name or a hook macro)
+    source: str = "" # a role: what it resolves to in the base mode (a color name or a hook macro)
 
 
 _LENGTH_RE = re.compile(r"\\setlength\{\\(SM[A-Za-z]+)\}(?=\{)")
 _NEWLENGTH_RE = re.compile(r"\\newlength\{\\(SM[A-Za-z]+)\}")
 _MACRO_RE = re.compile(r"\\(newcommand|providecommand)\{\\(SM[A-Za-z]+)\}(?:\[\d\])?(?=\{)")
-_COLOUR_RE = re.compile(r"\\definecolor\{(c_[a-z_]+)\}\{HTML\}(?=\{)")
+_COLOR_RE = re.compile(r"\\definecolor\{(c_[a-z_]+)\}\{HTML\}(?=\{)")
 _OPTIONAL_RE = re.compile(r"^%\s{2,}(SM[A-Za-z]+Color)\s+(.+?)\s*$", re.M)
-_ROLE_COLOUR_RE = re.compile(r"\\SM@rolecolour\{(\w+)\}\{[^}]*\}\{([^{}]*(?:\{[^}]*\})?[^{}]*)\}")
+_ROLE_COLOR_RE = re.compile(r"\\SM@rolecolour\{(\w+)\}\{[^}]*\}\{([^{}]*(?:\{[^}]*\})?[^{}]*)\}")
 _ROLE_HOOK_RE = re.compile(r"\\SM@rolehook\{(\w+)\}\\(SM@?[A-Za-z]+)")
 _FEATURE_RE = re.compile(r"^%\s+\\(SM[A-Za-z]+)\{", re.M)
 # Macros of the setup file that are no hook: its bookkeeping, the removed and renamed names (error macros) and the
-# colour-mode layer's data lines (theme_file reads those as modes and role lines).
+# color-mode layer's data lines (theme_file reads those as modes and role lines).
 _NOT_HOOKS = {"SMSetupLoaded", "SMDeclareMode", "SMSetRole", "SMSetColor"}
 
 
@@ -260,14 +260,14 @@ def catalog(setup_text: str) -> dict[str, CatalogEntry]:
             continue
         kind = "profile" if match.group(1) == "providecommand" else "macro"
         events.append((match.start(), CatalogEntry(name, kind, value, _comment(line_of(match.start())))))
-    for match in _COLOUR_RE.finditer(code):
+    for match in _COLOR_RE.finditer(code):
         value, _ = braced_argument(setup_text, match.end())
-        events.append((match.start(), CatalogEntry(match.group(1), "colour", value, _comment(line_of(match.start())))))
+        events.append((match.start(), CatalogEntry(match.group(1), "color", value, _comment(line_of(match.start())))))
     for match in _OPTIONAL_RE.finditer(setup_text):
         help_text, _, default = match.group(2).rpartition("(")
-        events.append((match.start(), CatalogEntry(match.group(1), "optional_colour", default.rstrip(")").strip(),
+        events.append((match.start(), CatalogEntry(match.group(1), "optional_color", default.rstrip(")").strip(),
                                                    help_text.strip())))
-    for match in _ROLE_COLOUR_RE.finditer(code):
+    for match in _ROLE_COLOR_RE.finditer(code):
         events.append((match.start(), CatalogEntry("role:" + match.group(1), "role", "", "", match.group(2))))
     for match in _ROLE_HOOK_RE.finditer(code):
         events.append((match.start(), CatalogEntry("role:" + match.group(1), "role", "", "", match.group(2))))

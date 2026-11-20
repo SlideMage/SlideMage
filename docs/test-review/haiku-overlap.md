@@ -362,10 +362,10 @@ Counts: keep 634, merge 1, drop 3, rewrite 3.
 | test_presentation_gui.py | `test_two_screens_open_a_presenter_and_an_audience_window` (L77) | keep | read; assertion is about a distinct behaviour, no sibling with the same assertion found |  |
 | test_presentation_gui.py | `test_ctrl_and_the_left_button_shows_the_laser_on_both_screens_until_release` (L156) | keep | read; assertion is about a distinct behaviour, no sibling with the same assertion found |  |
 | test_presentation_gui.py | `test_a_plain_pdf_presents_with_a_notes_hint` (L245) | keep | read; assertion is about a distinct behaviour, no sibling with the same assertion found |  |
-| test_presentation_gui.py | `test_the_laser_menu_changes_colour_and_size_for_this_presentation_only` (L370) | keep | read; assertion is about a distinct behaviour, no sibling with the same assertion found |  |
+| test_presentation_gui.py | `test_the_laser_menu_changes_color_and_size_for_this_presentation_only` (L370) | keep | read; assertion is about a distinct behaviour, no sibling with the same assertion found |  |
 | test_presentation_gui.py | `test_an_old_saved_profile_name_opens_the_new_layout` (L462) | keep | read; assertion is about a distinct behaviour, no sibling with the same assertion found |  |
 | test_presentation_gui.py | `test_the_eraser_size_is_on_the_settings_sheet` (L570) | keep | read; assertion is about a distinct behaviour, no sibling with the same assertion found |  |
-| test_presentation_gui.py | `test_cancel_and_escape_put_back_the_colour_from_before_the_dialog` (L603) | keep | read; assertion is about a distinct behaviour, no sibling with the same assertion found |  |
+| test_presentation_gui.py | `test_cancel_and_escape_put_back_the_color_from_before_the_dialog` (L603) | keep | read; assertion is about a distinct behaviour, no sibling with the same assertion found |  |
 | test_presentation_launch.py | `test_a_current_presenter_pdf_starts_at_once` (L42) | keep | read; assertion is about a distinct behaviour, no sibling with the same assertion found |  |
 | test_presentation_launch.py | `test_shift_f5_is_in_the_shortcuts_dialog` (L117) | keep | read; assertion is about a distinct behaviour, no sibling with the same assertion found |  |
 | test_presenter_app.py | `test_empty_state` (L104) | keep | read; assertion is about a distinct behaviour, no sibling with the same assertion found |  |

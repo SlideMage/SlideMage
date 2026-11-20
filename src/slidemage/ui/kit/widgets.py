@@ -221,13 +221,13 @@ class _EnterPresses:
 
 
 class ColorSwatchButton(QPushButton):
-    """Display a colour beside the caller's label; dialog and storage belong to the caller."""
+    """Display a color beside the caller's label; dialog and storage belong to the caller."""
 
     def __init__(self, label: str) -> None:
         super().__init__(label)
 
     def set_color(self, color: str | QColor) -> None:
-        # Keep the existing opaque swatch even when the pen colour includes alpha.
+        # Keep the existing opaque swatch even when the pen color includes alpha.
         self.setStyleSheet(f"border-left: 22px solid {QColor(color).name()}; padding: {SPACE.xs}px {SPACE.md}px;")
 
 

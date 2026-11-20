@@ -642,7 +642,7 @@ shows them all on.
 - `beamerthemeSlideMage.sty` — the beamer theme (since v10.1.0): a pruned and
   renamed fork of Romain Noël's Gotham theme v1.2.5.a (LPPL 1.3c; the file's header
   states the changes and points to the unmodified original). `SlideMage_setup.tex`
-  loads it, decks never name it. It holds the colour roles,
+  loads it, decks never name it. It holds the color roles,
   the frame title and footline templates, since v10.2.0 also the logo macro and frame
   title hook, the footnote template, the block templates and the itemize bullets
   (`SlideMage_base.tex` no longer replaces them), and four optional features that are off
@@ -712,7 +712,7 @@ shows them all on.
 - `SlideMage_setup.tex` — the setup layer and hook catalog (since v10.0.0):
   loads the beamer theme (decks never name it) and defines every setting a
   template may change, each with its default and a comment — the `c_*`
-  palette (SlideMage's own colours), the role colours (`\SMBulletColor`,
+  palette (SlideMage's own colors), the role colors (`\SMBulletColor`,
   `\SMTitleBoxColor`, ...), `\SMInstituteLogoPath`, `\SMLogoHeight`, the Top Margin
   (`\SMTopMargin`), the title-bar paddings (`\SMFrametitleRightPadding`, ...), and since v10.4.0 every
   other design value: text margins, footer and footnote sizes and spacing, block margins, title,
@@ -757,8 +757,8 @@ shows them all on.
   since v5.9.0), for decks that don't belong to an institution: the
   SlideMage logo (a vector copy of the app icon), dark title and footer
   boxes with white text (the splash screen's `#1e1e1e`), the app's button
-  blue `#0066cc` as highlight colour (bullets, image borders, table rules)
-  and the app's other colours as the `c_*` palette, each pair the framework
+  blue `#0066cc` as highlight color (bullets, image borders, table rules)
+  and the app's other colors as the `c_*` palette, each pair the framework
   combines checked against WCAG 2.1 (see the file's comments). Same
   structure as any institution's layer, but in `latex/` rather than in a project:
   every project finds it on the same search path as
@@ -1134,16 +1134,16 @@ it is moved, copied or archived:
   (`\input{SlideMage_template_<name>}`), chosen from the templates the
   project can find.
 - **Language**: `\decklanguage[..]`, one of the project's languages (see "Languages").
-- **Colours**: the colour modes the template declares (for example light and
+- **Colors**: the color modes the template declares (for example light and
   dark; enabled when it declares more than one). Saved in the deck as
   `\newcommand{\SMModeOverride}{<mode>}` before the template and applied to its
   previews and compiled PDFs. **Theme per view** can give a view its own theme
   and mode, for example dark for the instructor deck and light for print.
   For one PDF in another mode without changing the deck, **Compile → Current
-  view in Dark slides** (or *in another colour mode…* when the template has
+  view in Dark slides** (or *in another color mode…* when the template has
   several) builds the view shown into its own file, `<deck>-<view>-<mode>.pdf`
   (a fixed `\deckoutputfolder` file name gets `-<mode>` too), so the view's
-  usual PDF stays; Open PDF lists it as "· dark colours".
+  usual PDF stays; Open PDF lists it as "· dark colors".
 - **Footer text**: `\FooterText`, the left part of the footer.
 - **Course link** (CampusOnline plugin): a full HTTP or HTTPS URL; **Open** saves the settings and
   opens the page in your default browser. Clear the field to remove the link.
@@ -2107,12 +2107,12 @@ pixel-identical; everything below is what new slides should use.
   source on a slide, read from its own small file at the project root (the
   slide then needs no `[fragile]` frame, and the code is exactly the text
   in that file): Fira Mono on a light gray panel, every control sequence and
-  every comment in its own colour. The three colours are named colours a
+  every comment in its own color. The three colors are named colors a
   template sets before `\input{SlideMage_base}` (since v5.17.0):
   `SMCodeKeywordColor`, `SMCodeCommentColor`, `SMCodeBackgroundColor`; a
-  template that doesn't set them gets the highlight colour, `c_primary_gray`
+  template that doesn't set them gets the highlight color, `c_primary_gray`
   and `c_tertiary_gray`, which is unreadable with a yellow or orange
-  highlight colour -- so a template with such a highlight colour sets a dark
+  highlight color -- so a template with such a highlight color sets a dark
   blue, a dark gray and a lighter panel, all at least 5:1
   contrast. The keys go to `\lstinputlisting`
   (`firstline=`, `lastline=`, `basicstyle=\SMCodeFont\tiny`, ...); the size
@@ -2582,7 +2582,7 @@ centered in the title bar, with the same small margin on all sides. The bar is
 made to visually stop short of the page's right edge by painting a white
 patch (sized to the logo, spanning the full height of the bar) over that
 corner and redrawing the logo on top of it, so the logo ends up on white
-instead of on the bar colour. A second white patch spans the *full width* of the bar
+instead of on the bar color. A second white patch spans the *full width* of the bar
 from the logo's bottom edge down to the bar's actual bottom edge, so the
 bar appears to end flush with the logo's bottom rather than extending
 further down under the title text too (width and top position unchanged).
@@ -2632,30 +2632,30 @@ is the untouched source, `-cropped` is what slides actually reference).
 
 ### Color palette
 
-A template lists its colour modes in its first 30 lines, `% SlideMage modes: light, dark`
+A template lists its color modes in its first 30 lines, `% SlideMage modes: light, dark`
 (the first is the base mode), and declares them to the framework with
 `\SMDeclareMode{light}{}` and `\SMDeclareMode{dark}{dark}`; `\SMSetRole` and `\SMSetColor`
-lines set what a mode changes (`latex/SlideMage_setup.tex`, "Colour modes and role colours").
+lines set what a mode changes (`latex/SlideMage_setup.tex`, "Color modes and role colors").
 The `dark` preset mixes the canvas from `c_primary_dark` with 17 % white and cards with 23 %,
-with white text and links and black text on coloured fills. Slides that should follow the
-mode use the role colours `c_text`, `c_canvas`, `c_card`, `c_line`, `c_text_muted`,
-`c_text_on_accent` and `c_link`; a palette name such as `c_primary_dark` is one colour in
+with white text and links and black text on colored fills. Slides that should follow the
+mode use the role colors `c_text`, `c_canvas`, `c_card`, `c_line`, `c_text_muted`,
+`c_text_on_accent` and `c_link`; a palette name such as `c_primary_dark` is one color in
 every mode. (The switch `\SMDarkMode` and the `% SlideMage dark mode: true` header were
 removed in v0.16.0.)
 
 Both shipped templates (SlideMage and Grayscale) offer light and dark. Their dark mode is the
-preset plus lighter values for the palette colours slides write as text and lines and that are
-too dark on the dark canvas (`\SMSetColor` lines: the highlight colour and the `c_custom_*`
-colours), each at least 4.4:1 there, so `\textcolor{c_custom_red}{...}` stays readable without
+preset plus lighter values for the palette colors slides write as text and lines and that are
+too dark on the dark canvas (`\SMSetColor` lines: the highlight color and the `c_custom_*`
+colors), each at least 4.4:1 there, so `\textcolor{c_custom_red}{...}` stays readable without
 touching the slide; bullets, rules, image borders and markers follow. Grayscale's title bar turns
 dark with white text. A theme makes its own dark mode readable the same way: give each accent
-that slides use as text a dark-mode value, and keep white text off those colours (a node with
+that slides use as text a dark-mode value, and keep white text off those colors (a node with
 `fill=c_primary_highlight` writes `text=c_canvas`, white in light mode).
 
-The source editor's **Color** menu lists the role colours first, each with what it is for, then the
-palette. Its swatches show the colours of the deck's theme in the mode of the view shown (a
+The source editor's **Color** menu lists the role colors first, each with what it is for, then the
+palette. Its swatches show the colors of the deck's theme in the mode of the view shown (a
 view's own `theme:mode` included), read from the template's lines the way the framework resolves
-them, so switching a deck to dark turns the `c_text` swatch white and shows each palette colour
+them, so switching a deck to dark turns the `c_text` swatch white and shows each palette color
 with the value the theme gives it in dark mode.
 
 Every color the preamble defines follows a `c_<tier>_<hue>` naming scheme
@@ -3381,7 +3381,7 @@ Markdown + HTML land in `transcripts/` (or the deck's own
   own fixed language, not a separate transcript-time choice.
 - `\note{}` content never reaches it. Citations resolve against
   `SlideMage.bib`.
-- Colour is omitted: `\textcolor{...}{text}`, `\colorbox`, `\fcolorbox`,
+- Color is omitted: `\textcolor{...}{text}`, `\colorbox`, `\fcolorbox`,
   `\color{...}`, `\cellcolor`/`\rowcolor`/`\columncolor` keep only their
   text.
 - Images with no description yet are flagged **in place** rather than silently

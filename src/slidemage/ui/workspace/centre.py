@@ -420,7 +420,7 @@ class CentreColumn(QFrame):
                 tab = unbound
             else:
                 tab = self.tabs.add_deck(deck.path, self.state.mode)
-        self.tabs.deck_colour(deck.path)
+        self.tabs.deck_color(deck.path)
         self._update_strip()
         return tab
 
@@ -1011,11 +1011,11 @@ class CentreColumn(QFrame):
 
     def _deck_style(self, tab: CentreTab) -> Optional[tuple[int, str]]:
         """(stripe, deck name) of the deck a tab belongs to; None for a tab with no deck."""
-        colour = self.tabs.deck_colour(tab.context)
-        if colour is None:
+        color = self.tabs.deck_color(tab.context)
+        if color is None:
             return None
         deck = self.tab_deck(tab)
-        return colour, deck.name if deck is not None else Path(tab.context).stem
+        return color, deck.name if deck is not None else Path(tab.context).stem
 
     def _tab_label(self, tab: CentreTab) -> tuple[str, str]:
         """(text, tooltip) of a tab: a file tab names its file (a slide's as "1y8 · Title", a frozen version as
@@ -1234,7 +1234,7 @@ class CentreColumn(QFrame):
     def save_tabs(self) -> None:
         """Remember the open tabs for this project (D7 of the plan), in the format of docs/plans/tab-contexts.md section 6:
         `{"v": 2, "active": index, "tabs": [...]}`, one entry per tab. A working tab is `{"kind": "deck", "deck", "mode",
-        "colour", "work"}` (the deck's file and what it was left as: focus, view, language, list scroll, closed sections,
+        "color", "work"}` (the deck's file and what it was left as: focus, view, language, list scroll, closed sections,
         Find text), a file tab `{"kind": "file", "path", "mode", "deck"}` with the deck it belongs to (None for none).
         They come back when the project opens again. Called when the window closes."""
         slide_list = getattr(self.app, "slide_list", None)
@@ -1251,7 +1251,7 @@ class CentreColumn(QFrame):
             elif context is None:
                 continue           # a working tab no deck was bound to
             else:
-                entry["colour"] = self.tabs.deck_colour(context)
+                entry["color"] = self.tabs.deck_color(context)
                 if tab.work is not None:
                     entry["work"] = _work_to_json(tab.work)
             if tab is self.tabs.active:
@@ -1291,8 +1291,8 @@ class CentreColumn(QFrame):
                 if entry.get("mode") in MODES:
                     tab.mode = entry["mode"]
                 tab.work = _work_from_json(entry.get("work"))
-                if isinstance(entry.get("colour"), int) and not isinstance(entry.get("colour"), bool):
-                    self.tabs.set_deck_colour(deck.path, entry["colour"])
+                if isinstance(entry.get("color"), int) and not isinstance(entry.get("color"), bool):
+                    self.tabs.set_deck_color(deck.path, entry["color"])
                 made[index] = tab
         for index, entry in enumerate(entries):
             rel = entry.get("path") if isinstance(entry, dict) and entry.get("kind", FILE) == FILE else None

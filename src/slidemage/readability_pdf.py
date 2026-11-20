@@ -5,7 +5,7 @@
 This is MuPDF work, so it runs in the raster child process (preview_raster.py asks for op "layout"; the GUI
 process never opens the PDF itself). Per page it gives plain JSON data, in points on the page:
 
-- the visible text, one entry per line with its dominant size, colour and box (invisible text -- the slide-id
+- the visible text, one entry per line with its dominant size, color and box (invisible text -- the slide-id
   stamp, the alt-text of figures -- is left out);
 - the placed raster images with their box and pixel size;
 - the opaque filled rectangles in paint order (the background behind the text, the footer bar);
@@ -68,7 +68,7 @@ def _lines(raw: dict, hidden: set) -> list[dict]:
             text = "".join(c["c"] for s in spans for c in s["chars"]).strip()
             if not text:
                 continue
-            # The dominant span carries the size and colour: a superscript marker or a bullet in another font
+            # The dominant span carries the size and color: a superscript marker or a bullet in another font
             # must not make a line small.
             main = max(spans, key=lambda s: (sum(c["c"].isalnum() for c in s["chars"]), s["size"]))
             lines.append(dict(

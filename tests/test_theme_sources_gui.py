@@ -108,7 +108,7 @@ def test_the_row_says_why_the_last_check_failed(tab, github):
 
 
 def test_the_offer_shows_the_notes_and_a_new_major_version(qapp, github, tmp_path, monkeypatch):
-    github.release("2.0.0", build(tmp_path, "2.0.0"), body="New colours.")
+    github.release("2.0.0", build(tmp_path, "2.0.0"), body="New colors.")
     fetched = theme_sources.newest_eligible(GH)[0]
     offer = theme_sources.Offer("sample-theme", "Sample Theme", "1.4.0", fetched)
     seen = {}
@@ -122,7 +122,7 @@ def test_the_offer_shows_the_notes_and_a_new_major_version(qapp, github, tmp_pat
     monkeypatch.setattr(QMessageBox, "exec", exec_)
     assert settings_plugins.ask_theme_update(None, offer) == "skip"
     assert "2.0.0 is available (you have 1.4.0)" in seen["text"]
-    assert "New colours." in seen["info"] and "new major version" in seen["info"]
+    assert "New colors." in seen["info"] and "new major version" in seen["info"]
     assert seen["buttons"] == ["Install now", "Not now", "Skip this version"]
     fetched.discard()
 

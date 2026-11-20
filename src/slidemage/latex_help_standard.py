@@ -65,11 +65,11 @@ _COMMAND_LIST = [
     _c("emph", r"\emph{text}", "Emphasis: italic, or upright inside an italic text.", example=r"\emph{emphasised}"),
     _c("texttt", r"\texttt{text}", "Typewriter (monospace) text, for code and file names.",
        example=r"\texttt{main.py}"),
-    _c("textcolor", r"\textcolor{colour}{text}",
-       "Colours the text. The colour is a name (red, blue!60, a colour the theme defines) or, with xcolor, "
+    _c("textcolor", r"\textcolor{color}{text}",
+       "Colors the text. The color is a name (red, blue!60, a color the theme defines) or, with xcolor, "
        "[rgb]{...} or [HTML]{...}.",
        example=r"\textcolor{red}{warning}"),
-    _c("color", r"\color{colour}", "Switches the colour for the rest of the group.", example=r"{\color{blue} text}"),
+    _c("color", r"\color{color}", "Switches the color for the rest of the group.", example=r"{\color{blue} text}"),
     _c("footnote", r"\footnote{text}",
        "A footnote at the bottom of the frame. In a SlideMage deck, it also is where an image's source goes.",
        example=r"A claim\footnote{Source: Palan (2026).}"),
@@ -101,7 +101,7 @@ _COMMAND_LIST = [
     _c("note", r"\note[item]{speaker note}",
        "A note for the presenter, not shown on the slide; it appears in the notes pages or the presenter view.",
        example=r"\note{Mention the pilot study.}"),
-    _c("alert", r"\alert{text}", "Highlights the text in the theme's alert colour.", example=r"\alert{note this}"),
+    _c("alert", r"\alert{text}", "Highlights the text in the theme's alert color.", example=r"\alert{note this}"),
     # -- math --
     _c("frac", r"\frac{numerator}{denominator}", "A fraction. \\dfrac and \\tfrac force display and text size.",
        example=r"\frac{a+b}{2}"),
@@ -154,11 +154,11 @@ _ENVIRONMENT_LIST = [
        example="\\begin{columns}[t]\n\t\\column{0.5\\textwidth} Left\n\t\\column{0.5\\textwidth} Right\n"
                "\\end{columns}"),
     _e("block", r"\begin{block}{title} ... \end{block}",
-       "A titled box in the theme's block style. alertblock and exampleblock use the alert and example colours.",
+       "A titled box in the theme's block style. alertblock and exampleblock use the alert and example colors.",
        example="\\begin{block}{Definition}\n\tText\n\\end{block}"),
-    _e("alertblock", r"\begin{alertblock}{title} ... \end{alertblock}", "A block in the alert colour.",
+    _e("alertblock", r"\begin{alertblock}{title} ... \end{alertblock}", "A block in the alert color.",
        example="\\begin{alertblock}{Warning}\n\tText\n\\end{alertblock}"),
-    _e("exampleblock", r"\begin{exampleblock}{title} ... \end{exampleblock}", "A block in the example colour.",
+    _e("exampleblock", r"\begin{exampleblock}{title} ... \end{exampleblock}", "A block in the example color.",
        example="\\begin{exampleblock}{Example}\n\tText\n\\end{exampleblock}"),
     _e("itemize", r"\begin{itemize}[<overlay spec>] \item ... \end{itemize}",
        "A bulleted list. [<+->] reveals one item per step.",

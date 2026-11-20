@@ -1028,10 +1028,10 @@ def _fraction(numerator: str, denominator: str) -> str:
 _LINE_BREAK_RE = re.compile(r"\\\\\*?(?:\[[^\]]*\])?")
 _PERIODCENTERED_RE = re.compile(r"\\textperiodcentered(?![a-zA-Z])(?:\{\})?")
 
-# Colour commands (v4.1.0, direct instruction): a transcript omits colour.
-# The command and its colour argument(s) go, the coloured text stays --
+# Color commands (v4.1.0, direct instruction): a transcript omits color.
+# The command and its color argument(s) go, the colored text stays --
 # the generic macro/brace strip in _inline_markdown() used to leave the
-# colour name glued to the text ("c_primary_highlightdata dredging",
+# color name glued to the text ("c_primary_highlightdata dredging",
 # "[HTML]C00000Promotes ..."). \color is a switch with no text argument.
 _COLOR_COMMAND_RE = re.compile(
     r"\\fcolorbox\s*(?:\[[^\]]*\])?\s*\{[^{}]*\}\s*\{[^{}]*\}"

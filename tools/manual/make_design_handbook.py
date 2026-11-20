@@ -61,12 +61,12 @@ def swatch(value: object) -> str:
     value = str(value)
     if value.startswith('rgba'):
         r, g, b, a = map(float, re.findall(r'[\d.]+', value))
-        colour = ''.join(f'{round(c * a + 255 * (1-a)):02x}' for c in (r, g, b))
+        color = ''.join(f'{round(c * a + 255 * (1-a)):02x}' for c in (r, g, b))
     elif value.startswith('#'):
-        colour = value[1:]
+        color = value[1:]
     else:
         return tex(value)
-    return r'\textcolor[HTML]{' + colour + r'}{\rule{1.2em}{0.8em}}\ ' + tex(value)
+    return r'\textcolor[HTML]{' + color + r'}{\rule{1.2em}{0.8em}}\ ' + tex(value)
 
 
 def table(headers: tuple[str, ...], rows: list[list[str]]) -> str:

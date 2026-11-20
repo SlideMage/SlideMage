@@ -120,7 +120,7 @@ costs a deck switch per change of context (section 7, risk R2), which is what th
 | O13 | Restore at start (D7) | file tabs, the last deck | every tab with its context and the working tabs' `DeckWork` (section 6) |
 
 **Strip order** (E7): a deck's tabs stay together, its working tab first; a new tab of deck D goes after D's last tab;
-`none` tabs go at the end. A tab shows its slide only; the deck is told by a colour stripe on all its tabs, the tooltip and the
+`none` tabs go at the end. A tab shows its slide only; the deck is told by a color stripe on all its tabs, the tooltip and the
 tab's menu (E7).
 
 ## 5. Empty and placeholder states, with a stable layout
@@ -218,11 +218,11 @@ hidden.
 * **E5. The side panels on a `none` file tab: keep the last deck's focused slide, as step 2b decided. Decided 2026-11-13.**
 * **E6. "Open in <deck>" on a slide in no open deck. Decided:** the tab keeps its editor and undo, gets that deck as its
   context and the deck opens in the background.
-* **E7. Strip labels: slide name, deck by colour (decided 2026-11-13).** Deck plus slide names
+* **E7. Strip labels: slide name, deck by color (decided 2026-11-13).** Deck plus slide names
   would not fit. A tab shows the slide only (`1y8 - Market efficiency`, elided as now); a working tab with no slide
-  chosen shows the deck's name. Each open deck gets a colour from a small palette (about six kit-token hues that work in
+  chosen shows the deck's name. Each open deck gets a color from a small palette (about six kit-token hues that work in
   light and dark), shown as a stripe along the top edge of all its tabs; assigned in the order decks are opened, reused
-  after six, saved with the tabs (section 6). Not colour alone: the tooltip names deck and slide, the tab's menu gets
+  after six, saved with the tabs (section 6). Not color alone: the tooltip names deck and slide, the tab's menu gets
   "Show in deck <name>". Tabs with no deck get no stripe. A deck's tabs stay grouped, working tab first.
 * **E8. Ctrl+Tab across decks (decided 2026-11-13):** the centre shows each tab at once; the left side and the panels follow when the series
   ends or rests (assumed from the recommendation; not asked).

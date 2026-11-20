@@ -21,7 +21,7 @@ SHIPPED_TEMPLATES = [LATEX / "SlideMage_template_slidemage.tex", LATEX / "SlideM
 # moved nothing; the other two were renamed.
 REMOVED = {"SMFootlineHeight", "SMFootlineDepth", "SMRightFooterPadding"}
 RENAMED = {"SMProgressStripHeight": "SMProgressStripRoom", "SMSideFootnoteTopSep": "SMSideFootnoteTitleBlockSep"}
-# v0.16.0: the colour-mode layer (setup layer, section "Colour modes and role colours"): its internals, and the data lines a
+# v0.16.0: the color-mode layer (setup layer, section "Color modes and role colors"): its internals, and the data lines a
 # theme writes (declared, not hooks a template reads).
 MODE_LAYER = {"SM@hexcolor", "SM@letcolor", "SM@activemode", "SM@basemode", "SM@ifmode", "SM@palettelines", "SM@preset@colorblind", "SM@preset@dark",
               "SM@preset@gray", "SM@rolecolour", "SM@rolehook", "SM@togray", "SM@applymode",
@@ -44,7 +44,7 @@ PROFILE_LENGTHS: set[str] = set()
 PROFILE_MACROS = {"SMFontAscender", "SMLinespread", "SMParskip", "SMCardHeadingFont"}
 # Palette colors only slides read (the manual's slide 1pf shows them): a template still redefines them, but
 # neither the base nor the theme uses them. Any other palette color nothing reads is a finding.
-# (v0.15.10: the four block-title fills are read by the setup layer's role colours, not by the base or theme directly.)
+# (v0.15.10: the four block-title fills are read by the setup layer's role colors, not by the base or theme directly.)
 PALETTE_FOR_SLIDES = {"c_tertiary_yellow", "c_secondary_green", "c_secondary_orange", "c_secondary_red", "c_secondary_violet", "c_true_black", "c_true_white", "c_custom_brown", "c_custom_green", "c_secondary_yellow", "c_tertiary_blue", "c_tertiary_green",
                       "c_tertiary_orange", "c_tertiary_red", "c_tertiary_violet"}
 # \newfontfamily names a profile may define (v10.9.0: a profile holds the code fonts besides its macros and
@@ -75,7 +75,7 @@ def catalog() -> dict[str, set[str]]:
     return {
         "lengths": defined(setup, ("newlength",)) - NOT_HOOKS,
         "macros": defined(setup, ("newcommand",)) - NOT_HOOKS - DERIVED,
-        "colors": defined(setup, ("definecolor",)) - {"c_true_black", "c_true_white"},  # physical colours no template sets
+        "colors": defined(setup, ("definecolor",)) - {"c_true_black", "c_true_white"},  # physical colors no template sets
     }
 
 

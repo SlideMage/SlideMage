@@ -394,7 +394,7 @@
       "role": "informative",
       "status": "auto",
       "short": "The Source view with the LaTeX source of the standardframe demo slide.",
-      "long": "The workspace with Source chosen at the top. In the middle column: the file name 1y8-EN-Standardframe-current.tex, a magnifier button, the buttons Revert (greyed out) and Save, a row of formatting buttons (italic, bold, underline, monospace, percent sign, Source, Footnote, Color, Insert, Cite, Tools), the lint line No problems found with the button Ask AI to fix, the folded line Show 2-line header comment, and the LaTeX source with line numbers and syntax colouring. Slide list on the left, panel and AI assistant on the right.",
+      "long": "The workspace with Source chosen at the top. In the middle column: the file name 1y8-EN-Standardframe-current.tex, a magnifier button, the buttons Revert (greyed out) and Save, a row of formatting buttons (italic, bold, underline, monospace, percent sign, Source, Footnote, Color, Insert, Cite, Tools), the lint line No problems found with the button Ask AI to fix, the folded line Show 2-line header comment, and the LaTeX source with line numbers and syntax coloring. Slide list on the left, panel and AI assistant on the right.",
       "source": "Screenshot of SlideMage 6.0.",
       "takeaway_default": "The Source view edits the slide's LaTeX with a toolbar and a lint line.",
       "drafted_by": "claude-sonnet-5.5 (manual build)",

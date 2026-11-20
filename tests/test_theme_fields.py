@@ -84,7 +84,7 @@ def test_defaults_and_help_come_from_the_setup_file():
     assert CATALOG["SMTopMargin"].default == "41.58bp"
     assert CATALOG["SMLogoHeight"].default == "3ex" and "logo height" in CATALOG["SMLogoHeight"].help
     assert CATALOG["c_primary_highlight"].default == "0066cc" and "accent" in CATALOG["c_primary_highlight"].help
-    assert CATALOG["SMCanvasColor"].kind == "optional_colour" and CATALOG["SMCanvasColor"].default == "white"
+    assert CATALOG["SMCanvasColor"].kind == "optional_color" and CATALOG["SMCanvasColor"].default == "white"
     assert CATALOG["SMLayoutProfile"].kind == "profile" and CATALOG["SMLayoutProfile"].default == "fira"
     assert CATALOG["role:text"].source == "c_primary_dark"
     assert CATALOG["SMMiniFramesPosition"].kind == "command"
@@ -93,13 +93,13 @@ def test_defaults_and_help_come_from_the_setup_file():
         assert name not in CATALOG
 
 
-def test_the_order_puts_a_themes_own_colours_after_the_palette():
+def test_the_order_puts_a_themes_own_colors_after_the_palette():
     assert theme_fields.order("c_primary_dark") < theme_fields.order("c_my_own") < theme_fields.order("SMLogoHeight")
     assert theme_fields.order("SMTitleBoxColor") == theme_fields.order("role:title_fill")
 
 
-def test_colour_name_macros_are_known_to_the_writer():
-    """A macro of the catalog that holds a colour's name must be written with \\renewcommand, not \\colorlet."""
+def test_color_name_macros_are_known_to_the_writer():
+    """A macro of the catalog that holds a color's name must be written with \\renewcommand, not \\colorlet."""
     macros = {name for name, entry in CATALOG.items() if entry.kind == "macro" and "Color" in name}
-    assert macros == set(theme_fields.MACRO_COLOURS)
-    assert set(theme_fields.ROLE_OF_HOOK) <= set(theme_fields.MACRO_COLOURS)
+    assert macros == set(theme_fields.MACRO_COLORS)
+    assert set(theme_fields.ROLE_OF_HOOK) <= set(theme_fields.MACRO_COLORS)

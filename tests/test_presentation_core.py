@@ -38,9 +38,9 @@ def test_a_double_width_pdf_splits_into_slide_and_notes(deck):
 
 def test_slide_and_notes_render_their_own_half(deck):
     image = deck.render(2, SLIDE, 400, 400)
-    colour = image.pixelColor(image.width() - 5, image.height() - 5)    # away from the text
+    color = image.pixelColor(image.width() - 5, image.height() - 5)    # away from the text
     expected = page_color(2)
-    assert colour.redF() == pytest.approx(expected[0], abs=0.02) and colour.blueF() == pytest.approx(expected[2], abs=0.02)
+    assert color.redF() == pytest.approx(expected[0], abs=0.02) and color.blueF() == pytest.approx(expected[2], abs=0.02)
     notes = deck.render(2, NOTES, 400, 400)
     assert notes.pixelColor(notes.width() - 5, notes.height() - 5).lightness() > 240      # white paper
     assert deck.render(0, SLIDE, 400, 400) is deck.render(0, SLIDE, 400, 400)           # cached

@@ -5,7 +5,7 @@ order in which they were last used; and the strip that draws them.
 
 `CentreTabs` is the model and needs no window. Each open deck has one working tab (docs/plans/tab-contexts.md, E1): it
 shows that deck's focused slide, as the one slide tab did before; closing it closes the deck (E2), except the last one.
-A deck's tabs stay together, its working tab first, each tab carrying a stripe in the colour of its deck (E7). A file
+A deck's tabs stay together, its working tab first, each tab carrying a stripe in the color of its deck (E7). A file
 tab holds a file of its own, opened on purpose (a deck's
 source, SlideMage.bib, test-slides.tex, or a slide's file), until it is closed. Each tab remembers the mode (Preview,
 Source, ...) it was last shown in; a file tab of a file that is no slide shows the Source view alone, a slide's file
@@ -32,7 +32,7 @@ from .state import DeckWork
 
 DECK, FILE = "deck", "file"
 SLIDE = DECK            # the working tab was "the slide tab" before docs/plans/tab-contexts.md step 3b
-DECK_COLOURS = 6        # the stripes of the decks' tabs: one of this many hues, in the order the decks were opened
+DECK_COLORS = 6        # the stripes of the decks' tabs: one of this many hues, in the order the decks were opened
 FOLLOW = "follow"       # a tab's context (docs/plans/tab-contexts.md): "whatever state.deck is"; a Path would name a deck, None no deck
 TAB_HEIGHT = 34
 TAB_MIN_WIDTH = 96      # narrower than their text they elide; with less room than this they scroll
@@ -73,7 +73,7 @@ class CentreTabs(QObject):
         self._tabs: list[CentreTab] = [slide]
         self._mru: list[CentreTab] = [slide]            # most recently used first
         self._active = slide
-        self._colours: dict[Path, int] = {}             # a deck's stripe, by the order the decks were opened
+        self._colors: dict[Path, int] = {}             # a deck's stripe, by the order the decks were opened
         self._cycle: Optional[list[CentreTab]] = None   # the MRU order while Ctrl is held through a Ctrl+Tab series
         self._cycle_at = 0
 
@@ -108,14 +108,14 @@ class CentreTabs(QObject):
         self.tabs_changed.emit()
         return tab
 
-    def deck_colour(self, context) -> Optional[int]:
-        """The stripe of the deck `context`: 0 to DECK_COLOURS - 1, given in the order the decks are opened and used again
+    def deck_color(self, context) -> Optional[int]:
+        """The stripe of the deck `context`: 0 to DECK_COLORS - 1, given in the order the decks are opened and used again
         after that; None for a tab with no deck."""
         if not isinstance(context, Path):
             return None
-        if context not in self._colours:
-            self._colours[context] = len(self._colours) % DECK_COLOURS
-        return self._colours[context]
+        if context not in self._colors:
+            self._colors[context] = len(self._colors) % DECK_COLORS
+        return self._colors[context]
 
     def order_decks(self, contexts: list) -> None:
         """Put the working tabs in the order of `contexts` (the decks' files; restore at start), the others after them in
@@ -126,9 +126,9 @@ class CentreTabs(QObject):
         self.regroup()
         self.tabs_changed.emit()
 
-    def set_deck_colour(self, context: Path, colour: int) -> None:
+    def set_deck_color(self, context: Path, color: int) -> None:
         """A deck's stripe as it was saved (restore at start)."""
-        self._colours[context] = colour % DECK_COLOURS
+        self._colors[context] = color % DECK_COLORS
 
     def retarget_deck(self, old: Path, new: Path) -> None:
         """The deck's file was renamed or archived: its tabs and its stripe follow it."""
@@ -137,8 +137,8 @@ class CentreTabs(QObject):
         for tab in self._tabs:
             if tab.context == old:
                 tab.context = new
-        if old in self._colours:
-            self._colours[new] = self._colours.pop(old)
+        if old in self._colors:
+            self._colors[new] = self._colors.pop(old)
 
     def regroup(self) -> None:
         """Put the tabs in the order of E7: each deck's working tab, then the other tabs of that deck in their order, then
@@ -297,12 +297,12 @@ class _TabButton(ClickFrame):
             self.close_button.setVisible(closable)
             self.updateGeometry()
 
-    def set_deck(self, colour: Optional[int], name: str = "") -> None:
+    def set_deck(self, color: Optional[int], name: str = "") -> None:
         """The stripe of the deck the tab belongs to (None: no stripe) and its name, for the menu."""
         self.deck_name = name
-        value = "" if colour is None else str(colour)
-        if self.property("deckColour") != value:
-            self.setProperty("deckColour", value)
+        value = "" if color is None else str(color)
+        if self.property("deckColor") != value:
+            self.setProperty("deckColor", value)
             self.style().unpolish(self)
             self.style().polish(self)
 

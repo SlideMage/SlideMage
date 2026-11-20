@@ -28,7 +28,7 @@ def project(tmp_path):
     for suffix in ("current", "v1-0-0"):
         (ctx.slides_dir / f"abc-EN-Title-{suffix}.tex").write_text("\\setSlideVersion{1-0-0}\nTitle\n")
     (ctx.slides_dir / "zzz-EN-Spare-current.tex").write_text("Spare\n")
-    (ctx.blocks_dir / "colours.tex").write_text("\\definecolor{accent}{RGB}{1,2,3}\n")
+    (ctx.blocks_dir / "colors.tex").write_text("\\definecolor{accent}{RGB}{1,2,3}\n")
     return ctx
 
 

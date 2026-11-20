@@ -44,12 +44,12 @@
 %%    internal names \SM@... and \__SM_...), and the misspelt "pading" is
 %%    corrected: \SMFrametitle{Top,Bottom,Left,Right}Padding, \SMFootlineVOffset,
 %%    \SMInstituteLogo, \SMFrameSubtitleSep, \SMFrameSubtitleStrutEnd,
-%%    \SM@frametitlestrut@start/@end, \SM@strut. The colour roles (colorA,
+%%    \SM@frametitlestrut@start/@end, \SM@strut. The color roles (colorA,
 %%    colorDark, ...) became \SMColorA, \SMColorDark, ... and the Gotham palette
 %%    SMAnthracite, SMPaleYellow, ... Beamer template variants are named SM....
 %% 3. The \gothamset key interface and the option handling are removed. The
 %%    configuration is fixed to what SlideMage used: light background, native
-%%    blocks, anthracite colour set, no page numbering, no automatic divider
+%%    blocks, anthracite color set, no page numbering, no automatic divider
 %%    frames. The features that stay switchable are switched by the commands
 %%    documented in SlideMage_setup.tex (\SMMiniFramesPosition,
 %%    \SMMiniFramesSpreading, \SMMiniFramesSections, \SMMiniFramesCompress,
@@ -62,8 +62,8 @@
 %%    and author; the section headline; the round logo, the circle progress bar
 %%    and the circle page numbering; the subnewline frame title and all
 %%    continuation-title variants but the roman one; the frame-numbering styles
-%%    other than none; the standin frame and its colours; the dark, red and
-%%    transparent colour sets and block styles; the format (upper, lower,
+%%    other than none; the standin frame and its colors; the dark, red and
+%%    transparent color sets and block styles; the format (upper, lower,
 %%    titlecase) and shape switches for titles and headings together with the
 %%    patches of beamer's title, part, section, subsection and frame title
 %%    commands that served them; the frame options noBGC, nologo, nofootline,
@@ -80,12 +80,12 @@
 %%    patches that mini frames apply to beamer's \insertnavigation,
 %%    \sectionentry and \slideentry are installed only when they are switched on.
 %% 6. (v10.2.0) The parts SlideMage_base.tex used to replace after the theme loaded are
-%%    defined here, once: the final colours of the footnote, footline, button, frame
+%%    defined here, once: the final colors of the footnote, footline, button, frame
 %%    title, canvas and the blocks, the text margins, the itemize bullets, the logo
 %%    macro with the frame title hook and the template without the inline logo, the
 %%    footer box and the side-footnote strip on the footline, the footnote template
 %%    with its symbols, the block templates (block, alerted, example, reference, info,
-%%    definition) and the table-of-contents template SMPlainEnumerate. Colours that
+%%    definition) and the table-of-contents template SMPlainEnumerate. Colors that
 %%    depend on the template are still derived by \SMApplyColorRoles, which the base
 %%    calls after the template.
 %% 7. (v10.3.0) The font loading is gone from this file: the sans and mono fonts with
@@ -114,10 +114,10 @@
 %%    A footnote of the whole frame sets \ifSM@FootnoteShown and is shown on every step.
 %% 11. (v10.18.0) The bullet's drawing and the footnote marker are hooks of the catalog in
 %%    SlideMage_setup.tex: \SMBulletDot and \SMBulletDotBlack draw \SMBulletSymbol with their
-%%    colour, \thefootnote and \thempfootnote print \SMFootnoteMark of their counter. The
+%%    color, \thefootnote and \thempfootnote print \SMFootnoteMark of their counter. The
 %%    catalog's defaults are this file's former circle and \SMFnSymbol: nothing changes by default.
-%%    The alert and progress bar colours (SMColorD, SMColorC) follow the catalog's roles
-%%    \SMAlertTextColor and \SMProgressBarColor, whose defaults are the Gotham colours they had, and
+%%    The alert and progress bar colors (SMColorD, SMColorC) follow the catalog's roles
+%%    \SMAlertTextColor and \SMProgressBarColor, whose defaults are the Gotham colors they had, and
 %%    a standout frame's text takes \SMStandoutTextColor when a template names one.
 %% 12. (v0.13.15) Two more footnote marker styles: \SMSetFootnoteMarkers{boxed} sets the number
 %%    in a rounded box, \SMSetFootnoteMarkers{dice} draws die faces, \SMSetFootnoteMarkers{symbols}
@@ -176,8 +176,8 @@
 \definecolor[named]{SMDarkBlack}{gray}{0.1}
 \definecolor[named]{SMMidGrey}{gray}{0.5}
 
-% The colour roles of the theme. \SMApplyColorRoles (below) redefines SMColorDark
-% and SMColorA from the template's colours before it applies the roles.
+% The color roles of the theme. \SMApplyColorRoles (below) redefines SMColorDark
+% and SMColorA from the template's colors before it applies the roles.
 \colorlet{SMColorPale}{SMPaleYellow}    % background
 \colorlet{SMColorDark}{SMDarkBlack}     % foreground
 \colorlet{SMColorA}{SMAnthracite}       % frame title bar, standout frame
@@ -186,8 +186,8 @@
 \colorlet{SMColorD}{SMLightOrange}      % alert
 \colorlet{SMColorE}{SMLightGreen}       % example
 
-% Assigns the roles from the colours above (light background) and sets the
-% beamer colours that follow them. Idempotent: call it after redefining
+% Assigns the roles from the colors above (light background) and sets the
+% beamer colors that follow them. Idempotent: call it after redefining
 % SMColorPale .. SMColorE.
 \cs_new_protected:Nn \__SM_apply_color_roles:
   {
@@ -210,7 +210,7 @@
 \__SM_apply_color_roles:
 
 % The same for the template's palette: SlideMage_base.tex calls this after the
-% template's colour definitions. The text colour and the title bar colour come
+% template's color definitions. The text color and the title bar color come
 % from the palette (c_primary_dark) and the role \SMTitleBoxColor, the canvas is
 % white unless the template defined SMCanvasColor (dark mode).
 \NewDocumentCommand \SMApplyColorRoles { }
@@ -272,7 +272,7 @@
   use=progress~bar,
   parent=progress~bar
 }
-% The footnote text is the palette's dark colour, so that a link in it contrasts as in the body text.
+% The footnote text is the palette's dark color, so that a link in it contrasts as in the body text.
 \setbeamercolor{footnote}{fg=c_text}
 \setbeamercolor{footnote~mark}{fg=.}
 
@@ -1827,7 +1827,7 @@ fg=normal~text.fg
 % it once after \input{SlideMage_setup} and a deck from any point on; inside a group it holds
 % to the group's end. \setfootnotesymbols changes the symbols only and leaves the style alone.
 % Both are TikZ drawings in units of the font's ex (Fira Sans has no dice, U+2680-2685): they
-% scale with the font, take the text colour and sit on the baseline. In the running text, a
+% scale with the font, take the text color and sit on the baseline. In the running text, a
 % font of 6pt or more, they are scaled to 75%; the footnote line's font is small enough as it
 % is. \number makes the counter's value digits while \thefootnote is expanded, for the
 % drawings are \protected and would otherwise read the counter only when the note is set.
@@ -2120,8 +2120,8 @@ fg=normal~text.fg
 % hide without it, so \SM@InvisibleDepth counts those. A footnote without a specification of
 % its own, called in covered content, is covered the way that content is: invisible as beamer
 % covers a hidden \footnote<...> (the default, \setbeamercovered{invisible}, and \visible), or
-% in the colour mix of \setbeamercovered{transparent} and the like, which is still in force
-% when the box is built, applied to the footnote's colour. It keeps its space on every step, so
+% in the color mix of \setbeamercovered{transparent} and the like, which is still in force
+% when the box is built, applied to the footnote's color. It keeps its space on every step, so
 % nothing moves between steps. A footnote with its own specification keeps it; one outside
 % revealed content is built as before (\uncover without a specification).
 \newcount\SM@InvisibleDepth
@@ -2189,9 +2189,9 @@ fg=normal~text.fg
 % frame re-executes the body and re-collects its footnotes from scratch, so
 % whatever this slide's footline draws must not leak into the next slide.
 %
-% The strip is drawn from the footline, whose text colour is the footer's
+% The strip is drawn from the footline, whose text color is the footer's
 % (white on the SlideMage template's dark footer): the box is therefore set in the
-% footnote colour explicitly, as the bottom footnotes are -- before (until
+% footnote color explicitly, as the bottom footnotes are -- before (until
 % v5.30.5) a rotated footnote came out white on white where the footer text is white.
 %
 % Node geometry: tikz pins the node's *unrotated* anchor corner at the given

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The Color menu's swatches (theme_colors) are the colours LuaLaTeX gives each name, in every colour mode: a deck
-prints each role colour and palette colour as HTML after the framework resolved the mode, and the reader must agree
+"""The Color menu's swatches (theme_colors) are the colors LuaLaTeX gives each name, in every color mode: a deck
+prints each role color and palette color as HTML after the framework resolved the mode, and the reader must agree
 within rounding. TeX tests: SLIDEMAGE_TEX_TESTS=1 and lualatex."""
 import os
 import re
@@ -43,11 +43,11 @@ NAMES = ["c_" + role for role in theme_colors.ROLES] + [
 
 DECK = r"""\documentclass[aspectratio=169]{beamer}
 %(pre)s\input{SlideMage_template_%(key)s}
-\newcommand{\FooterText}{colours}
+\newcommand{\FooterText}{colors}
 \begin{document}
 \makeatletter
 \def\SMPrint#1{\extractcolorspecs{#1}{\SM@m}{\SM@s}\convertcolorspec{\SM@m}{\SM@s}{HTML}\SM@h
-  \typeout{SMCOLOUR #1=\SM@h}}
+  \typeout{SMCOLOR #1=\SM@h}}
 \makeatother
 %(prints)s
 \begin{frame}{x}x\end{frame}
@@ -55,7 +55,7 @@ DECK = r"""\documentclass[aspectratio=169]{beamer}
 """
 
 
-def tex_colours(work: Path, key: str, mode: str) -> dict[str, str]:
+def tex_colors(work: Path, key: str, mode: str) -> dict[str, str]:
     pre = "\\newcommand{\\SMModeOverride}{%s}\n" % mode if mode else ""
     prints = "\n".join("\\SMPrint{%s}" % name for name in NAMES)
     (work / "deck.tex").write_text(DECK % {"pre": pre, "key": key, "prints": prints}, encoding="utf-8")
@@ -63,7 +63,7 @@ def tex_colours(work: Path, key: str, mode: str) -> dict[str, str]:
     subprocess.run(["lualatex", "-interaction=nonstopmode", "-halt-on-error", "deck.tex"], cwd=work, env=env,
                    capture_output=True, timeout=300)
     log = (work / "deck.log").read_text(encoding="utf-8", errors="replace")
-    found = dict(re.findall(r"SMCOLOUR (\w+)=([0-9A-Fa-f]{6})", log))
+    found = dict(re.findall(r"SMCOLOR (\w+)=([0-9A-Fa-f]{6})", log))
     assert len(found) == len(NAMES), log[-2000:]
     return {name: "#" + value.lower() for name, value in found.items()}
 
@@ -75,10 +75,10 @@ def close(a: str, b: str) -> bool:
 @pytest.mark.parametrize("key,mode", [
     ("acme", ""), ("acme", "light"), ("acme", "dark"), ("acme", "gray"), ("acme", "cb"), ("acme", "mine"),
     ("acme", "unknown"), ("slidemage", ""), ("slidemage", "dark"), ("grayscale", ""), ("grayscale", "dark")])
-def test_the_menu_swatches_are_the_colours_tex_resolves(key, mode, tmp_path):
+def test_the_menu_swatches_are_the_colors_tex_resolves(key, mode, tmp_path):
     (tmp_path / "SlideMage_template_acme.tex").write_text(ACME, encoding="utf-8")
     expected = theme_colors.theme_colors(key, tmp_path, mode)       # "unknown": undeclared, no preset, no lines
-    tex = tex_colours(tmp_path, key, mode)
+    tex = tex_colors(tmp_path, key, mode)
     wrong = {name: (expected.get(name), tex[name]) for name in NAMES
              if name not in expected or not close(expected[name], tex[name])}
     assert not wrong, wrong

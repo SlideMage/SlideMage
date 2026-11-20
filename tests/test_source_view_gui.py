@@ -564,7 +564,7 @@ def _color_menu(pane, monkeypatch):
     return {e[1]: e[7] for e in shown[0]._entries if e[0] == "item"}
 
 
-def test_color_menu_takes_the_decks_theme_colours_and_follows_switches(pane, ctx, monkeypatch):
+def test_color_menu_takes_the_decks_theme_colors_and_follows_switches(pane, ctx, monkeypatch):
     from types import SimpleNamespace
     from conftest import write_test_file
 
@@ -602,7 +602,7 @@ def test_shipped_templates_give_every_menu_name_from_their_own_files(ctx):
 
 
 def test_color_menu_leads_with_the_roles_in_the_mode_of_the_view_shown(pane, ctx, monkeypatch):
-    """v0.16.3: the role colours come first, with what each is for, in the colour mode of the deck and the view."""
+    """v0.16.3: the role colors come first, with what each is for, in the color mode of the deck and the view."""
     from types import SimpleNamespace
     from slidemage.ui.kit.widgets import PopoverMenu
 
@@ -622,7 +622,7 @@ def test_color_menu_leads_with_the_roles_in_the_mode_of_the_view_shown(pane, ctx
     dark = {e[1]: e[7] for e in items}
     assert dark["c_text"] == "#ffffff" and dark["c_canvas"] == "#444444"
     assert dark["c_primary_highlight"] == "#8bbcec"                     # v0.16.5: the template's dark value
-    assert dark["c_secondary_blue"] == "#3d8fe0"                        # a colour the mode leaves alone
+    assert dark["c_secondary_blue"] == "#3d8fe0"                        # a color the mode leaves alone
 
     pane.app_for_test.state.view = "after-course"                       # this view is light
     light = _color_menu(pane, monkeypatch)

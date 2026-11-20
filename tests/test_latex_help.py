@@ -270,7 +270,7 @@ example = "\\mytitle[color=red]{Hi}"
 [[command.keys]]
 name = "color"
 values = "red | blue"
-text = "the title colour"
+text = "the title color"
 
 [[environment]]
 name = "mybox"

@@ -283,7 +283,7 @@ class DeckSettingsSheet(ModalSheet):
             view_themes=self._view_theme_entries() if self.deck.supports_version else None)
 
     def _build_view_themes(self, layout, entries: list[tuple[str, str]]) -> None:
-        """"Theme per view": a theme and colour mode for each view, so one deck is dark for projection and light for
+        """"Theme per view": a theme and color mode for each view, so one deck is dark for projection and light for
         print. A view left at "Same as the deck" has no entry. Decks without views skip it."""
         self.view_combos: dict[str, QComboBox] = {}
         self.view_mode: dict[str, QComboBox] = {}

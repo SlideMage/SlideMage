@@ -191,7 +191,7 @@ def test_search_finds_text_in_slides_and_the_bib(box):
 def test_bad_arguments_and_unknown_tools_become_error_results(box):
     assert "Missing required argument 'path'" in box.error("read_file")
     assert "must be of type integer" in box.error("read_file", path=SLIDE, start_line="1")
-    assert "Unknown argument" in box.error("read_file", path=SLIDE, colour="red")
+    assert "Unknown argument" in box.error("read_file", path=SLIDE, color="red")
     assert "no tool 'rm'" in box.error("rm", path="x")
     assert "must be one of" in box.error("add_slide", slug="A", title="T", frame="bogus")
 
@@ -508,8 +508,8 @@ def test_add_bib_entry_refuses_a_taken_key_before_asking_and_a_buffer_that_got_e
 def test_add_bib_entry_validates(box):
     assert "needs: year, journaltitle" in box.error("add_bib_entry", kind="article", fields={
         "author": "A, B", "title": "T"})
-    assert "no field(s) colour" in box.error("add_bib_entry", kind="book", fields={
-        "author": "A, B", "title": "T", "year": "2000", "publisher": "P", "colour": "red"})
+    assert "no field(s) color" in box.error("add_bib_entry", kind="book", fields={
+        "author": "A, B", "title": "T", "year": "2000", "publisher": "P", "color": "red"})
     assert "lowercase surname" in box.error("add_bib_entry", kind="book", key="Bad Key", fields={
         "author": "A, B", "title": "T", "year": "2000", "publisher": "P"})
     box.ws.dirty.add(box.root / "SlideMage.bib")
@@ -531,7 +531,7 @@ def test_make_qr_code_writes_media_and_returns_the_call(box, root):
 
 
 def test_make_qr_code_validates(box):
-    assert "no field(s) colour" in box.error("make_qr_code", kind="url", fields={"url": "a.org", "colour": "red"})
+    assert "no field(s) color" in box.error("make_qr_code", kind="url", fields={"url": "a.org", "color": "red"})
     assert "not an email address" in box.error("make_qr_code", kind="email", fields={"to": "nobody"})
     assert "Enter the start" in box.error("make_qr_code", kind="event", fields={"title": "x"})
     assert "share of" in box.error("make_qr_code", kind="url", fields={"url": "a.org"}, height=2)

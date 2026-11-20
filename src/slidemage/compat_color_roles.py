@@ -1,26 +1,26 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""compat.py change "colour-roles-in-slides" (v0.15.14): slides name what a colour is for, not which colour it is.
+"""compat.py change "color-roles-in-slides" (v0.15.14): slides name what a color is for, not which color it is.
 
-Two palette names carry a meaning beyond their colour: a dark mode turns ``c_primary_dark`` white today (it is the ink
-of text, lines and rules) and ``c_custom_gray`` light grey (links). The framework has had role colours since v0.15.9
+Two palette names carry a meaning beyond their color: a dark mode turns ``c_primary_dark`` white today (it is the ink
+of text, lines and rules) and ``c_custom_gray`` light grey (links). The framework has had role colors since v0.15.9
 (``c_text``, ``c_canvas``, ``c_text_on_accent``, ...; docs/plans/theme-editor.md section 3.8). In the base mode they
-resolve to the same colours as the names they replace, so a migrated slide looks the same there; in any other mode it
-follows the mode, where the old name keeps one physical colour once the BREAKING cut removes the flip.
+resolve to the same colors as the names they replace, so a migrated slide looks the same there; in any other mode it
+follows the mode, where the old name keeps one physical color once the BREAKING cut removes the flip.
 
 How a use of ``c_primary_dark`` is rewritten (only live code; a mix such as ``!85`` is kept):
 
 | Where                                                     | Becomes             |
 |-----------------------------------------------------------|---------------------|
 | a line, an arrow, a rule, a shape, text on the canvas      | ``c_text``          |
-| text on a coloured fill (``fill=c_primary_highlight, text=``) | ``c_text_on_accent`` |
+| text on a colored fill (``fill=c_primary_highlight, text=``) | ``c_text_on_accent`` |
 | an ink-filled box (``fill=c_primary_dark!85``)             | ``c_text``, and its ``text=white`` / ``text=c_primary_white`` becomes ``c_canvas`` |
 | the fill of a shape drawn in ink (``fill=c_primary_white``) | ``c_canvas``        |
-| ``\\color``, ``\\textcolor``, ``\\arrayrulecolor``, ``fg=`` | ``c_text`` (``c_text_on_accent`` inside a node with a coloured fill) |
-| a list of colours (``\\foreach \\c in {c_primary_dark, ...}``) | left alone: it shows the palette |
+| ``\\color``, ``\\textcolor``, ``\\arrayrulecolor``, ``fg=`` | ``c_text`` (``c_text_on_accent`` inside a node with a colored fill) |
+| a list of colors (``\\foreach \\c in {c_primary_dark, ...}``) | left alone: it shows the palette |
 
 Everything else (``c_custom_gray`` outside a list, a ``\\colorlet`` of a slide's own, an unknown TikZ key, ``bg=``,
-``\\colorbox``, a cell colour) is left as it is and reported with file and line, for a person to decide.
+``\\colorbox``, a cell color) is left as it is and reported with file and line, for a person to decide.
 
 Scope: slides (the current file and every frozen version: a frozen slide shown in a dark deck needs the roles as
 much as the current one), snippets, decks (decks/ and decks/archive/) and the project macros. Templates are themes:
@@ -40,7 +40,7 @@ from typing import Optional
 from .compat_types import APPEARANCE, Change, Finding
 from .tex_source import is_commented
 
-CHANGE_ID = "colour-roles-in-slides"
+CHANGE_ID = "color-roles-in-slides"
 TEMP_DECK_PREFIX = "_slidemage"
 
 INK = "c_primary_dark"
@@ -48,7 +48,7 @@ LINK = "c_custom_gray"
 WHITE = ("c_primary_white", "white")
 _NAME = re.compile(r"(?<![A-Za-z0-9_@])(c_primary_dark|c_custom_gray)(?![A-Za-z0-9_@])")
 _WORD = re.compile(r"[A-Za-z@]+")
-_COLOUR_MACROS = {"color", "textcolor", "arrayrulecolor", "pagecolor"}
+_COLOR_MACROS = {"color", "textcolor", "arrayrulecolor", "pagecolor"}
 _REPORTED_MACROS = {"colorbox", "fcolorbox", "cellcolor", "rowcolor", "columncolor", "colorlet", "definecolor",
                     "rowcolors"}
 _TEXT_KEYS = {"text"}
@@ -172,7 +172,7 @@ def _word_before(text: str, pos: int) -> str:
 
 
 def _base(value: str) -> str:
-    """The colour name of a value, without a mix: 'c_primary_dark!85' -> 'c_primary_dark'."""
+    """The color name of a value, without a mix: 'c_primary_dark!85' -> 'c_primary_dark'."""
     return value.split("!", 1)[0].strip()
 
 
@@ -297,7 +297,7 @@ def plan_text(text: str, rel: str = "") -> _FileResult:
         around = _enclosing(groups, pos)
         inner = around[0] if around else None
         if inner is not None and inner.char == "{" and _word_before(text, inner.open) in ("in", "\\foreach"):
-            continue                                          # a list of colours shows the palette
+            continue                                          # a list of colors shows the palette
         if inner is not None and inner.char == "{" and "/" in text[inner.open:inner.close] \
                 and _word_before(text, inner.open) == "in":
             continue
@@ -309,7 +309,7 @@ def plan_text(text: str, rel: str = "") -> _FileResult:
             continue
         if inner is not None and inner.char == "{":
             macro = _macro_of(text, groups, inner)
-            if macro in _COLOUR_MACROS and text[inner.open + 1:inner.close].strip().startswith(name):
+            if macro in _COLOR_MACROS and text[inner.open + 1:inner.close].strip().startswith(name):
                 fill = _node_fill(text, groups, pos)
                 edit(pos, name, "c_text_on_accent" if fill and _base(fill) not in _NO_FILL and not _is_ink(fill)
                      else "c_text")
@@ -334,7 +334,7 @@ def _option_use(text, groups, group, pos, name, edit, report) -> None:
     on_accent = fill is not None and _base(fill) not in _NO_FILL and not _is_ink(fill) and _base(fill) not in WHITE
     command = _command_of(text, group) if group.char == "[" else ""
     if key == "" and command in ("\\draw", "\\path", "\\filldraw", "\\addplot", "\\addplot+"):
-        on_accent = False                                     # a bare colour of a path is its line
+        on_accent = False                                     # a bare color of a path is its line
     if key == "fill" or (key == "" and command in ("\\fill", "\\shade")):
         edit(pos, name, "c_text")                             # an ink-filled box or shape
         for it in items:

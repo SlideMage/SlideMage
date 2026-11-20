@@ -277,7 +277,7 @@ def _luminance(color: int) -> float:
 
 
 def contrast_ratio(first: int, second: int) -> float:
-    """The WCAG contrast ratio of two 0xRRGGBB colours (1 to 21)."""
+    """The WCAG contrast ratio of two 0xRRGGBB colors (1 to 21)."""
     light, dark = sorted((_luminance(first), _luminance(second)), reverse=True)
     return (light + 0.05) / (dark + 0.05)
 
