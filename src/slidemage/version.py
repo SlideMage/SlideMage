@@ -53,7 +53,7 @@ class HistoryEntry:
 NEW_PREFIX = "NEW:"
 
 
-def _parse_news(paragraph: str) -> tuple[str, list[str]]:
+def parse_news(paragraph: str) -> tuple[str, list[str]]:
     """(summary, bullets) of a "NEW:" paragraph: the text after NEW: on its
     first line is the summary, every line starting with "- " a bullet, and
     other lines continue the line before them."""
@@ -84,7 +84,7 @@ def parse_history() -> list[HistoryEntry]:
         summary, news = "", []
         for paragraph in raw:
             if paragraph.strip().startswith(NEW_PREFIX):
-                summary, news = _parse_news(paragraph)
+                summary, news = parse_news(paragraph)
         entries.append(HistoryEntry(
             version=version, meta=meta, description=description, paragraphs=paragraphs,
             summary=summary, news=news))

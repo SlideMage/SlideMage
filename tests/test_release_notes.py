@@ -52,7 +52,7 @@ def test_new_paragraph_gives_summary_and_bullets():
     # v5.35.4: a NEW: paragraph -- summary on its line, "- " bullets, wrapped
     # lines continue the bullet before them
     from slidemage import version
-    summary, news = version._parse_news(
+    summary, news = version.parse_news(
         "NEW: Faster compiles.\n- Only some pages\n  can be compiled.\n- A fix.")
     assert summary == "Faster compiles."
     assert news == ["Only some pages can be compiled.", "A fix."]
