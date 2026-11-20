@@ -72,7 +72,7 @@ understand is left out, so an unclear case costs a missed typo, never a broken s
     test fails if a command in `latex_help._COMMANDS` is in neither `PROSE_ARGS` nor `NO_PROSE`.
 * **Never prose:**
   * command names, and the arguments of every command not in `PROSE_ARGS`: `\label`, `\ref`, the `\cite` family,
-    `\includegraphics`, `\input`, `\url`, the URL of `\href`, colour and theme names, `\SMCode`, `\SMCmd` and
+    `\includegraphics`, `\input`, `\url`, the URL of `\href`, color and theme names, `\SMCode`, `\SMCmd` and
     unknown project macros;
   * optional arguments `[…]`, overlay specifications `<…>` and environment names;
   * math (`$…$`, `\(…\)`, `\[…\]`, `equation`/`align`/`tikzpicture` bodies), verbatim (`verbatim`,
@@ -199,7 +199,7 @@ single letters, not words in capitals (PDF), not words with a capital inside (Sl
   * Loading the German dictionary takes 1.6 s, once per session, on a worker: no pickling needed.
   * pyspellchecker loads a list in 0.2 s and suggests in milliseconds.
 * **Found in step 2:** pyspellchecker's English list is not neutral between British and American spelling, as
-  first assumed: it knows "color" but not "colour", and lacks "app", "admin", "checkbox" and "grayscale". **Done
+  first assumed: it knows "color" but not "color", and lacks "app", "admin", "checkbox" and "grayscale". **Done
   in v0.17.20:** English is checked with Hunspell (en-US / en-GB, licences: SCOWL's BSD-style terms and LGPL).
   en-GB loads in 0.7 s, en-US in 0.4 s; English suggestions come at once.
 
@@ -282,7 +282,7 @@ The user answered against the numbering of revision 2. Revision 3 keeps that num
    its own, the project's main one without a code, and only `\multilingualtext`'s arguments in a multilingual
    slide. Tests switch the check off in `conftest.py` (else every opened slide would download a dictionary).
    Measured on the 103 example slides: 3.9 s, 97 underlines, mostly technical terms, but pyspellchecker's English
-   list also lacks "app", "admin", "checkbox", "colour" and "grayscale" (see section 5, "Found in step 2").
+   list also lacks "app", "admin", "checkbox", "color" and "grayscale" (see section 5, "Found in step 2").
 4. **Built in v0.17.23.** Deck -> Check spelling of this deck… (`spelling/deck_check.py`, Qt-free:
    `deck_files()` is every slide file the deck shows, its topic blocks included, in every project language;
    `check_files()` groups the unknown words by language and word with where they occur;

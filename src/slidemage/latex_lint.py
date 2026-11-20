@@ -142,7 +142,7 @@ _NON_TYPESET_OWNERS = {
     "deckoutputfolder", "decktags", "SMCodeFile", "note",  # \note can hold typeset text, but see below
 }
 _NON_TYPESET_OWNERS.discard("note")  # typeset text: an unescaped _ there is a real error
-# Macros whose first N brace groups are all names (colours, colour models and specs, modes, roles), not only the first:
+# Macros whose first N brace groups are all names (colors, color models and specs, modes, roles), not only the first:
 # \colorlet{SMCodeKeywordColor}{c_secondary_blue} has its _ in the second group (v0.16.32). \textcolor and \colorbox
 # stay at one: their second group is typeset text.
 _NAME_ARGUMENTS = {"colorlet": 2, "definecolor": 3, "providecolor": 3, "fcolorbox": 2, "setbeamercolor": 2,
@@ -594,24 +594,24 @@ def _external(ctx: ProjectContext, text: str) -> list[LintIssue]:
 # Public API
 # --------------------------------------------------------------------------
 
-_COLOUR_DEFINITION_RE = re.compile(r"\\(colorlet|definecolor|providecolor)\s*\{(SM[A-Za-z]+)\}")
+_COLOR_DEFINITION_RE = re.compile(r"\\(colorlet|definecolor|providecolor)\s*\{(SM[A-Za-z]+)\}")
 
 
-def _macro_colours(text: str) -> list[LintIssue]:
-    """A colour defined under the name of a macro that holds a colour's name: the macro stays as it was."""
+def _macro_colors(text: str) -> list[LintIssue]:
+    """A color defined under the name of a macro that holds a color's name: the macro stays as it was."""
     from . import theme_fields
 
     masked = masked_same_length(text)
     return [LintIssue("macro-color", f"\\{m.group(1)}{{{m.group(2)}}} defines a color nothing uses: \\{m.group(2)} is a "
                       f"macro, set it with \\renewcommand{{\\{m.group(2)}}}{{...}}", masked.count("\n", 0, m.start()) + 1)
-            for m in _COLOUR_DEFINITION_RE.finditer(masked) if m.group(2) in theme_fields.MACRO_COLOURS]
+            for m in _COLOR_DEFINITION_RE.finditer(masked) if m.group(2) in theme_fields.MACRO_COLORS]
 
 
 def lint_text(ctx: ProjectContext, text: str, source: str = "buffer", path: Optional[Path] = None) -> list[LintIssue]:
     """All issues in one piece of LaTeX source (the editor buffer, a file...)."""
     found = [i.with_source(source, path) for i in _lex(text)]
     found += [i.with_source(source, path) for i in _external(ctx, text)]
-    found += [i.with_source(source, path) for i in _macro_colours(text)]
+    found += [i.with_source(source, path) for i in _macro_colors(text)]
     if path is not None and path.parent == ctx.blocks_dir:
         masked = deck_language.masked(text)
         if deck_language.calls_in(masked, []) or re.search(r"\\slideblock\b", masked):

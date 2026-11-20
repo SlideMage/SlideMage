@@ -13,7 +13,7 @@ place that renders or compiles for a view calls it, so the template, the render 
 follow without any further bookkeeping (a render's key holds the effective preamble and template).
 
 A mode is `\newcommand{\SMModeOverride}{<id>}` before the template (dark too, since v0.16.0 removed `\SMDarkMode`), which the framework resolves for the modes a theme declares (docs/plans/theme-editor.md, section 3.8).
-An entry fully describes its view, so `theme` without a mode means the theme's base colours even when the deck's default
+An entry fully describes its view, so `theme` without a mode means the theme's base colors even when the deck's default
 is dark or another mode.
 """
 from __future__ import annotations
@@ -95,7 +95,7 @@ def template_for(preamble_text: str, view: str | None = None) -> str:
 
 
 def mode_for(preamble_text: str, view: str | None = None) -> str:
-    """The colour mode the deck uses in `view` ("" for the template's base mode)."""
+    """The color mode the deck uses in `view` ("" for the template's base mode)."""
     return deck_settings.read_settings(preamble_for_view(preamble_text, view) or "").mode
 
 

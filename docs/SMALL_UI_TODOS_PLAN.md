@@ -46,7 +46,7 @@ No step waits for approval.
 ## S4a: Readability check (measure)
 - A pure measurement module that reads the rendered PDF of a slide or deck with MuPDF (in the raster child
   process, like the other MuPDF work). For every text span it reads the font size (scaled to the page),
-  position and colour. For every placed image it reads the displayed size as a share of the slide.
+  position and color. For every placed image it reads the displayed size as a share of the slide.
 - Classifies text as body, heading, citation/footnote (by position, size and the slide's source commands) or
   text inside figures (spans inside an image's area, e.g. vector PDF figures).
 - Rules, with thresholds in one place and documented in the module's docstring:

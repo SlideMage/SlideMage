@@ -5,7 +5,7 @@ r"""Read a theme (a SlideMage_template_<key>.tex) setting by setting, and change
 so nothing here regenerates it.
 
 * Recognise, edit in place. Each setting is one command of the catalog (latex/SlideMage_setup.tex): \setlength,
-  \renewcommand, \definecolor / \colorlet, the colour-mode data lines \SMDeclareMode, \SMSetColor, \SMSetRole, the
+  \renewcommand, \definecolor / \colorlet, the color-mode data lines \SMDeclareMode, \SMSetColor, \SMSetRole, the
   optional-feature commands, \newcommand{\SMLayoutProfile} before the setup file, and the header lines
   `% SlideMage template name:` and `% SlideMage modes:`. Changing a value rewrites only that value: the command,
   its spacing and its trailing comment stay. A value set to what it already is changes nothing (byte for byte).
@@ -16,9 +16,9 @@ so nothing here regenerates it.
   or holding commands the form cannot model (\setbeamercolor, \newfontfamily, \tikzset) are never touched;
   `beyond()` lists them so the form can say how many there are and open the source tab on them.
 
-Keys are theme_fields' Field names: a hook's name (`SMLogoHeight`), a colour's name (`c_primary_dark`, a theme's own
+Keys are theme_fields' Field names: a hook's name (`SMLogoHeight`), a color's name (`c_primary_dark`, a theme's own
 `c_graz_dark_canvas`, an optional `SMCanvasColor`), `role:<id>` and `mode:<id>` (mode-layer lines, with the mode id as
-`mode`), `header:name`, `header:modes`. A colour given in a mode (\SMSetColor) has its colour name as key and the mode
+`mode`), `header:name`, `header:modes`. A color given in a mode (\SMSetColor) has its color name as key and the mode
 as `mode`."""
 from __future__ import annotations
 
@@ -37,17 +37,17 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("length", re.compile(r"\\setlength\s*\{\s*\\(SM[A-Za-z]+)\s*\}\s*(?=\{)")),
     ("macro", re.compile(r"\\renewcommand\*?\s*\{\s*\\(SM[A-Za-z]+)\s*\}\s*(?:\[(\d)\]\s*)?(?=\{)")),
     ("profile", re.compile(r"\\newcommand\*?\s*\{\s*\\(SMLayoutProfile)\s*\}\s*(?=\{)")),
-    ("colour", re.compile(r"\\definecolor\s*\{(" + _NAME + r")\}\s*(?=\{)")),
+    ("color", re.compile(r"\\definecolor\s*\{(" + _NAME + r")\}\s*(?=\{)")),
     ("colorlet", re.compile(r"\\colorlet\s*\{(" + _NAME + r")\}\s*(?=\{)")),
     ("mode", re.compile(r"\\SMDeclareMode\s*\{(\w+)\}\s*(?=\{)")),
     ("role", re.compile(r"\\SMSetRole\s*\{(\w+)\}\s*\{(\w+)\}\s*(?=\{)")),
-    ("modecolour", re.compile(r"\\SMSetColor\s*\{(" + _NAME + r")\}\s*\{(\w+)\}\s*(?=\{)")),
+    ("modecolor", re.compile(r"\\SMSetColor\s*\{(" + _NAME + r")\}\s*\{(\w+)\}\s*(?=\{)")),
     ("command", re.compile(r"\\(" + _COMMANDS + r")\s*(?=\{)")),
 ]
 _HEADERS = {"header:name": re.compile(r"^%+[ \t]*SlideMage template name:[ \t]*([^\r\n]*?)[ \t]*\r?$", re.M),
             "header:modes": re.compile(r"^%+[ \t]*SlideMage modes:[ \t]*([^\r\n]*?)[ \t]*\r?$", re.M)}
 _HEADER_LINES = {"header:name": "% SlideMage template name: {}", "header:modes": "% SlideMage modes: {}"}
-_COLOUR_KINDS = ("colour", "colorlet")
+_COLOR_KINDS = ("color", "colorlet")
 _SETUP_RE = re.compile(r"\\input\s*\{SlideMage_setup(?:\.tex)?\}")
 _BASE_RE = re.compile(r"\\input\s*\{SlideMage_base(?:\.tex)?\}")
 _COND_RE = re.compile(r"\\(newif\s*\\if[A-Za-z@]*|ifthenelse|if[A-Za-z@]*|fi)(?![A-Za-z@])")
@@ -58,11 +58,11 @@ _HEX_RE = re.compile(r"#?([0-9A-Fa-f]{6})")
 class Setting:
     key: str
     mode: str          # the mode of a \SMSetColor / \SMSetRole line; "" otherwise
-    kind: str          # header | length | macro | profile | colour | colorlet | mode | role | modecolour | command
+    kind: str          # header | length | macro | profile | color | colorlet | mode | role | modecolor | command
     value: str         # as written: "3ex", "c_primary_highlight", "ffd500" (with `model`), "dark" (a mode's derive)
-    model: str         # a colour's model ("HTML", "RGB", ...); "" for an expression
+    model: str         # a color's model ("HTML", "RGB", ...); "" for an expression
     start: int         # the command's (or header line's) first character
-    value_start: int   # the span the value occupies: for a colour {model}{spec}, else the braced argument's content
+    value_start: int   # the span the value occupies: for a color {model}{spec}, else the braced argument's content
     value_end: int
     end: int           # after the command
     line: int          # 0-based line of `start`
@@ -154,12 +154,12 @@ class ThemeFile:
         if kind == "role":
             return self._setting("role:" + name, match.group(2), kind, value, "", match.start(), match.end() + 1,
                                  after - 1, after)
-        # colour (\definecolor{name}{model}{spec}) and modecolour (\SMSetColor{name}{mode}{model}{spec})
+        # color (\definecolor{name}{model}{spec}) and modecolor (\SMSetColor{name}{mode}{model}{spec})
         spec_open = _skip_space(text, after)
         spec, spec_end = braced_argument(text, spec_open)
         if spec_end == spec_open:
             return None
-        mode = match.group(2) if kind == "modecolour" else ""
+        mode = match.group(2) if kind == "modecolor" else ""
         return self._setting(name, mode, kind, spec, value, match.start(), match.end(), spec_end, spec_end)
 
     def _setting(self, key, mode, kind, value, model, start, value_start, value_end, end, args="") -> Setting:
@@ -213,18 +213,18 @@ class ThemeFile:
     def find(self, key: str, mode: str = "") -> Setting | None:
         """The setting the form edits for `key` in `mode`: the last editable one (in TeX the last line wins)."""
         hits = [s for s in self.settings if s.key == key and s.mode == mode and s.editable
-                and not (key in theme_fields.MACRO_COLOURS and s.kind in _COLOUR_KINDS)]
+                and not (key in theme_fields.MACRO_COLORS and s.kind in _COLOR_KINDS)]
         return hits[-1] if hits else None
 
     def _mistaken(self, key: str) -> list[Setting]:
-        """The \\colorlet and \\definecolor lines of a colour-name macro's name (theme_fields.MACRO_COLOURS): they
+        """The \\colorlet and \\definecolor lines of a color-name macro's name (theme_fields.MACRO_COLORS): they
         set nothing the framework reads. The form wrote such lines up to v0.16.39."""
-        if key not in theme_fields.MACRO_COLOURS:
+        if key not in theme_fields.MACRO_COLORS:
             return []
-        return [s for s in self.settings if s.key == key and s.editable and s.kind in _COLOUR_KINDS]
+        return [s for s in self.settings if s.key == key and s.editable and s.kind in _COLOR_KINDS]
 
     def value(self, key: str, mode: str = "") -> str | None:
-        """The value as written ("#rrggbb" for a HTML colour), or None when the theme does not set it."""
+        """The value as written ("#rrggbb" for a HTML color), or None when the theme does not set it."""
         setting = self.find(key, mode)
         if setting is None:
             return None
@@ -236,10 +236,10 @@ class ThemeFile:
         """[(mode id, derive)] the theme declares, the first being its base mode."""
         return [(s.key[5:], s.value) for s in self.settings if s.kind == "mode" and s.editable]
 
-    def own_colours(self) -> list[str]:
-        """Palette colours of the theme's own (c_graz_dark_canvas): \\definecolor of a name the catalog lacks."""
-        names = [s.key for s in self.settings if s.kind in ("colour", "colorlet") and s.editable
-                 and s.key not in theme_fields.BY_NAME and s.key not in theme_fields.MACRO_COLOURS]
+    def own_colors(self) -> list[str]:
+        """Palette colors of the theme's own (c_graz_dark_canvas): \\definecolor of a name the catalog lacks."""
+        names = [s.key for s in self.settings if s.kind in ("color", "colorlet") and s.editable
+                 and s.key not in theme_fields.BY_NAME and s.key not in theme_fields.MACRO_COLORS]
         return list(dict.fromkeys(names))
 
     def beyond(self) -> list[int]:
@@ -263,9 +263,9 @@ class ThemeFile:
     # --- writing ---------------------------------------------------------------------------------------------------
 
     def set(self, key: str, value: str, mode: str = "") -> None:
-        """Give `key` (in `mode`) the value `value`: in place when the theme sets it, else added. A colour takes
+        """Give `key` (in `mode`) the value `value`: in place when the theme sets it, else added. A color takes
         "#rrggbb" (written as \\definecolor{..}{HTML}{..}) or an xcolor expression (\\colorlet); a mode line's
-        colour takes "#rrggbb" only."""
+        color takes "#rrggbb" only."""
         setting = self.find(key, mode)
         mistaken = self._mistaken(key) if not mode else []
         if setting is None and mistaken:
@@ -318,10 +318,10 @@ class ThemeFile:
         text = self.text
         if setting.kind == "header":
             new = value.strip()
-        elif setting.kind in ("colour", "modecolour"):
+        elif setting.kind in ("color", "modecolor"):
             hex_value = _hex_value(value)
             if hex_value is None:
-                if setting.kind == "modecolour":
+                if setting.kind == "modecolor":
                     raise ValueError(f"a mode's color needs a #rrggbb value, not {value!r}")
                 # \definecolor -> \colorlet: the command changes, its comment stays
                 self.text = text[:setting.start] + f"\\colorlet{{{setting.key}}}{{{value.strip()}}}" + text[setting.end:]
@@ -363,11 +363,11 @@ class ThemeFile:
             return f"\\newcommand{{\\SMLayoutProfile}}{{{value}}}"
         if key in theme_fields.COMMANDS:
             return f"\\{key}{{{value}}}"
-        if key in theme_fields.MACRO_COLOURS:       # a macro holding a colour's name, not a colour
+        if key in theme_fields.MACRO_COLORS:       # a macro holding a color's name, not a color
             if mode:
                 raise ValueError(f"{key} has no value per mode")
             return f"\\renewcommand{{\\{key}}}{{{value.strip()}}}"
-        if (field.kind == "colour") if field else (not key.startswith("SM") or key.endswith("Color")):
+        if (field.kind == "color") if field else (not key.startswith("SM") or key.endswith("Color")):
             hex_value = _hex_value(value)
             if mode:
                 if hex_value is None:
@@ -400,7 +400,7 @@ class ThemeFile:
             self._insert_line_before(self._setup_pos, line)
             return
         if key.startswith(("mode:", "role:")) or mode:
-            kinds = ("mode",) if key.startswith("mode:") else ("mode", "role", "modecolour")
+            kinds = ("mode",) if key.startswith("mode:") else ("mode", "role", "modecolor")
             anchors = [s for s in self.settings if s.kind in kinds and s.editable]
             if anchors:
                 self._insert_line_after(anchors[-1].end, line)

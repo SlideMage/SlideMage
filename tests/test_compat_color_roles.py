@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""compat_color_roles: c_primary_dark and its companions in slides become role colours by context."""
+"""compat_color_roles: c_primary_dark and its companions in slides become role colors by context."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -24,7 +24,7 @@ def new(text: str) -> str:
     (r"\node[right, font=\tiny, c_primary_dark] at (1,0) {x};", r"\node[right, font=\tiny, c_text] at (1,0) {x};"),
     (r"\fill[c_primary_dark] (0,0) circle (1mm);", r"\fill[c_text] (0,0) circle (1mm);"),
     (r"\tikzset{flow/.style={SMArrow, c_primary_dark, line width=0.5pt}}", r"\tikzset{flow/.style={SMArrow, c_text, line width=0.5pt}}"),
-    # an outline around a coloured fill is still a line
+    # an outline around a colored fill is still a line
     (r"\fill[c_custom_red, draw=c_primary_dark, line width=0.8pt] (0,0) rectangle (1,1);",
      r"\fill[c_custom_red, draw=c_text, line width=0.8pt] (0,0) rectangle (1,1);"),
     (r"\draw[c_primary_dark, fill=c_primary_highlight] (0,0) circle (1);",
@@ -33,7 +33,7 @@ def new(text: str) -> str:
     (r"\draw[c_primary_dark, line width=1.2pt, fill=c_primary_white] (0,0) circle (0.25);",
      r"\draw[c_text, line width=1.2pt, fill=c_canvas] (0,0) circle (0.25);"),
     (r"\draw[c_primary_dark, thick, fill=white] (0,0) rectangle (1,1);", r"\draw[c_text, thick, fill=c_canvas] (0,0) rectangle (1,1);"),
-    # text on a coloured fill
+    # text on a colored fill
     (r"every node/.style={fill=c_primary_highlight, text=c_primary_dark, inner sep=3pt},",
      r"every node/.style={fill=c_primary_highlight, text=c_text_on_accent, inner sep=3pt},"),
     (r"\node[fill=c_secondary_blue, c_primary_dark] {x};", r"\node[fill=c_secondary_blue, c_text_on_accent] {x};"),
@@ -46,7 +46,7 @@ def new(text: str) -> str:
      r"\cornerfigure[corner=ne, node={rotate=-8, fill=c_text!85, text=c_canvas}]{q}"),
     (r"\draw[fill=c_primary_dark, fill opacity=0.85, draw=none] (0,0) rectangle (1,1);",
      r"\draw[fill=c_text, fill opacity=0.85, draw=none] (0,0) rectangle (1,1);"),
-    # colour commands
+    # color commands
     (r"\arrayrulecolor{c_primary_dark}", r"\arrayrulecolor{c_text}"),
     (r"{\color{c_primary_dark} x}", r"{\color{c_text} x}"),
     (r"\setbeamercolor{footnote}{fg=c_primary_dark}", r"\setbeamercolor{footnote}{fg=c_text}"),
@@ -60,7 +60,7 @@ def test_a_use_becomes_the_role_its_context_says(before, after):
     "\\draw[c_text] (0,0); % c_primary_dark\n",                                  # after a comment sign
     "\\foreach \\c in {c_primary_dark, c_primary_highlight} {\\fill[\\c] (0,0) circle (1);}\n",  # the palette
     "\\foreach \\c/\\n [count=\\i] in {c_primary_dark/a, c_custom_gray/b} {}\n",
-    "\\node[text=c_primary_white] at (0,0) {2};\n",                              # white is a physical colour
+    "\\node[text=c_primary_white] at (0,0) {2};\n",                              # white is a physical color
     "\\draw[c_text, fill=c_canvas] (0,0) circle (1);\n",                         # already migrated
 ])
 def test_what_is_left_alone(text):

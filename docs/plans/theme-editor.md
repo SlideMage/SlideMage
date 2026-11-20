@@ -16,15 +16,15 @@ stage C0 built (v0.15.3), stage CR v0.15.9 to v0.16.5, C1a v0.16.6 (section 4). 
    identical). First acceptance test of the editor: a byte-identical round trip of the Graz file.
 3. **Themes per view** (3.7, stage C0): instructor / during-course / after-course each map to `theme[:mode]`, so one deck is
    dark for projection and light for print. The user asked for it to be in the plan.
-4. **Colours** (3.8, stage CR): a physical palette, about 35 roles, role names slides can use, and **modes as a list a theme
-   declares** (colour schemes only; `dark` and `grey` as derivation presets), reached through one BREAKING release with the
+4. **Colors** (3.8, stage CR): a physical palette, about 35 roles, role names slides can use, and **modes as a list a theme
+   declares** (color schemes only; `dark` and `grey` as derivation presets), reached through one BREAKING release with the
    `compat.py` migration and no legacy aliases. The user's decisions in the discussion: no compatibility leftovers; dark must not
-   be hard-coded; Grayscale-like variants are modes of a theme (the user's idea; my boundary: a mode is colours only).
+   be hard-coded; Grayscale-like variants are modes of a theme (the user's idea; my boundary: a mode is colors only).
 
 **Decided by the user so far:** per-view themes go in the plan; the roles strategy "in principle"; clean transition over
 aliases; modes not hard-coded. **Nothing else is decided, and nothing may be built before their OK on a stage.**
 
-**All nine questions answered by the user on 2026-11-10** (1 to 5 as recommended: tier order as written, Graz route A plus B with the round-trip test, form beside the source tab, the form may add a marked block, a purpose-written theme sample deck, block-title text and link colours as the first roles; 6 to 9 as noted in the table). **Stage C0 approved and built** (section 3.7, v0.15.3, branch `feat/theme-per-view`); CR is next, not yet approved.
+**All nine questions answered by the user on 2026-11-10** (1 to 5 as recommended: tier order as written, Graz route A plus B with the round-trip test, form beside the source tab, the form may add a marked block, a purpose-written theme sample deck, block-title text and link colors as the first roles; 6 to 9 as noted in the table). **Stage C0 approved and built** (section 3.7, v0.15.3, branch `feat/theme-per-view`); CR is next, not yet approved.
 
 **Open questions, with my recommendation (kept for the record)** (all in section 5; the user had not answered them when this was written):
 
@@ -34,8 +34,8 @@ aliases; modes not hard-coded. **Nothing else is decided, and nothing may be bui
 | 2 | Form beside the source tab, or a designer tab that hides it | beside it, both live on one buffer |
 | 3 | May the form add a marked block to a hand-written theme | yes |
 | 4 | Sample deck for the live render | a purpose-written theme sample deck |
-| 5 | Which framework hooks first | block title text and link colours, as the first roles of CR |
-| 6 | A mode is colours only; Grayscale as shipped stays a theme | **ANSWERED 2026-11-10: a mode may change colours AND the logo** (not fonts, margins, bullets); Grayscale stays a theme. See 3.8 |
+| 5 | Which framework hooks first | block title text and link colors, as the first roles of CR |
+| 6 | A mode is colors only; Grayscale as shipped stays a theme | **ANSWERED 2026-11-10: a mode may change colors AND the logo** (not fonts, margins, bullets); Grayscale stays a theme. See 3.8 |
 | 7 | Derived modes live in TeX with explicit lines winning, or only explicit values written by the editor | **ANSWERED: live defaults in TeX, explicit lines win; add a `colorblind` derivation preset** (also offered by the form's "Add mode") |
 | 8 | One BREAKING release with migration and regression proof; old installed themes refused until updated | **ANSWERED: yes, agreed** |
 | 9 | Role names for slides | **ANSWERED 2026-11-10 (final): `c_text`, `c_canvas`, `c_card`, `c_line`, `c_text_muted`, `c_text_on_accent`, `c_link`** |
@@ -49,9 +49,9 @@ depend on the form; CR depends on C0 only for the `theme:mode` value.
 
 * Worktree `D:\Dropbox\repos\SlideMage\.claude\worktrees\personal-themes` on branch `feat/personal-themes-extensions`; PR #145 holds
   A, B and this file (docs-only commits after the code commit). Develop was v0.14.61 when it started.
-* The hook catalog is `latex/SlideMage_setup.tex` (21 palette colours, 8 optional colours, 9 colour roles, 33 lengths, 42
+* The hook catalog is `latex/SlideMage_setup.tex` (21 palette colors, 8 optional colors, 9 color roles, 33 lengths, 42
   macros, 22 guarded derived names); `\SMApplyColorRoles` in `latex/beamerthemeSlideMage.sty` is the single place that
-  resolves colour roles after the template.
+  resolves color roles after the template.
 * The real project is `D:\uniCLOUD\Slidemaster` (templates `mci` and `uni-ibk` in the project folder, Graz is installed; 1,416
   slides; the usage counts in 3.8 come from there). Existing migration precedent: `src/slidemage/compat.py` and
   `compat_names.py` / `compat_own_theme.py`. The regression tool for "identical PDFs before and after" is
@@ -59,17 +59,17 @@ depend on the form; CR depends on C0 only for the `theme:mode` value.
 * Template consumers to touch for per-view themes: fourteen `detect_template(...)` calls in ten files (listed in 3.7).
 * A theme package holds exactly one template file (`themes.check_names`), which is why Graz Dark as a package of its own
   would be a second package.
-* Not checked: the Presenter app against per-view themes; whether `compat.py`'s detector can classify the ambiguous colour
+* Not checked: the Presenter app against per-view themes; whether `compat.py`'s detector can classify the ambiguous color
   uses well enough (the plan assumes a rule table plus a report of what it cannot classify, proven by the base-mode PDF
   regression); the exact TeX for `derive=grey` (xcolor can convert to gray, not tried).
 
-Request (2026-11-09): "a UI for theme settings or for defining a new theme (font, colours, margins)". The user
+Request (2026-11-09): "a UI for theme settings or for defining a new theme (font, colors, margins)". The user
 asked to discuss what really goes into a theme and its editor, and for a full inventory of everything a theme could
 set, from what makes most sense to include to what makes least.
 
 ## 1. Where the inventory comes from
 
-* `latex/SlideMage_setup.tex`, the **hook catalog**: 21 palette colours, 8 optional colours, 9 colour roles, 33 lengths and
+* `latex/SlideMage_setup.tex`, the **hook catalog**: 21 palette colors, 8 optional colors, 9 color roles, 33 lengths and
   42 macros (font switches, size settings, ratios, switches), and the optional features. Rule 2 of that file: between
   `\input{SlideMage_setup}` and `\input{SlideMage_base}` a template may only `\setlength`, `\renewcommand`,
   `\definecolor` and `\colorlet` names that exist; a misspelt one is an error.
@@ -86,10 +86,10 @@ What the five real templates actually change (the evidence for the order below):
 
 | Setting group | **Uni Graz** | SlideMage | Grayscale | uni-ibk | mci |
 |---|---|---|---|---|---|
-| 21 palette colours | all (17 set, plus the theme's own `c_true_black`) | defaults | all | all | all |
+| 21 palette colors | all (17 set, plus the theme's own `c_true_black`) | defaults | all | all | all |
 | Logo file | own | default | default | own | own |
-| Colour roles (of 9) | 6 (+ 3 overridden in dark mode) | defaults | 9 | 5 | 5 |
-| Code panel colours | 3 (+ 4 in dark mode) | 3 | 1 | 3 | 3 |
+| Color roles (of 9) | 6 (+ 3 overridden in dark mode) | defaults | 9 | 5 | 5 |
+| Code panel colors | 3 (+ 4 in dark mode) | 3 | 1 | 3 | 3 |
 | **Dark mode** (`\ifdefined\SMDarkMode`) | **yes, 50 lines in two blocks** | – | – | – | – |
 | Layout profile (font) | fira (default) | fira | lmroman | fira | fira |
 | Body size, text margins, Top Margin | – | – | all three | – | – |
@@ -108,14 +108,14 @@ What the five real templates actually change (the evidence for the order below):
 |---|---|---|
 | header | `% SlideMage template name: University of Graz`, `% SlideMage dark mode: true`, a prose paragraph | 1 Identity |
 | before the palette | `\SMSetFootnoteMarkers{boxed}` (a command, not a hook; before the palette) | 10 Footnote marker |
-| palette | 17 `\definecolor{c_...}{HTML}{...}` lines, official Graz colours, with prose comments saying why `c_custom_gray` exists | 2 Palette |
+| palette | 17 `\definecolor{c_...}{HTML}{...}` lines, official Graz colors, with prose comments saying why `c_custom_gray` exists | 2 Palette |
 | logo | `\SMInstituteLogoPath` (vector PDF, cropped to its ink), `\SMLogoHeight` 3ex, `\SMFrametitleRightPadding` 0.28cm ("re-measured against the compiled PDF for this logo") | 3 Logo |
-| roles | `\SMBulletColor`, `\SMTitleBoxColor`, `\SMTitleTextColor`, `\SMFooterBoxColorDefault`, `\SMFooterTextColor` (yellow boxes, black text), `\SMStandoutTextColor` = `c_true_black` | 4 Colour roles |
-| code | `SMCodeKeywordColor` (a darkened blue, `definecolor`), `SMCodeCommentColor`, `SMCodeBackgroundColor` (`colorlet`), each with its contrast ratio in the comment | 5 Code colours |
-| `c_true_black` | an extra colour of the theme's own, because dark mode turns `c_primary_dark` white | new: theme-defined colours |
-| `\ifdefined\SMDarkMode` block 1 (before the base, 27 lines) | canvas, card fill, card border, process border; `c_primary_dark` becomes white; seven tertiary colours become the card fill; `c_custom_gray` lightens; title and footer text turn black; code panel colours; **card heading font** `\newfontfamily\SMCardMediumFont{FiraSans-Medium.otf}` + `\SMCardHeadingStyle` | **Dark mode** (5a), 14a, 16 |
+| roles | `\SMBulletColor`, `\SMTitleBoxColor`, `\SMTitleTextColor`, `\SMFooterBoxColorDefault`, `\SMFooterTextColor` (yellow boxes, black text), `\SMStandoutTextColor` = `c_true_black` | 4 Color roles |
+| code | `SMCodeKeywordColor` (a darkened blue, `definecolor`), `SMCodeCommentColor`, `SMCodeBackgroundColor` (`colorlet`), each with its contrast ratio in the comment | 5 Code colors |
+| `c_true_black` | an extra color of the theme's own, because dark mode turns `c_primary_dark` white | new: theme-defined colors |
+| `\ifdefined\SMDarkMode` block 1 (before the base, 27 lines) | canvas, card fill, card border, process border; `c_primary_dark` becomes white; seven tertiary colors become the card fill; `c_custom_gray` lightens; title and footer text turn black; code panel colors; **card heading font** `\newfontfamily\SMCardMediumFont{FiraSans-Medium.otf}` + `\SMCardHeadingStyle` | **Dark mode** (5a), 14a, 16 |
 | `\input{SlideMage_base}` | | |
-| `\ifdefined\SMDarkMode` block 2 (after the base, 23 lines) | an `\SMInlineCodeStyle` that colours inline code yellow **only in the body colour** (a TeX trick with `\current@color`), `\tikzset{SMProcess...}`, `\setbeamercolor{normal text}`, `\hypersetup{citecolor}`, `button`, **five `block title` colours**, `standout` (dark canvas, yellow text) | Dark mode; beyond the catalog; raw TeX |
+| `\ifdefined\SMDarkMode` block 2 (after the base, 23 lines) | an `\SMInlineCodeStyle` that colors inline code yellow **only in the body color** (a TeX trick with `\current@color`), `\tikzset{SMProcess...}`, `\setbeamercolor{normal text}`, `\hypersetup{citecolor}`, `button`, **five `block title` colors**, `standout` (dark canvas, yellow text) | Dark mode; beyond the catalog; raw TeX |
 | last line | `\input{SlideMage_bibliography_default}` | 12 Citation |
 
 What Graz does **not** set: a layout profile, body size, margins, Top Margin, title bar paddings (except the right one),
@@ -129,14 +129,14 @@ What Graz teaches the editor (each point changed the plan below):
 2. **Settings live in scopes.** The same name (`c_primary_dark`, `\SMTitleTextColor`, `SMCodeKeywordColor`) is set
    twice: once at top level (light) and once inside `\ifdefined\SMDarkMode ... \fi` (dark). A line-by-line reader that
    ignores `\if` would show the dark value as *the* value or find two. The reader must track the scope (section 3.1).
-3. **A theme defines colours of its own** (`c_true_black`, `SMCardMediumFont`'s font) that the roles then use. The
-   palette-name drop-downs must include them, and the form needs a small "theme's own colours" list.
+3. **A theme defines colors of its own** (`c_true_black`, `SMCardMediumFont`'s font) that the roles then use. The
+   palette-name drop-downs must include them, and the form needs a small "theme's own colors" list.
 4. **Part of the file is arbitrary TeX the form cannot model** (the inline-code style, the `tikzset`, the `\setbeamercolor`
    lines). The form must keep it, show "N lines are beyond the form: open them in the source tab", and never reflow it.
-5. **Five `\setbeamercolor{block title...}{fg=c_true_black}` lines in dark mode** are the block-title text colour that is
+5. **Five `\setbeamercolor{block title...}{fg=c_true_black}` lines in dark mode** are the block-title text color that is
    a gap in the catalog (see "beyond the catalog"): the evidence that the hook belongs in the framework, so the dark
    block could shrink from five lines to one role.
-6. **The comments carry knowledge** ("re-measured against the compiled PDF", contrast ratios, why a colour exists). The
+6. **The comments carry knowledge** ("re-measured against the compiled PDF", contrast ratios, why a color exists). The
    editor may never rewrite or drop them. Where the form changes a value that has a stated contrast ratio in its
    comment, it shows the new ratio next to the old one and leaves the comment for the user to fix.
 7. **Graz is an installed package with its own repository, version and release flow** (`theme.toml`, CHANGELOG, a GitHub
@@ -153,35 +153,35 @@ between "first release of the form", "second" and "behind an Advanced section or
 1. **Identity**: name (`% SlideMage template name:` header line, 1-40 chars), key (the file name,
    `SlideMage_template_<key>.tex`, 2-32 chars, not a shipped key), "supports dark mode" (`% SlideMage dark mode: true`),
    author and licence (only needed for packaging as a `.smtheme`, `theme.toml`).
-2. **Palette, 21 colours** (`\definecolor{c_...}{HTML}{...}`): `c_primary_dark` (body text, dark boxes),
+2. **Palette, 21 colors** (`\definecolor{c_...}{HTML}{...}`): `c_primary_dark` (body text, dark boxes),
    `c_primary_highlight` (accent: bullets, highlights), `c_primary_gray` (highlightframe), `c_primary_white`; six
-   secondary colours (violet, blue, green, red, orange, yellow: the block titles, link underline, infoblock) with a
-   tertiary partner each (block bodies, the 50 % white blend), `c_tertiary_gray`; four supporting colours
-   (`c_custom_gray` hyperlinks, `_red`, `_green`, `_brown`). A form can do what raw TeX cannot: colour picker,
+   secondary colors (violet, blue, green, red, orange, yellow: the block titles, link underline, infoblock) with a
+   tertiary partner each (block bodies, the 50 % white blend), `c_tertiary_gray`; four supporting colors
+   (`c_custom_gray` hyperlinks, `_red`, `_green`, `_brown`). A form can do what raw TeX cannot: color picker,
    "derive the tertiary as a white blend" button, and the **contrast checks the catalog states** (body text on every
    secondary block title >= 4.5:1, title/footer text on its box >= 4.5:1, white on `c_primary_gray` >= 4.5:1, link
    underline on the canvas >= 3:1). `theme_colors.py` (v0.14.60) already reads these lines. Beside the 21: the
-   **theme's own colours** (Graz's `c_true_black`), a free list of name plus value that the role drop-downs then offer.
+   **theme's own colors** (Graz's `c_true_black`), a free list of name plus value that the role drop-downs then offer.
 3. **Logo**: `\SMInstituteLogoPath` (file picker; the file is copied to `schemes/scheme_<key_>/` and must be a vector
    PDF cropped to its ink), `\SMLogoHeight`, `\SMFrametitleRightPadding` (the white space either side of the logo; the
    frame number and footnotes end at its inner edge).
-4. **Colour roles, 9** (`\renewcommand{\SM...Color}{<palette name>}`): title bar box and text, footer box and text,
+4. **Color roles, 9** (`\renewcommand{\SM...Color}{<palette name>}`): title bar box and text, footer box and text,
    bullets, highlightframe title text, standout text, `\alert` text, progress bar. Each is a drop-down of palette
-   names, so a theme cannot name a colour that does not exist. Open task `theme-color-roles` adds more (block title
-   text colour among them); the form should read its list of roles from the catalog, not hard-code it.
-5. **Code panel colours, 4 optional** (`\colorlet`/`\definecolor` of `SMCodeKeywordColor`, `-Comment-`, `-Background-`,
+   names, so a theme cannot name a color that does not exist. Open task `theme-color-roles` adds more (block title
+   text color among them); the form should read its list of roles from the catalog, not hard-code it.
+5. **Code panel colors, 4 optional** (`\colorlet`/`\definecolor` of `SMCodeKeywordColor`, `-Comment-`, `-Background-`,
    `-Text-`): all 5 real templates change them; the checker is again contrast (commands and comments on the panel).
-   Graz writes the keyword colour with `\definecolor` and the background with `\colorlet`: the form reads both forms
+   Graz writes the keyword color with `\definecolor` and the background with `\colorlet`: the form reads both forms
    and writes back the form that was there.
 5a. **Dark mode** (moved up from tier 3 after reading Graz; it is the most used theme; **superseded by section 3.8**: dark is one mode among the modes a theme declares, not a special case): the deck says `\SMDarkMode`
    before the template (deck settings write it; the template opts in with `% SlideMage dark mode: true`), and the
    template then overrides settings **inside `\ifdefined\SMDarkMode ... \fi`**. What Graz overrides, and so what the
    form shows as a "Dark" column beside "Light": the slide canvas (`SMCanvasColor`), card fill and border
    (`SMCardBackgroundColor`, `SMCardBorderColor`), process border (`SMProcessBorderColor`), body text (`c_primary_dark`
-   becomes white), the tertiary block-body colours (become the card fill), hyperlink grey, title and footer text, code
-   panel colours, standout frame colours, the card heading font, plus block title text, button, citation colour and
+   becomes white), the tertiary block-body colors (become the card fill), hyperlink grey, title and footer text, code
+   panel colors, standout frame colors, the card heading font, plus block title text, button, citation color and
    the inline-code style after the base (raw TeX). The first release round-trips all of it unchanged and edits the
-   colours; a "make this colour the same in dark" shortcut and a "derive a dark mode from the light palette" helper
+   colors; a "make this color the same in dark" shortcut and a "derive a dark mode from the light palette" helper
    come after.
 
 ### Tier 2: common, one value each (form, second release)
@@ -217,7 +217,7 @@ between "first release of the form", "second" and "behind an Advanced section or
     content drop), `\quoteframe` (box height, attribution gap), `\progressstrip` room. Each is a measured number of the
     shipped design; a form can show them but a wrong value looks bad without any error.
 14a. **Cards and processes** (diagram building blocks): `SMCardBackgroundColor`, `SMCardBorderColor`,
-    `SMProcessBorderColor`, `SMCanvasColor` (the slide background; with dark mode this is the main colour).
+    `SMProcessBorderColor`, `SMCanvasColor` (the slide background; with dark mode this is the main color).
 15. **Fine spacing**: level-by-level list ratios (drop, open space), tall item, label item width and gap, nested
     enumerate slot and gap, tight display skip, `\SMBesideFigureTopGap`, side footnote strip geometry (width, inset,
     marker shift).
@@ -249,22 +249,22 @@ between "first release of the form", "second" and "behind an Advanced section or
 These are the gaps a form would immediately expose. Each needs a framework hook before the form can offer it (the
 smallest hook, as for `theme-color-roles`):
 
-* **Block title text colour** (fixed `c_primary_dark` today; the Innsbruck "white block titles" request; Graz's dark
+* **Block title text color** (fixed `c_primary_dark` today; the Innsbruck "white block titles" request; Graz's dark
   mode patches it with five `\setbeamercolor{block title...}` lines after the base).
-* **Inline code colour** (Graz's dark mode redefines `\SMInlineCodeStyle` with a `\current@color` comparison to colour
+* **Inline code color** (Graz's dark mode redefines `\SMInlineCodeStyle` with a `\current@color` comparison to color
   inline code only in body text: a role such as `\SMInlineCodeColor` would replace that TeX).
 * **Standout and canvas for dark mode as roles** (Graz sets `\setbeamercolor{standout}` and `normal text` by hand).
-* **Link colours** (text `c_custom_gray`, underline `c_secondary_blue`: fixed in the base).
-* **Per-frame-type colours** (title/section/quote frame boxes follow the title bar role; no role of their own).
+* **Link colors** (text `c_custom_gray`, underline `c_secondary_blue`: fixed in the base).
+* **Per-frame-type colors** (title/section/quote frame boxes follow the title bar role; no role of their own).
 * **Frame title weight, case and alignment** (beamer fonts, not in the catalog).
 * **Logo placement** (always the title bar's right end) and a second logo for dark backgrounds.
-* **Canvas colour as a role** (it is "optional colour" `SMCanvasColor`, undocumented as a role).
+* **Canvas color as a role** (it is "optional color" `SMCanvasColor`, undocumented as a role).
 
 ## 3. The editor: what it edits and how
 
 ### 3.1 The file stays the truth
 
-A theme is a hand-written, heavily commented `.tex` (Graz's and uni-ibk's headers explain where each colour came from
+A theme is a hand-written, heavily commented `.tex` (Graz's and uni-ibk's headers explain where each color came from
 and what contrast it has). A form that regenerates the file would destroy that. So:
 
 * **Recognise, edit in place.** The form reads the file the way `deck_settings.py` reads a deck (live, uncommented
@@ -272,7 +272,7 @@ and what contrast it has). A form that regenerates the file would destroy that. 
   that line's value and keeps its trailing comment; a setting the file does not mention is **appended** inside a
   marked block (`% --- SlideMage theme editor: begin/end ---`) immediately before `\input{SlideMage_base}`, in the
   catalog's own order. Lines the form does not recognise are never touched.
-* **Scope-aware (only until section 3.8 is in).** After the colour cut of 3.8 a mode's values are plain data lines
+* **Scope-aware (only until section 3.8 is in).** After the color cut of 3.8 a mode's values are plain data lines
   with the mode as an argument, and no scope is needed; the reader below is for the files written before it. The reader tracks `\ifdefined\SMDarkMode ... \else ... \fi` (and the position against
   `\input{SlideMage_base}`), so each recognised line belongs to one scope: *light* (top level), *dark* (inside the
   conditional) or *after the base*. The form shows Light and Dark values separately. A new dark value is appended
@@ -284,7 +284,7 @@ and what contrast it has). A form that regenerates the file would destroy that. 
 * **Acceptance test, Graz.** The Graz file is the golden fixture. *(Changed when built, C1a: the file is NOT copied into
   `tests/fixtures/`. Its TeX is LPPL, but the theme's LICENSE says the University's corporate design it reproduces, its
   palette among it, is not covered and the theme must not be published; this repository is public. The tests run on a
-  test theme of the same shape with made-up colours, `tests/fixtures/theme_files/`, and on the real Graz, uni-ibk and
+  test theme of the same shape with made-up colors, `tests/fixtures/theme_files/`, and on the real Graz, uni-ibk and
   MCI files when `SLIDEMAGE_REAL_THEMES` names them.)* (1) Read it and write it back with nothing changed: **byte-identical**. (2) Change
   `c_primary_highlight`: **exactly one line differs**. (3) Change the dark canvas: one line differs, inside the dark
   block. (4) Add a setting Graz does not have (the body size): it lands in the marked block, nothing else moves. (5) The
@@ -300,7 +300,7 @@ and what contrast it has). A form that regenerates the file would destroy that. 
 
 ### 3.2 Kinds of field
 
-colour (picker plus hex, contrast badge), palette-name (drop-down of the 21 + named colours, for roles), length (number
+color (picker plus hex, contrast badge), palette-name (drop-down of the 21 + named colors, for roles), length (number
 plus unit: pt, bp, cm, mm, ex, em, with the warning that ex/em are read in the layout profile's font), font size pair,
 choice (profile, bullet, footnote marker), text (name), file (logo), switch (feature on/off) and group-of-options
 (progress bar and the other optional features).
@@ -326,10 +326,10 @@ choice (profile, bullet, footnote marker), text (name), file (logo), switch (fea
   `tests/test_hook_geometry.py` already measures against the PDF; boxes of the other elements read from the PDF's
   drawing operations or from a pass of the sample deck that writes the boxes of its elements to a file), never
   baked into the render, so they follow the values as they change and need no second compile; a margin field shows
-  its measure as a dimension line with the value; for a colour field the picture dims everything but the
+  its measure as a dimension line with the value; for a color field the picture dims everything but the
   elements that use the role (the role table of section 3.8 says which); in a mode column the page is rendered in
   that mode. A static, annotated picture per field is the fallback where a live mark is not possible. Stage: the
-  picture of the colour roles belongs to C1, the margins and layout fields to C2; the overlay mechanism is built in C1.
+  picture of the color roles belongs to C1, the margins and layout fields to C2; the overlay mechanism is built in C1.
 
 ### 3.4 New theme from the shipped one
 
@@ -387,7 +387,7 @@ already carries the template per render unit (`unit.template`). In the deck the 
 * **One function for the template of a deck and view:** `slide_templates.template_for(preamble, view)`. Fourteen calls in ten files
   now call `detect_template(deck.preamble_text)` (compiler twice, deck_outline twice, preview_target,
   preview_thumbnails, slide_preview twice, add_slide, deck_actions, maintenance, source_view, update_all_previews
-  twice); each takes the view and uses the new function. The colour menu of the toolbar (`theme_colors`) follows the
+  twice); each takes the view and uses the new function. The color menu of the toolbar (`theme_colors`) follows the
   view shown.
 * **Render sharing:** `preview_equivalence` already isolates a template with another digest from the others. It must
   compare the effective template per view, so views with different themes are never shared; this costs more stored
@@ -405,49 +405,49 @@ already carries the template per render unit (`unit.template`). In the deck the 
 Order: this is its own step, before the form: a small framework-free app change with focused tests (the twelve call
 sites, the wrapper, equivalence, deck settings). The editor's per-view table then edits the same settings line.
 
-**Built (v0.15.3, stage C0, 2026-11-10); what differs from the text above.** Develop had fewer `detect_template` calls than counted (five outside `slide_templates`). Instead of a view-aware function at each call site, `view_themes.preamble_for_view(preamble, view)` returns the preamble as a view sees it and is applied where a view meets a deck: `compiler.wrapper_text` (inline branch for a mapped view), `render_key.unit_for` (so the unit's preamble, template and key follow and `preview_equivalence` needs no change), `preview_target.render` / `render_text`, `batch_render`. `view_themes.template_for` / `templates_used` serve the toolbar colours and `maintenance.on_theme_installed`. The only mode is `dark` (the existing `\SMDarkMode` switch); an entry fully describes its view (an entry without `:dark` turns a dark deck default off). Deck settings, General, has the "Theme per view" table (decks without views skip it). Not done: the Compile-menu one-off; the Presenter app (not checked).
+**Built (v0.15.3, stage C0, 2026-11-10); what differs from the text above.** Develop had fewer `detect_template` calls than counted (five outside `slide_templates`). Instead of a view-aware function at each call site, `view_themes.preamble_for_view(preamble, view)` returns the preamble as a view sees it and is applied where a view meets a deck: `compiler.wrapper_text` (inline branch for a mapped view), `render_key.unit_for` (so the unit's preamble, template and key follow and `preview_equivalence` needs no change), `preview_target.render` / `render_text`, `batch_render`. `view_themes.template_for` / `templates_used` serve the toolbar colors and `maintenance.on_theme_installed`. The only mode is `dark` (the existing `\SMDarkMode` switch); an entry fully describes its view (an entry without `:dark` turns a dark deck default off). Deck settings, General, has the "Theme per view" table (decks without views skip it). Not done: the Compile-menu one-off; the Presenter app (not checked).
 
-### 3.8 Colours: palette, roles, modes, and a clean transition
+### 3.8 Colors: palette, roles, modes, and a clean transition
 
-Decided in discussion (2026-11-09): no legacy aliases and no leftovers; dark is not hard-coded; Grayscale-like colour
+Decided in discussion (2026-11-09): no legacy aliases and no leftovers; dark is not hard-coded; Grayscale-like color
 variants are modes too.
 
-**Why not rename `c_primary_dark`.** The real project's 1,416 slides use the colour names thousands of times
+**Why not rename `c_primary_dark`.** The real project's 1,416 slides use the color names thousands of times
 (`c_custom_red` 648, `c_primary_highlight` 624, `c_primary_dark` 494, `c_secondary_blue` 316, ...), and `c_primary_dark` has
-two meanings in them: the ink of lines, rules and text on the canvas, and dark text on a coloured fill. In dark mode
+two meanings in them: the ink of lines, rules and text on the canvas, and dark text on a colored fill. In dark mode
 the first must turn light and the second stay dark; Graz had to invent `c_true_black` to get both. Renaming one name
 cannot fix that; separating the meanings does.
 
 **Three layers.**
 
-* **A. Palette: physical colours that never change with the mode.** The 21 slots, the theme's own colours, and
+* **A. Palette: physical colors that never change with the mode.** The 21 slots, the theme's own colors, and
   `c_true_black` / `c_true_white` defined by the framework (no theme invents them). The slot names are slots, not
-  descriptions (Grayscale makes `c_secondary_blue` grey, which is how a diagram in the `c_secondary_*` colours turns grey
-  by itself). A tertiary colour defaults to its secondary mixed 50 % with white when the theme omits it.
-* **B. Roles: what a colour is for.** About 35, in groups: surfaces (background, surface, surface line, process line),
+  descriptions (Grayscale makes `c_secondary_blue` grey, which is how a diagram in the `c_secondary_*` colors turns grey
+  by itself). A tertiary color defaults to its secondary mixed 50 % with white when the theme omits it.
+* **B. Roles: what a color is for.** About 35, in groups: surfaces (background, surface, surface line, process line),
   text (text, muted text, on-accent text, link, link underline, citation), chrome (title fill and text, footer,
   highlightframe, standout, bullet, alert, progress bar), the five block kinds (title fill, title text, body fill, body
   text), code (keyword, comment, panel, text, inline code) and the quote box. Nine exist as internal roles today
   (`\SMTitleBoxColor` and the others, plus the `SMColor...` names `\SMApplyColorRoles` resolves after the template).
-* **C. Role names a slide can use** as real colour names: `c_text`, `c_canvas`, `c_card`, `c_line`, `c_text_muted`,
+* **C. Role names a slide can use** as real color names: `c_text`, `c_canvas`, `c_card`, `c_line`, `c_text_muted`,
   `c_text_on_accent`, `c_link` (final names to be decided). `\SMApplyColorRoles`, the one place that already runs after the
   template, resolves them for the active mode with `\colorlet`. A slide author uses a role for "follow the theme and the
-  mode" and a slot for "this exact colour".
+  mode" and a slot for "this exact color".
 
 **Modes: a list a theme declares, not light and dark.**
 
 * A theme lists its modes in its header (`% SlideMage modes: light, dark, grey`, ids with labels). The framework knows no
   mode name. The first is the **base mode** (conventionally `light`); the others inherit everything they do not set.
-* **Answer of 2026-11-10 (Q6): a mode is a colour scheme plus the logo**: palette overrides, role assignments, and which logo file the theme shows (a dark mode typically needs the white logo; a `\SMSetLogo{mode}{file}` data line, falling back to the base mode's logo). Fonts, margins, bullets and footnote markers still belong to the theme. **Q7:** a third derivation preset joins `dark` and `grey`: `colorblind` (palette remapped to a colour-vision-safe set with roles following; the exact set is chosen when CR is built and shown on the sample deck). The bullet as first written: a mode is a **colour scheme only**: palette overrides and role assignments. Fonts, margins, bullets and footnote
+* **Answer of 2026-11-10 (Q6): a mode is a color scheme plus the logo**: palette overrides, role assignments, and which logo file the theme shows (a dark mode typically needs the white logo; a `\SMSetLogo{mode}{file}` data line, falling back to the base mode's logo). Fonts, margins, bullets and footnote markers still belong to the theme. **Q7:** a third derivation preset joins `dark` and `grey`: `colorblind` (palette remapped to a color-vision-safe set with roles following; the exact set is chosen when CR is built and shown on the sample deck). The bullet as first written: a mode is a **color scheme only**: palette overrides and role assignments. Fonts, margins, bullets and footnote
   markers are the theme's design, so a mode never changes them; that is the line between a mode and a theme. Grayscale as
   it ships (Latin Modern Roman, en dashes, numbered footnotes, taller title bar, wider margins, grey palette) stays a
-  **theme**; a `grey` mode gives any theme a grey version of its own colours.
+  **theme**; a `grey` mode gives any theme a grey version of its own colors.
 * **Data lines, no scopes:** `\SMSetRole{text}{dark}{c_true_white}` and `\SMSetColor{c_secondary_blue}{grey}{HTML}{8f8f8f}`;
   the mode id is an argument. Lines without a mode set the base mode. A reader needs no `\if` tracking, the form can
   add and remove a column by adding and removing lines, and Graz's 50 dark lines become about a dozen role lines.
 * **Derivation presets as defaults, not as special cases:** the framework derives a mode's missing values when the
-  mode says `derive=dark` (canvas the base's dark colour mixed about 17 % with white, text white, block title text black,
-  surfaces from the canvas; Graz's `#2B2B2B` is that mixture of black) or `derive=grey` (every palette colour converted to
+  mode says `derive=dark` (canvas the base's dark color mixed about 17 % with white, text white, block title text black,
+  surfaces from the canvas; Graz's `#2B2B2B` is that mixture of black) or `derive=grey` (every palette color converted to
   its grey, roles follow). Any explicit line wins. A light-only theme gets a working dark mode by declaring
   `dark` with `derive=dark` and nothing else. The form shows derived cells in italics with a "set explicitly" action.
 * **Choosing a mode:** the deck settings "Dark slides" checkbox becomes a drop-down of the theme's modes; a view's entry
@@ -464,12 +464,12 @@ included. This is the third such change.
 
 * **Removed in the cut:** `\SMDarkMode`, the `% SlideMage dark mode: true` header flag and the deck's dark line, the
   flip of `c_primary_dark` in dark mode, the template-side `\ifdefined\SMDarkMode` pattern, the old `SMColor...`
-  internals. Nothing is kept as an alias. A palette name keeps one meaning (a physical colour).
+  internals. Nothing is kept as an alias. A palette name keeps one meaning (a physical color).
 * **Migration of slides:** each use of the role-like names (`c_primary_dark`, `c_primary_white`, `c_custom_gray`, and the
   accents when used as text or lines) is rewritten by context to a role: lines, rules and text on the canvas to `c_text`;
-  dark text on a coloured fill to `c_text_on_accent`; an ink-filled box with white text to `c_text` on `c_canvas`.
+  dark text on a colored fill to `c_text_on_accent`; an ink-filled box with white text to `c_text` on `c_canvas`.
   What the rules cannot classify is left as it is **and listed in the compat report** with file and line.
-* **Proof:** in the base mode the roles resolve to the same colours as before, so `tools/framework_regression.py` must
+* **Proof:** in the base mode the roles resolve to the same colors as before, so `tools/framework_regression.py` must
   show identical PDFs before and after for the decks of the real project. Dark and grey need a look: the report lists how
   many migrated uses appear in each mode, and a sample deck rendered in each mode is the review page.
 * **Themes:** installed packages cannot be rewritten by the app; each releases a version for the new framework (Graz
@@ -482,21 +482,21 @@ included. This is the third such change.
 
 **Built: CR slice F1, the framework side (v0.15.9, branch `feat/color-roles-framework`).** Additive: nothing is removed, so
 this is not the BREAKING release yet; every old name and flag still works, and in the base mode the PDFs are identical
-(tools/framework_regression.py, 873 pages). It lives in `SlideMage_setup.tex` (section "Colour modes and role colours"), is
+(tools/framework_regression.py, 873 pages). It lives in `SlideMage_setup.tex` (section "Color modes and role colors"), is
 resolved by `\SMApplyColorRoles` (which calls `\SM@applymode`) and is read by the theme and the base.
 
-* **Data lines, as in the plan:** `\SMDeclareMode{id}{derive}` (the first declared is the base mode), `\SMSetRole{role}{mode}{colour}`,
+* **Data lines, as in the plan:** `\SMDeclareMode{id}{derive}` (the first declared is the base mode), `\SMSetRole{role}{mode}{color}`,
   `\SMSetColor{name}{mode}{model}{spec}`. A line of a mode that is not the active one does nothing.
 * **How a deck chooses the mode (changed from the text above):** the wrapper defines the macro `\SMModeOverride` before the
   template (`\newcommand{\SMModeOverride}{dark}`), like `\SMDarkMode`, not a call. Order: `\SMModeOverride`, else `dark` when
   `\SMDarkMode` is defined, else the base mode. `view_themes` does not write it yet (its non-dark modes still have no effect).
 * **Presets** (`derive`): `dark` (canvas and card from `c_primary_dark` mixed 17 % and 23 % with white; text, line and link white;
-  text on an accent black), `grey` (every palette colour to its grey), `colorblind` (Okabe-Ito accents). Order: preset, palette
+  text on an accent black), `grey` (every palette color to its grey), `colorblind` (Okabe-Ito accents). Order: preset, palette
   lines, role lines, so an explicit line wins.
-* **Roles with colour names:** `c_text`, `c_canvas`, `c_card`, `c_line`, `c_text_muted`, `c_text_on_accent`, `c_link`. The
+* **Roles with color names:** `c_text`, `c_canvas`, `c_card`, `c_line`, `c_text_muted`, `c_text_on_accent`, `c_link`. The
   framework reads them for body text, footnotes, links, buttons, the canvas and `SMCard`. **Roles that set a catalog hook:**
   `title_fill`, `title_text`, `footer_fill`, `footer_text`, `bullet`, `alert`, `progress`, `block_title_text`.
-  `c_true_black` and `c_true_white` are framework colours.
+  `c_true_black` and `c_true_white` are framework colors.
 * **Not done (the next slices):** the other ~20 roles (block fills and bodies, code, quote box, link underline, standout...);
   moving the framework's remaining `c_primary_dark` uses (table rules, block-body text, bullets in blocks) to roles; the
   app side (the wrapper writing `\SMModeOverride`, a mode drop-down, the header `% SlideMage modes:` line); the slide migration
@@ -511,46 +511,46 @@ fills (`block_title_fill`, `alerted_`, `example_`, `reference_`, `info_block_tit
 standout fills, the quote box, table rules and the other `c_primary_dark` uses inside the framework (they are unmapped
 hard-coded names; each is a decision about which role it is).
 
-**Built: CR slice F3 (v0.15.12, branch `feat/color-roles-framework-3`).** The framework's remaining hard-coded colours are roles: `highlight_fill`, `standout_fill`, `standout_text`, `quote_attribution`, `table_rule` (inside a block: `block_body_text`), `image_border`, `marker` (SMHighlight, SMDottedHighlight, warning sign), `citation`, `strip_fill` (its text is `c_text_on_accent`). What is left in the framework's code is the white text of a button and the red of the DRAFT watermark. Base mode identical: 873 pages of the manual set, 292 of the manual under Uni Graz, light and with \SMDarkMode. This ends the framework-only slices of CR; what follows needs the app: the wrapper writing \SMModeOverride and the mode drop-down, the `% SlideMage modes:` header, then the slide migration and the BREAKING cut.
+**Built: CR slice F3 (v0.15.12, branch `feat/color-roles-framework-3`).** The framework's remaining hard-coded colors are roles: `highlight_fill`, `standout_fill`, `standout_text`, `quote_attribution`, `table_rule` (inside a block: `block_body_text`), `image_border`, `marker` (SMHighlight, SMDottedHighlight, warning sign), `citation`, `strip_fill` (its text is `c_text_on_accent`). What is left in the framework's code is the white text of a button and the red of the DRAFT watermark. Base mode identical: 873 pages of the manual set, 292 of the manual under Uni Graz, light and with \SMDarkMode. This ends the framework-only slices of CR; what follows needs the app: the wrapper writing \SMModeOverride and the mode drop-down, the `% SlideMage modes:` header, then the slide migration and the BREAKING cut.
 
-**Built: CR app side, step 1 (v0.15.13, branch `feat/color-modes-app`).** `deck_settings.template_modes` reads `% SlideMage modes: light, dark, grey=Grayscale` from a template's header (first = base mode; the older `dark mode: true` = light and dark); `DeckSettings.mode` and `set_mode` write \SMModeOverride before the template (`dark` keeps \SMDarkMode); `view_themes.preamble_for_view` gives a view any mode; Deck settings has a Colours drop-down in place of the Dark slides check box and a mode drop-down per view. Not done: the shipped templates declare no modes (they must not before slides are migrated to roles, or a dark deck shows invisible ink); the Compile-menu one-off mode; the toolbar colour list and `theme_colors` reading roles; the Presenter app.
+**Built: CR app side, step 1 (v0.15.13, branch `feat/color-modes-app`).** `deck_settings.template_modes` reads `% SlideMage modes: light, dark, grey=Grayscale` from a template's header (first = base mode; the older `dark mode: true` = light and dark); `DeckSettings.mode` and `set_mode` write \SMModeOverride before the template (`dark` keeps \SMDarkMode); `view_themes.preamble_for_view` gives a view any mode; Deck settings has a Colors drop-down in place of the Dark slides check box and a mode drop-down per view. Not done: the shipped templates declare no modes (they must not before slides are migrated to roles, or a dark deck shows invisible ink); the Compile-menu one-off mode; the toolbar color list and `theme_colors` reading roles; the Presenter app.
 
-**Built: CR migration of slides (v0.15.14, branch `feat/color-roles-migration`).** `compat_color_roles.py`, registered in `compat.CHANGES` as `colour-roles-in-slides` (APPEARANCE: listed in Info -> Project compatibility, Update project runs it; not loud, because nothing looks different in the base mode). It reads each live use of `c_primary_dark` by its bracket context (a TikZ option list `[...]` or `key={...}`, a colour command's argument, a `\foreach` list) and rewrites it: ink of lines, arrows, shapes, axis plots and text on the canvas -> `c_text`; `text=` or a bare colour on a node whose `fill=` is a palette colour (not ink, not white) -> `c_text_on_accent`; `fill=c_primary_dark(!N)` -> `c_text(!N)` with that list's `text=white|c_primary_white` -> `c_canvas`; `fill=white|c_primary_white` of a shape drawn in ink -> `c_canvas`; `\color`, `\textcolor`, `\arrayrulecolor`, `\pagecolor`, `fg=` -> `c_text` (`c_text_on_accent` inside a node with a coloured fill). Left alone: comments, colour lists, `c_primary_white` elsewhere (white does not flip), templates (themes keep a physical palette; their dark blocks are the cut's job). Reported with file and line, unchanged: `c_custom_gray` outside a list (link or muted text: a person decides), `\colorbox`, `\fcolorbox`, cell and row colours, `\colorlet`, `\definecolor`, `bg=`, unknown TikZ keys. Scope as `compat_own_theme` (slides with frozen versions, snippets, decks, decks/archive, root .tex except templates); idempotent. On the real project: 34 files, 151 uses (114 `c_text`, 34 `c_canvas`, 3 `c_text_on_accent`), nothing left unclassified apart from the palette slide's list. **Proof:** six real decks (Masterdeck-Publishing, Ibk-AWP, FM2, IA2, Grundlagen, manual; instructor version) compiled from a copy of the project before and after the migration with `tools/framework_regression.py`: 2186 pages, all identical (2026-11-11). Not done: running it on `D:\uniCLOUD\Slidemaster` itself (the user's Update project click), the dark-mode review page, the BREAKING cut.
+**Built: CR migration of slides (v0.15.14, branch `feat/color-roles-migration`).** `compat_color_roles.py`, registered in `compat.CHANGES` as `color-roles-in-slides` (APPEARANCE: listed in Info -> Project compatibility, Update project runs it; not loud, because nothing looks different in the base mode). It reads each live use of `c_primary_dark` by its bracket context (a TikZ option list `[...]` or `key={...}`, a color command's argument, a `\foreach` list) and rewrites it: ink of lines, arrows, shapes, axis plots and text on the canvas -> `c_text`; `text=` or a bare color on a node whose `fill=` is a palette color (not ink, not white) -> `c_text_on_accent`; `fill=c_primary_dark(!N)` -> `c_text(!N)` with that list's `text=white|c_primary_white` -> `c_canvas`; `fill=white|c_primary_white` of a shape drawn in ink -> `c_canvas`; `\color`, `\textcolor`, `\arrayrulecolor`, `\pagecolor`, `fg=` -> `c_text` (`c_text_on_accent` inside a node with a colored fill). Left alone: comments, color lists, `c_primary_white` elsewhere (white does not flip), templates (themes keep a physical palette; their dark blocks are the cut's job). Reported with file and line, unchanged: `c_custom_gray` outside a list (link or muted text: a person decides), `\colorbox`, `\fcolorbox`, cell and row colors, `\colorlet`, `\definecolor`, `bg=`, unknown TikZ keys. Scope as `compat_own_theme` (slides with frozen versions, snippets, decks, decks/archive, root .tex except templates); idempotent. On the real project: 34 files, 151 uses (114 `c_text`, 34 `c_canvas`, 3 `c_text_on_accent`), nothing left unclassified apart from the palette slide's list. **Proof:** six real decks (Masterdeck-Publishing, Ibk-AWP, FM2, IA2, Grundlagen, manual; instructor version) compiled from a copy of the project before and after the migration with `tools/framework_regression.py`: 2186 pages, all identical (2026-11-11). Not done: running it on `D:\uniCLOUD\Slidemaster` itself (the user's Update project click), the dark-mode review page, the BREAKING cut.
 
-**Built: the CR cut (v0.16.0, BREAKING, branch `feat/color-roles-cut`).** Framework: `\SM@activemode` reads only `\SMModeOverride`; a deck that still defines `\SMDarkMode` stops with a `\PackageError` naming the replacement. Four more roles, each off or equal to today in the base mode: `process_line` (a border around SMProcess, `none` unless set), `inline_code` (colours `\SMCode`/`\SMCmd` only in body text, so a title bar, block title or `\textcolor` keeps its colour), `button_text` (white) and `strip_text` (`c_text_on_accent`). App: `DeckSettings` has one `mode` (no `dark_mode`); `set_mode` writes `\SMModeOverride` for dark too; `set_dark_mode`, `DARK_MODE_RE` and the `% SlideMage dark mode: true` header are gone; `view_themes` writes only the mode line. Compat: `compat_color_cut.py`, change `dark-switch-removed` (BREAKS): decks' switch to `\newcommand{\SMModeOverride}{dark}` (dropped next to an existing mode line), every other live `\SMDarkMode` or dark header in templates, project macros, slides and snippets reported by line. Themes: `packages.PackageKind.check_contents` (new) with `themes.check_contents`: a theme whose template uses `\SMDarkMode` in live code is not installed, not on TeX's path, and listed as "not usable" with `needs_update` (Settings keeps Check for update). The example project's three slides were migrated (colour-roles-in-slides). **Proof:** the manual set (manual, copy, Grayscale, Uni Graz 1.1.1; instructor and after-course) with develop's framework against this one: 786 pages identical. **Uni Graz 1.2.0** (theme repo, branch `release/1.2.0`): the two `\ifdefined\SMDarkMode` blocks became `\SMDeclareMode` / `\SMSetRole` / `\SMSetColor` lines, requires SlideMage >= 0.16.0. The manual in Graz dark, 1.1.1 on develop against 1.2.0 on this branch: 4 of 95 pages differ, all intended: card headings keep the light font (a mode changes colours only), migrated slides' arrows turn white, the quick-reference slide names the new line, resampling noise on one screenshot (the step strip's text was black on the dark strip until `strip_text` existed). Not converted: Graz's `normal text` background for SlideMage's built-in title page. **Release order:** Graz 1.2.0 must be published together with v0.16.0, or decks using Uni Graz stop compiling (1.1.1 is refused).
+**Built: the CR cut (v0.16.0, BREAKING, branch `feat/color-roles-cut`).** Framework: `\SM@activemode` reads only `\SMModeOverride`; a deck that still defines `\SMDarkMode` stops with a `\PackageError` naming the replacement. Four more roles, each off or equal to today in the base mode: `process_line` (a border around SMProcess, `none` unless set), `inline_code` (colors `\SMCode`/`\SMCmd` only in body text, so a title bar, block title or `\textcolor` keeps its color), `button_text` (white) and `strip_text` (`c_text_on_accent`). App: `DeckSettings` has one `mode` (no `dark_mode`); `set_mode` writes `\SMModeOverride` for dark too; `set_dark_mode`, `DARK_MODE_RE` and the `% SlideMage dark mode: true` header are gone; `view_themes` writes only the mode line. Compat: `compat_color_cut.py`, change `dark-switch-removed` (BREAKS): decks' switch to `\newcommand{\SMModeOverride}{dark}` (dropped next to an existing mode line), every other live `\SMDarkMode` or dark header in templates, project macros, slides and snippets reported by line. Themes: `packages.PackageKind.check_contents` (new) with `themes.check_contents`: a theme whose template uses `\SMDarkMode` in live code is not installed, not on TeX's path, and listed as "not usable" with `needs_update` (Settings keeps Check for update). The example project's three slides were migrated (color-roles-in-slides). **Proof:** the manual set (manual, copy, Grayscale, Uni Graz 1.1.1; instructor and after-course) with develop's framework against this one: 786 pages identical. **Uni Graz 1.2.0** (theme repo, branch `release/1.2.0`): the two `\ifdefined\SMDarkMode` blocks became `\SMDeclareMode` / `\SMSetRole` / `\SMSetColor` lines, requires SlideMage >= 0.16.0. The manual in Graz dark, 1.1.1 on develop against 1.2.0 on this branch: 4 of 95 pages differ, all intended: card headings keep the light font (a mode changes colors only), migrated slides' arrows turn white, the quick-reference slide names the new line, resampling noise on one screenshot (the step strip's text was black on the dark strip until `strip_text` existed). Not converted: Graz's `normal text` background for SlideMage's built-in title page. **Release order:** Graz 1.2.0 must be published together with v0.16.0, or decks using Uni Graz stop compiling (1.1.1 is refused).
 
-**Built: CR, the shipped templates' modes (v0.16.2, branch `feat/shipped-modes`).** `SlideMage_template_slidemage.tex` and `SlideMage_template_grayscale.tex` declare `light` (base) and `dark` (the dark preset), in the header and with \SMDeclareMode, and add dark-only role lines where the preset left an accent too dark on the canvas (#444444 and #484848; the highlight blue was 1.7:1, Grayscale's greys 1.2:1): SlideMage bullets, table rules and image borders `c_secondary_blue!60!white` (4.9:1), alert `c_secondary_orange`, marker `c_secondary_red!60!white`; Grayscale a dark title bar with white title and standout text, bullets, alert, rules and borders `c_secondary_violet` (4.9:1), marker `c_tertiary_violet`. The palette is not changed per mode (the slides' callout circles put white text on `c_primary_highlight`), so slide text in a palette colour stays that colour; in the manual that is the `c_primary_highlight` text of a few slides and the named-colour demo, dim in dark. Proof: light identical, 873 pages of the manual set; dark manual under each template reviewed page by page. Left in CR: toolbar and `theme_colors` reading roles, the Compile-menu one-off mode, accents as text in slides (a migration rule or a role such as `c_accent_text`, the user's call).
+**Built: CR, the shipped templates' modes (v0.16.2, branch `feat/shipped-modes`).** `SlideMage_template_slidemage.tex` and `SlideMage_template_grayscale.tex` declare `light` (base) and `dark` (the dark preset), in the header and with \SMDeclareMode, and add dark-only role lines where the preset left an accent too dark on the canvas (#444444 and #484848; the highlight blue was 1.7:1, Grayscale's greys 1.2:1): SlideMage bullets, table rules and image borders `c_secondary_blue!60!white` (4.9:1), alert `c_secondary_orange`, marker `c_secondary_red!60!white`; Grayscale a dark title bar with white title and standout text, bullets, alert, rules and borders `c_secondary_violet` (4.9:1), marker `c_tertiary_violet`. The palette is not changed per mode (the slides' callout circles put white text on `c_primary_highlight`), so slide text in a palette color stays that color; in the manual that is the `c_primary_highlight` text of a few slides and the named-color demo, dim in dark. Proof: light identical, 873 pages of the manual set; dark manual under each template reviewed page by page. Left in CR: toolbar and `theme_colors` reading roles, the Compile-menu one-off mode, accents as text in slides (a migration rule or a role such as `c_accent_text`, the user's call).
 
-**Built: CR, the Color menu reads roles (v0.16.3, branch `feat/toolbar-roles`, on top of #165).** `theme_colors` reads \SMDeclareMode, \SMSetColor and \SMSetRole besides \definecolor and \colorlet (now with xcolor mixes, `a!p!b`, and any colour name, so Graz's `c_graz_dark_canvas` resolves) and resolves a mode as \SM@applymode does: preset (dark's derived roles, grey's conversion 0.3/0.59/0.11, colorblind's accents), the mode's palette lines, then each role from its line, else the derived value, else the base source; an undeclared mode gets no preset and only its own lines, as in TeX. `theme_colors(template, root, mode)` and `swatches(..., mode)`; `view_themes.mode_for(preamble, view)`. The source view's Color menu leads with the seven role colours under "Follows the colour mode" (each with what it is for), then "Palette", in the mode of the deck and the view shown. Proof: `tests/test_theme_colors_tex.py` prints every role and ten palette colours from LuaLaTeX and compares (+-1 per channel) for a test template in six modes plus an undeclared one and for both shipped templates light and dark; Uni Graz 1.2.0 agrees as well (light and dark, checked once by hand). Left in CR: the Compile-menu one-off mode; accents as text in slides.
+**Built: CR, the Color menu reads roles (v0.16.3, branch `feat/toolbar-roles`, on top of #165).** `theme_colors` reads \SMDeclareMode, \SMSetColor and \SMSetRole besides \definecolor and \colorlet (now with xcolor mixes, `a!p!b`, and any color name, so Graz's `c_graz_dark_canvas` resolves) and resolves a mode as \SM@applymode does: preset (dark's derived roles, grey's conversion 0.3/0.59/0.11, colorblind's accents), the mode's palette lines, then each role from its line, else the derived value, else the base source; an undeclared mode gets no preset and only its own lines, as in TeX. `theme_colors(template, root, mode)` and `swatches(..., mode)`; `view_themes.mode_for(preamble, view)`. The source view's Color menu leads with the seven role colors under "Follows the color mode" (each with what it is for), then "Palette", in the mode of the deck and the view shown. Proof: `tests/test_theme_colors_tex.py` prints every role and ten palette colors from LuaLaTeX and compares (+-1 per channel) for a test template in six modes plus an undeclared one and for both shipped templates light and dark; Uni Graz 1.2.0 agrees as well (light and dark, checked once by hand). Left in CR: the Compile-menu one-off mode; accents as text in slides.
 
-**Built: CR, the one-off mode in the Compile menu (v0.16.4, branch `feat/compile-mode`).** `CompileJob.mode`: a mode id of the view's template; `compiler.wrapper_text` applies it after the view's theme (`with_mode`: \SMModeOverride written, removed for the base mode), so the wrapper inlines the preamble and the deck is not touched. The jobname gets `-<mode>` (a literal `\deckoutputfolder` file name `-<mode>` on its stem), so the view's usual PDF and its page compiles stay apart; `job_label` adds " · <mode> colours" and `deck_pdfs` looks for each view's other modes. `compiler.other_modes(ctx, deck, view)` lists the template's modes without the one the view compiles in. Command `compile:mode` in the Compile caret menu and Build -> PDF, after "All views": "Current view in Dark slides" when there is one other mode (compiles at once), "Current view in another colour mode…" with a choice when there are several, disabled when the template declares none. Not offered for chapters, presenter, page compiles or several decks (a whole-view build of the current deck). Left in CR: accents as text in slides.
+**Built: CR, the one-off mode in the Compile menu (v0.16.4, branch `feat/compile-mode`).** `CompileJob.mode`: a mode id of the view's template; `compiler.wrapper_text` applies it after the view's theme (`with_mode`: \SMModeOverride written, removed for the base mode), so the wrapper inlines the preamble and the deck is not touched. The jobname gets `-<mode>` (a literal `\deckoutputfolder` file name `-<mode>` on its stem), so the view's usual PDF and its page compiles stay apart; `job_label` adds " · <mode> colors" and `deck_pdfs` looks for each view's other modes. `compiler.other_modes(ctx, deck, view)` lists the template's modes without the one the view compiles in. Command `compile:mode` in the Compile caret menu and Build -> PDF, after "All views": "Current view in Dark slides" when there is one other mode (compiles at once), "Current view in another color mode…" with a choice when there are several, disabled when the template declares none. Not offered for chapters, presenter, page compiles or several decks (a whole-view build of the current deck). Left in CR: accents as text in slides.
 
-**Built: CR, accents as text in dark mode (v0.16.5, branch `feat/dark-accents`; Uni Graz 1.2.1).** Decided by the counts, not by a migration: the example's live slides write palette accents as text 25 times (17 of them `c_primary_highlight`), the real project's 1022 about 260 times over nine colours (`c_custom_red` 90, `c_secondary_blue` 52, `c_secondary_red` 32, `c_primary_highlight` 21, ...). Under Graz dark only `c_custom_red` (2.2:1) and `c_custom_brown` (2.4:1) are too dark; no slide of either project fills with them, and the only white-on-accent fill is the example's two callout nodes on `c_primary_highlight`. So each theme gives those colours a dark-mode value with \SMSetColor (the plan's rule that a palette name is one colour gives way to the existing per-mode palette lines Graz already used for its tertiaries), with no compat rule and no new role: SlideMage highlight 8BBCEC, custom red FF9090, green 7FD07F, brown E0B060 (its bullet, rule, border and marker lines removed: those roles are made of these colours); Grayscale highlight C7C7C7 and custom greys DEDEDE, D0D0D0, C4C4C4, BABABA (its five accent role lines removed); Graz 1.2.1 custom red FF6B6B, brown D19A5C. The callouts write `text=c_canvas` (white in light). The dark preset also derives `button_text` black (a button is filled with the link colour, white in dark: the shipped templates' buttons were white on white) and `quote_attribution` muted. Code keywords keep the dark blue (\colorlet copies it before the mode applies; the code panel stays light). Proof: light identical (manual set, and the manual under Graz 1.2.0 vs 1.2.1); dark manuals reviewed. Left: a theme's own accents that slides fill behind white text would need a role; none seen yet.
+**Built: CR, accents as text in dark mode (v0.16.5, branch `feat/dark-accents`; Uni Graz 1.2.1).** Decided by the counts, not by a migration: the example's live slides write palette accents as text 25 times (17 of them `c_primary_highlight`), the real project's 1022 about 260 times over nine colors (`c_custom_red` 90, `c_secondary_blue` 52, `c_secondary_red` 32, `c_primary_highlight` 21, ...). Under Graz dark only `c_custom_red` (2.2:1) and `c_custom_brown` (2.4:1) are too dark; no slide of either project fills with them, and the only white-on-accent fill is the example's two callout nodes on `c_primary_highlight`. So each theme gives those colors a dark-mode value with \SMSetColor (the plan's rule that a palette name is one color gives way to the existing per-mode palette lines Graz already used for its tertiaries), with no compat rule and no new role: SlideMage highlight 8BBCEC, custom red FF9090, green 7FD07F, brown E0B060 (its bullet, rule, border and marker lines removed: those roles are made of these colors); Grayscale highlight C7C7C7 and custom greys DEDEDE, D0D0D0, C4C4C4, BABABA (its five accent role lines removed); Graz 1.2.1 custom red FF6B6B, brown D19A5C. The callouts write `text=c_canvas` (white in light). The dark preset also derives `button_text` black (a button is filled with the link color, white in dark: the shipped templates' buttons were white on white) and `quote_attribution` muted. Code keywords keep the dark blue (\colorlet copies it before the mode applies; the code panel stays light). Proof: light identical (manual set, and the manual under Graz 1.2.0 vs 1.2.1); dark manuals reviewed. Left: a theme's own accents that slides fill behind white text would need a role; none seen yet.
 
 ## 4. Staging and what each stage needs
 
 | Stage | Contents | Depends on |
 |---|---|---|
 | C0 | **Themes per view** (section 3.7): the settings line, `template_for(preamble, view)` at the fourteen call sites, the wrapper, equivalence, the deck settings table; optional `+dark` | nothing; independent of the form |
-| CR | **Colours cut** (section 3.8): palette, roles, modes; the BREAKING release with the compat migration of slides and project templates; Graz 1.2.0 and the other themes; toolbar and `theme_colors` read roles | C0 (the per-view mode value); the framework regression proof |
-| C1 | The reader and in-place writer (data lines after CR; the scope-aware reader only for older files) with the **Graz round-trip tests** first; then identity, palette (with the theme's own colours) and contrast badges, logo, 9 colour roles, code colours, **Light / Dark columns** for the colours Graz overrides, footnote marker; "New theme…" from the shipped one; live sample render in light and dark | the field metadata and catalog test; `theme-color-roles` for the full role list |
+| CR | **Colors cut** (section 3.8): palette, roles, modes; the BREAKING release with the compat migration of slides and project templates; Graz 1.2.0 and the other themes; toolbar and `theme_colors` read roles | C0 (the per-view mode value); the framework regression proof |
+| C1 | The reader and in-place writer (data lines after CR; the scope-aware reader only for older files) with the **Graz round-trip tests** first; then identity, palette (with the theme's own colors) and contrast badges, logo, 9 color roles, code colors, **Light / Dark columns** for the colors Graz overrides, footnote marker; "New theme…" from the shipped one; live sample render in light and dark | the field metadata and catalog test; `theme-color-roles` for the full role list |
 | C2 | Layout profile, sizes, margins, title bar, footer, bullets, citation format; route B (theme source folder) for installed themes | C1's editing core |
 | C3 | "Advanced": tier 3 fields, optional features; a "derive dark mode from the light palette" helper; the framework hooks that remove Graz's raw dark-mode TeX (block title text, inline code, standout) | the framework gaps above |
 | C4 | `.smtheme` export | C1 |
 
 The user split C1 (2026-11-11): **C1a** the reader and writer with the field list and the round-trip tests, no window;
-**C1b** the form tab beside the source tab (identity, palette with own colours and contrast badges, roles per mode, code
-colours, logo, footnote marker); **C1c** "New theme…", the theme sample deck, the live render and the slide pictures of
+**C1b** the form tab beside the source tab (identity, palette with own colors and contrast badges, roles per mode, code
+colors, logo, footnote marker); **C1c** "New theme…", the theme sample deck, the live render and the slide pictures of
 section 3.3.
 
 **Built: C1a (v0.16.6, branch `feat/theme-form-core`).** `src/slidemage/theme_file.py`: `ThemeFile(text)` reads every
 setting at the top level (not inside another command's argument) with its kind, mode, value span, line, place (before
 the setup file, the settings, after the base) and whether it sits in a conditional; `editable` = in the settings part
 and outside `\if ... \fi` (the layout profile: before the setup file; the two header lines always). `find`/`value`
-(a HTML colour as "#rrggbb"), `modes()`, `own_colours()`, `beyond()` (0-based lines of live code the form does not edit),
-`set(key, value, mode)` and `remove(key, mode)`. Keys: a hook's name, a colour's name, `role:<id>` and `mode:<id>`,
-`header:name`, `header:modes`; a `\SMSetColor` line is its colour's name with the mode. In place means only the value:
-`{HTML}{..}` of a colour (upper-case hex stays upper case), the braced argument otherwise; `#rrggbb` on a `\colorlet` or
+(a HTML color as "#rrggbb"), `modes()`, `own_colors()`, `beyond()` (0-based lines of live code the form does not edit),
+`set(key, value, mode)` and `remove(key, mode)`. Keys: a hook's name, a color's name, `role:<id>` and `mode:<id>`,
+`header:name`, `header:modes`; a `\SMSetColor` line is its color's name with the mode. In place means only the value:
+`{HTML}{..}` of a color (upper-case hex stays upper case), the braced argument otherwise; `#rrggbb` on a `\colorlet` or
 an expression on a `\definecolor` rewrites that command and keeps the comment. New lines: the header after SPDX and
 header lines; the layout profile right before `\input{SlideMage_setup}`; a mode line after the theme's last mode line
 (a declaration after its last declaration); everything else in the marked block before `\input{SlideMage_base}`, sorted
@@ -567,24 +567,24 @@ old scope-aware reader for `\ifdefined\SMDarkMode` files (v0.16.0 refuses them, 
 footnote marker's two forms (`\SMSetFootnoteMarkers`, `\SMFootnoteMark`) are two fields, merged into one in the form.
 
 **Built: C1b (v0.16.7, branch `feat/theme-form-tab`).** `src/slidemage/theme_form_model.py`: `ThemeModel(text, root,
-key, setup_text)`, no Qt. Columns are the declared modes (one "Colours" column for a theme without modes). Each cell
+key, setup_text)`, no Qt. Columns are the declared modes (one "Colors" column for a theme without modes). Each cell
 has what the theme writes (`palette_written`, `role_written`; None = it follows) and what it comes to (`palette_hex`,
 `resolve("role:<id>", mode)`), resolved like `\SM@applymode`: a mode's line, else its preset (the dark preset's roles
 are read from the setup file's `\SM@derived@...` lines), else the base; a hook role's base value is its macro, followed
-through (`\SMTitleBoxColor`, `\SMBlockTitleTextColor`); a theme's own `\colorlet` of an optional colour (code keyword)
-keeps the base palette's colour in every mode, the framework's default is made after the mode's palette lines. Edits:
+through (`\SMTitleBoxColor`, `\SMBlockTitleTextColor`); a theme's own `\colorlet` of an optional color (code keyword)
+keeps the base palette's color in every mode, the framework's default is made after the mode's palette lines. Edits:
 `set_palette`, `set_role` (base + hook: the macro; a mode: `\SMSetRole`; a role without a hook has no base value in a
 theme without modes), `add_mode` (a theme without modes gets `light` first; header and `\SMDeclareMode`),
-`remove_mode` (every line of it), `add_own_colour`, `set_name`, `set_value`, `import_logo` (into
+`remove_mode` (every line of it), `add_own_color`, `set_name`, `set_value`, `import_logo` (into
 `schemes/scheme_<key_>/`), `set_footnote_style` (symbols, boxed, dice via `\SMSetFootnoteMarkers`; numbers via
 `\SMFootnoteMark`; a theme's own mark shows as "custom"). `checks(mode)`: 16 WCAG pairs (`CHECKS`), text 4.5:1, the
 link underline 3:1. `theme_colors.theme_colors_for_text` reads an unsaved buffer. `src/slidemage/ui/workspace/theme_form.py`:
 `ThemeForm(editor, path, root, setup_path)`, a scrolling column of cards (intro with the count of lines beyond the
 form and "Show them in the source", name and modes, contrast badges, palette, the four role groups of
-`ROLE_SECTIONS`, code panels, logo, footnote markers); a cell is a swatch (colour picker) plus a field (a drop-down of
-the colour names for roles), an empty field follows and its grey text says what it takes. Every edit runs through
+`ROLE_SECTIONS`, code panels, logo, footnote markers); a cell is a swatch (color picker) plus a field (a drop-down of
+the color names for roles), an empty field follows and its grey text says what it takes. Every edit runs through
 `apply()`: model edit, then `editor.patch_text` (one undo step, autosave and the conflict bar as for typing); typing
-in the source refreshes the form after 400 ms; the cards are rebuilt only when the modes, own colours, lines beyond
+in the source refreshes the form after 400 ms; the cards are rebuilt only when the modes, own colors, lines beyond
 the form or the footnote style change. `SourceFile` puts it in a splitter beside the editor for any
 `SlideMage_template_<key>.tex` that is not a slide; "Hide form" / "Show form" on its status line, remembered
 (`theme_form_shown`). Tests: `tests/test_theme_form_model.py`, `tests/test_theme_form_gui.py`. **Finding:** the
@@ -613,23 +613,23 @@ start)` (the shipped template through `ThemeFile`, name line set or added); Sett
 `WorkspaceWindow.new_theme` makes it, opens it with the form and reloads the decks. Tests: `tests/test_theme_sample.py`
 (the deck render in light and dark with `SLIDEMAGE_TEX_TESTS=1`, the panel with a fake render, New theme).
 
-**Built: C1c, second part (v0.16.16, branch `feat/theme-form-marks`).** The colour part of the slide pictures of 3.3,
-done without geometry: `src/slidemage/theme_probe.py` renders the sample deck once more with every colour role (kind
-"role": the 43 roles and the hook `\SMHighlightTitleTextColor`) or every palette colour (kind "palette": the 21 and the
-theme's own) set to a colour of its own (`PROBES`: 60 colours on a 0x10/0x50/0x90/0xD0 grid, no greys), as
+**Built: C1c, second part (v0.16.16, branch `feat/theme-form-marks`).** The color part of the slide pictures of 3.3,
+done without geometry: `src/slidemage/theme_probe.py` renders the sample deck once more with every color role (kind
+"role": the 43 roles and the hook `\SMHighlightTitleTextColor`) or every palette color (kind "palette": the 21 and the
+theme's own) set to a color of its own (`PROBES`: 60 colors on a 0x10/0x50/0x90/0xD0 grid, no greys), as
 `\SMSetRole` / `\SMSetColor` lines of the mode right before `\input{SlideMage_base}` of a copy of the buffer (a theme
 without modes gets `\SMDeclareMode{probe}{}` first), and `usage_map` reads every pixel within 10 per channel of a probe
-colour (at twice the panel's 110 dpi, folded down, so text strokes count) into a `UsageMap` (one byte per pixel and
+color (at twice the panel's 110 dpi, folded down, so text strokes count) into a `UsageMap` (one byte per pixel and
 page). `ThemeSampleView.show_usage(kind, name, mode)` switches to the field's mode, makes the map of that kind and mode
-once per text (a thread, about 9 s plus 1 s reading), turns to the first page using the colour, and draws the page
-dimmed (black at 65 %) with the colour's pixels on top, one pixel wider; the line under it says on which pages it is
-used, or that the sample does not use it. (Since v0.16.33 `usage_map` reads no pixels: it takes the colour of every text span and drawn path from the probe PDF, keeps boxes per page and name, cuts out what a later opaque rectangle covers, and the page is painted back into the boxes with hard edges; one render, about 1 s less. The same boxes answer a click on the slide: `UsageMap.at` gives the roles at a point, `theme_measures.keys_at` the layout settings of that part of the slide, the view's switch "Click selects: Colors | Layout" picks which, and `ThemeForm.reveal` goes to the field.) The form's palette, role and code cells report focus and hover
+once per text (a thread, about 9 s plus 1 s reading), turns to the first page using the color, and draws the page
+dimmed (black at 65 %) with the color's pixels on top, one pixel wider; the line under it says on which pages it is
+used, or that the sample does not use it. (Since v0.16.33 `usage_map` reads no pixels: it takes the color of every text span and drawn path from the probe PDF, keeps boxes per page and name, cuts out what a later opaque rectangle covers, and the page is painted back into the boxes with hard edges; one render, about 1 s less. The same boxes answer a click on the slide: `UsageMap.at` gives the roles at a point, `theme_measures.keys_at` the layout settings of that part of the slide, the view's switch "Click selects: Colors | Layout" picks which, and `ThemeForm.reveal` goes to the field.) The form's palette, role and code cells report focus and hover
 (`ThemeForm.on_usage`, `on_usage_cleared`; the mouse over a cell wins while it is there). Seen: Block title fill lights
 only the block's violet bar on page 3; Body text in dark only the white body text. Tests: `tests/test_theme_probe.py`
 (the real probe with `SLIDEMAGE_TEX_TESTS=1`: block title fill on page 3 only, code panel on page 4 only). Not done
 (C2, as the plan stages it): the dimension lines and marks of margins and paddings, which need the hooks' geometry.
-Limits: a colour a slide writes by palette name directly (`\textcolor{c_primary_highlight}`) shows under the palette
-kind, not the role kind; an image whose pixels happen to have a probe colour would light up too.
+Limits: a color a slide writes by palette name directly (`\textcolor{c_primary_highlight}`) shows under the palette
+kind, not the role kind; an image whose pixels happen to have a probe color would light up too.
 
 C2 is done in three parts: **C2a** the layout fields (tier 2 of section 2), **C2b** the marks of margins and paddings on
 the sample slides (dimension lines from the hooks' geometry), **C2c** route B (a theme's source folder for installed
@@ -655,15 +655,15 @@ open list of modes fits ("Proposed: any number of modes"), chose it. Built: `src
 `ThemeWorkspace` (the theme part of `SourceFile`, `SourceFile.theme_side`): `ModeBar` (one button per declared mode
 with "base" or "<preset> preset · n set", "+ Add mode…"), a Form / Split / Source `SegmentedControl` (remembered as
 `theme_view`), one splitter with the editor, the sample slides and the form, shown per view. `ThemeForm` is a `QWidget`
-with a `QTabBar` and five scrolling pages (Identity, Colours, Layout, Logo & notes, Advanced; Advanced says C3 is to
-come), shows `form.mode` only (`set_mode`; `on_structure` tells the workspace), and on Colours: the mode's heading, a
+with a `QTabBar` and five scrolling pages (Identity, Colors, Layout, Logo & notes, Advanced; Advanced says C3 is to
+come), shows `form.mode` only (`set_mode`; `on_structure` tells the workspace), and on Colors: the mode's heading, a
 contrast `Chip` for that mode (details on "Show all 16"; "Other modes: n below" picks the first such mode), the palette
 filtered by `ThemeModel.palette_matters` ("Show all 21"), folding groups for the four role sections and the code panels
 (a count of what is set; "Title bar and footer" open at first). `_Cell` gained the provenance tag
-(`ThemeModel.provenance`: set here / set in the theme / dark, grey or colour-blind preset / from <base> / framework
+(`ThemeModel.provenance`: set here / set in the theme / dark, grey or color-blind preset / from <base> / framework
 default), Reset, and the per-mode strip (`ThemeModel.strip`, the picked mode ringed). Lengths are a number and a unit
 (`split_length`, `UNITS`; another form stays raw TeX). `ThemeSampleView` follows the mode bar (`follow_mode_bar`,
-`set_mode`) and has a page-thumbnail strip with a dot under the pages using the focused colour. The Top Margin's
+`set_mode`) and has a page-thumbnail strip with a dot under the pages using the focused color. The Top Margin's
 dimension line and the "below the title bar" check of the mockup's Layout screen are C2b.
 
 **Built: C2b (v0.16.19, branch `feat/theme-form-measures`).** No new TeX: SlideMage_base already writes the
@@ -676,7 +676,7 @@ rendered_value)` (absolute units exactly; ex/em scaled from the rendered value i
 text margins: both lines; footer box: a frame; title bar paddings, logo height and padding: the bar's bottom edge,
 the title's left edge, the logo padding, with "after the next render" where the edge is derived), and
 `title_bar_check(top_bp, geometry)`. `ThemeSampleView.show_measure(key, value_bp)` / `clear_measure()` paints the
-marks over the page (`_paint_marks`, after the colour dimming) and turns from the title, standout and quote frames
+marks over the page (`_paint_marks`, after the color dimming) and turns from the title, standout and quote frames
 to page 2. The form's length fields report focus and every keystroke (`ThemeForm.on_measure`,
 `on_measure_cleared`, `geometry`), wired in `ThemeWorkspace`; the Top Margin field shows the check under it.
 Tests: `tests/test_theme_measures.py` (with `SLIDEMAGE_TEX_TESTS=1` a real render's geometry). Not done: marks for
@@ -747,9 +747,9 @@ to "Add from file…" in Settings → Themes.
    or only edit lines that already exist and refuse the rest?
 4. The sample deck for the live render: the stress-test deck as it is, or a purpose-written "theme sample" deck (title,
    section, blocks of each kind, list, footnote, quote, code)? The second costs one new deck and is nicer.
-5. Which **framework hooks** to add first from "beyond the catalog" (block title text, link colours are the two the
+5. Which **framework hooks** to add first from "beyond the catalog" (block title text, link colors are the two the
    Innsbruck work already needs)? They belong to `theme-color-roles`.
-6. **Modes (3.8):** is "a mode is colours only; fonts, margins and bullets are the theme" the right line, so Grayscale as shipped stays a theme and a `grey` mode is separate?
+6. **Modes (3.8):** is "a mode is colors only; fonts, margins and bullets are the theme" the right line, so Grayscale as shipped stays a theme and a `grey` mode is separate?
 7. **Derived modes:** live defaults in TeX (a theme that declares `dark` with `derive=dark` works at once) with explicit lines overriding, or only explicit values written by the editor?
 8. **Clean cut:** one BREAKING release with the compat migration of slides and the regression proof, and the themes released with it. Agreed, including that old installed themes are refused until updated?
 9. **Role names for slides:** `c_text`, `c_canvas`, `c_card`, `c_line`, `c_text_muted`, `c_text_on_accent`, `c_link`; changes?

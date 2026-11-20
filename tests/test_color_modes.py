@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Colour modes and role colours of the framework (latex/SlideMage_setup.tex, "Colour modes and role colours").
+"""Color modes and role colors of the framework (latex/SlideMage_setup.tex, "Color modes and role colors").
 
 TeX tests, run only with SLIDEMAGE_TEX_TESTS set and lualatex installed (as the other compile tests). A template that
 declares modes is compiled once per mode; the pixel at the slide's right edge, halfway down, is the canvas."""
@@ -79,12 +79,12 @@ def canvas(pix) -> tuple[int, int, int]:
     return pix.pixel(pix.width - 2, pix.height // 2)[:3]
 
 
-def test_the_base_mode_is_the_templates_own_colours(tmp_path):
+def test_the_base_mode_is_the_templates_own_colors(tmp_path):
     assert canvas(compile_mode(tmp_path, None)) == (255, 255, 255)
     assert canvas(compile_mode(tmp_path, "light")) == (255, 255, 255)
 
 
-def test_a_dark_preset_mixes_the_dark_colour_with_white(tmp_path):
+def test_a_dark_preset_mixes_the_dark_color_with_white(tmp_path):
     r, g, b = canvas(compile_mode(tmp_path, "dark"))
     assert r == g == b and 60 <= r <= 76  # c_primary_dark (1e1e1e) mixed 17 % with white
 
@@ -100,7 +100,7 @@ def test_an_explicit_role_line_wins_over_the_preset(tmp_path):
     assert b > g and r > g and (r, g, b) != canvas(compile_mode(tmp_path, "dark"))  # violet mixed with black
 
 
-def test_the_grey_preset_leaves_no_colour(tmp_path):
+def test_the_grey_preset_leaves_no_color(tmp_path):
     pix = compile_mode(tmp_path, "gray")
     stray = [s for s in (pix.pixel(x, y) for x in range(0, pix.width, 7) for y in range(pix.height * 2 // 5, pix.height, 7))  # below the logo, which is an image
              if max(s[:3]) - min(s[:3]) > 3]
@@ -138,6 +138,6 @@ def test_process_line_inline_code_and_button_text_are_off_in_the_base_and_set_by
     assert near(mine, (255, 0, 255)) > 50 and near(base, (255, 0, 255)) == 0     # process_line
     assert near(mine, (0, 255, 255)) > 20 and near(base, (0, 255, 255)) == 0     # inline_code in body text
     assert near(mine, (255, 255, 0)) > 20 and near(base, (255, 255, 0)) == 0     # button_text
-    # inline code inside \textcolor keeps that colour: it is not the inline_code colour
+    # inline code inside \textcolor keeps that color: it is not the inline_code color
     green_base, green_mine = near(base, (0, 128, 0)), near(mine, (0, 128, 0))
     assert green_base > 100 and green_mine > 100                     # not turned cyan

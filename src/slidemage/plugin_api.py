@@ -213,8 +213,8 @@ class SlideRef:
 
 @dataclass(frozen=True)
 class ThemeTokens:
-    """SlideMage's colours, radii, fonts and spacing in the current theme, from Host.theme() (SlideMage v0.13.21). Only the host
-    makes these; later versions may add fields (with defaults), so read the fields you need by name. Colours are
+    """SlideMage's colors, radii, fonts and spacing in the current theme, from Host.theme() (SlideMage v0.13.21). Only the host
+    makes these; later versions may add fields (with defaults), so read the fields you need by name. Colors are
     strings QSS and QColor take: hex, except hover, which is translucent and in rgba() form."""
 
     dark: bool
@@ -248,7 +248,7 @@ class ThemeTokens:
     font_mono: str
 
     # Added in SlideMage v0.14.36: the type scale (font_*), the spacing scale (space_*), radius_xs, the categorical
-    # colours by hue name (accents["teal"]), link, selection and the source editor's syntax colours.
+    # colors by hue name (accents["teal"]), link, selection and the source editor's syntax colors.
     font_micro: int = 11
     font_small: int = 12
     font_body: int = 13
@@ -456,7 +456,7 @@ class TerminalWidget(Protocol):
 
 
 class TerminalService(Protocol):
-    """SlideMage's embedded terminal (a pseudo-terminal and an xterm view in SlideMage's colours)."""
+    """SlideMage's embedded terminal (a pseudo-terminal and an xterm view in SlideMage's colors)."""
 
     def create_widget(self, parent: Widget | None = None) -> TerminalWidget:
         """Create a view without a process. It can display startup errors; pass it to start to attach a process."""

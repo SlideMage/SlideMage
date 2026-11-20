@@ -7,7 +7,7 @@ Form / Split / Source switch, and one splitter with the source, the sample slide
 * Split: the source beside the form.
 * Source: the source alone, as for any file.
 
-The mode bar lists every colour mode the theme declares (an open list: light, dark, gray, colour-blind, projector...)
+The mode bar lists every color mode the theme declares (an open list: light, dark, gray, color-blind, projector...)
 with what it starts from and how many values it sets itself; the mode picked there is the one the form shows and the
 sample slides are rendered in. "+ Add mode..." adds one."""
 from __future__ import annotations
@@ -31,7 +31,7 @@ VIEWS = (("form", "Form"), ("split", "Split"), ("source", "Source"))
 
 
 class ModeBar(Surface):
-    """One button per colour mode, the picked one checked; `on_pick(mode)` and `on_add()` are set by the workspace."""
+    """One button per color mode, the picked one checked; `on_pick(mode)` and `on_add()` are set by the workspace."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -67,7 +67,7 @@ class ModeBar(Surface):
             button.setChecked(mode.id == form.mode)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             button.setToolTip(f"Show the theme in {mode.label}: the form's values and the sample slides")
-            # The picked mode stands out: a ring in the selection colour (both themes), the others a hairline.
+            # The picked mode stands out: a ring in the selection color (both themes), the others a hairline.
             button.setStyleSheet("QPushButton { text-align: left; padding: 4px 12px; border: 1px solid "
                                  "rgba(128,128,128,0.45); border-radius: 8px; }"
                                  "QPushButton:checked { border: 2px solid palette(highlight); }")
@@ -127,7 +127,7 @@ class ThemeWorkspace(Surface):
         self.splitter.setStretchFactor(1, 3)
         self.splitter.setStretchFactor(2, 2)
         column.addWidget(self.splitter, 1)
-        # The form tells when its modes or the picked mode change; the usage of a focused colour goes to the slides.
+        # The form tells when its modes or the picked mode change; the usage of a focused color goes to the slides.
         self.form.on_structure = self._sync
         self.form.on_usage = self.sample.show_usage
         self.form.on_usage_cleared = self.sample.clear_usage

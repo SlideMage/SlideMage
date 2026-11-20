@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""A one-off colour mode for a build (v0.16.4, Compile -> "Current view in another colour mode"): the wrapper writes
+"""A one-off color mode for a build (v0.16.4, Compile -> "Current view in another color mode"): the wrapper writes
 the mode, the PDF gets its own name, the deck's PDF list finds it, and the deck is not touched (no TeX)."""
 from __future__ import annotations
 

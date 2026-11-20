@@ -12,7 +12,7 @@ missed typo, never a broken slide.
   (\\emph{...}, \\footnote{...}, the second argument of \\href, ...) and the title arguments of the environments in
   ENVIRONMENTS (a frame's or a block's title).
 - Never prose: command names and the arguments of every other command (\\label, \\cite, \\includegraphics, \\url,
-  colours, \\SMCode, a project's own macros); optional arguments [...] and overlay specifications <...>; math;
+  colors, \\SMCode, a project's own macros); optional arguments [...] and overlay specifications <...>; math;
   verbatim, \\verb and \\iffalse...\\fi; comments; the protected %% header and \\setSlideVersion (protected_regions);
   URLs, e-mail addresses and file names; the bodies of the environments in SKIPPED_BODIES (math, TikZ, code); and
   words with TeX inside them (Gr\\"o\\ss e, hyphenation hints \\-), which are left out whole.

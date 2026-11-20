@@ -2,12 +2,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Reading a theme setting by setting and changing one in place (theme_file.ThemeFile; docs/plans/theme-editor.md,
 section 3.1, stage C1a). The acceptance tests of the plan, on every theme shape we have: (1) setting every value to
-itself leaves the file byte for byte, (2) a changed palette colour changes exactly one line, (3) a mode's line changes or
+itself leaves the file byte for byte, (2) a changed palette color changes exactly one line, (3) a mode's line changes or
 is added after the theme's mode lines, nothing else moves, (4) a setting the theme lacks lands in the marked block before
-\\input{SlideMage_base}, in the catalog's order, (5) the colours read equal what theme_colors reads for the same file.
+\\input{SlideMage_base}, in the catalog's order, (5) the colors read equal what theme_colors reads for the same file.
 
 The shapes: the two shipped templates, the stress-test template (every hook), the test theme package, and two test themes with the shapes of
-real institution themes (tests/fixtures/theme_files/: mode lines and own colours; a conditional and \\colorlet). The
+real institution themes (tests/fixtures/theme_files/: mode lines and own colors; a conditional and \\colorlet). The
 institution themes themselves are not in this repository (their corporate design must not be published); to run the
 same tests on them, name their files in SLIDEMAGE_REAL_THEMES (separated by os.pathsep)."""
 import difflib
@@ -67,9 +67,9 @@ def test_reading_and_writing_every_value_back_changes_nothing(theme):
     assert count >= 3          # the test theme package sets five
 
 
-# --- (2) one palette colour, one line --------------------------------------------------------------------------------
+# --- (2) one palette color, one line --------------------------------------------------------------------------------
 
-def test_a_changed_palette_colour_changes_exactly_that_line(theme):
+def test_a_changed_palette_color_changes_exactly_that_line(theme):
     text = read(theme)
     edited = ThemeFile(text)
     before = edited.find("c_primary_highlight")
@@ -95,7 +95,7 @@ def test_upper_case_hex_stays_upper_case():
     assert "\\definecolor{c_primary_dark}{HTML}{abcdef}" in edited.text
 
 
-def test_a_colour_moves_between_definecolor_and_colorlet_keeping_its_comment():
+def test_a_color_moves_between_definecolor_and_colorlet_keeping_its_comment():
     text = read(CONDSHAPE)
     edited = ThemeFile(text)
     edited.set("c_tertiary_blue", "c_secondary_blue!50")
@@ -107,7 +107,7 @@ def test_a_colour_moves_between_definecolor_and_colorlet_keeping_its_comment():
     assert "  \\definecolor{SMCodeKeywordColor}{HTML}{112233}   % indented on purpose" in edited.text
 
 
-# --- (3) colour modes ------------------------------------------------------------------------------------------------
+# --- (3) color modes ------------------------------------------------------------------------------------------------
 
 def test_a_modes_line_changes_in_place():
     text = read(MODESHAPE)
@@ -147,7 +147,7 @@ def test_a_theme_without_modes_gets_them_in_the_block_declarations_first():
     assert block == ["\\SMDeclareMode{dark}{dark}", "\\SMDeclareMode{light}{}", "\\SMSetRole{canvas}{dark}{c_primary_dark}"]
 
 
-def test_a_modes_colour_takes_a_hex_value_and_a_role_takes_a_mode():
+def test_a_modes_color_takes_a_hex_value_and_a_role_takes_a_mode():
     edited = ThemeFile(read(MODESHAPE))
     with pytest.raises(ValueError):
         edited.set("c_custom_red", "c_primary_dark!50", "dark")
@@ -197,7 +197,7 @@ def test_what_lies_beyond_the_form():
     assert ThemeFile(read(LATEX / "SlideMage_template_grayscale.tex")).beyond() == []
     shape = ThemeFile(read(MODESHAPE))
     assert [shape.text.split("\n")[n] for n in shape.beyond()] == ["\\input{SlideMage_bibliography_default}"]
-    assert shape.own_colours() == ["c_test_dark_canvas", "c_test_dark_card"]
+    assert shape.own_colors() == ["c_test_dark_canvas", "c_test_dark_card"]
     assert shape.value("SMSetFootnoteMarkers") == "boxed"
 
 
@@ -262,17 +262,17 @@ def test_removing_a_setting_drops_its_line():
     assert edited.find("c_custom_brown") is None
 
 
-# --- (5) the same colours as theme_colors ----------------------------------------------------------------------------
+# --- (5) the same colors as theme_colors ----------------------------------------------------------------------------
 
-def test_the_colours_read_equal_what_theme_colors_reads(theme, tmp_path):
+def test_the_colors_read_equal_what_theme_colors_reads(theme, tmp_path):
     shutil.copy(theme, tmp_path / "SlideMage_template_probe.tex")
     edited = ThemeFile(read(theme))
     modes = [mode for mode, _ in edited.modes()] or [""]
     for mode in modes:
         resolved = theme_colors.theme_colors("probe", tmp_path, mode)
         for setting in edited.settings:
-            # palette colours (theme_colors reads the optional SM*Color lines of the framework's conditionals too)
-            if setting.kind != "colour" or not setting.editable or setting.model != "HTML" or not setting.key.startswith("c_"):
+            # palette colors (theme_colors reads the optional SM*Color lines of the framework's conditionals too)
+            if setting.kind != "color" or not setting.editable or setting.model != "HTML" or not setting.key.startswith("c_"):
                 continue
             overridden = edited.find(setting.key, mode) if mode else None
             expected = edited.value(setting.key, mode) if overridden else edited.value(setting.key)
@@ -307,19 +307,19 @@ def test_the_form_reads_every_catalog_kind_from_the_stress_template():
     edited = ThemeFile(read(ROOT / "tests" / "fixtures" / "template_stress" / "SlideMage_template_stress-test.tex"))
     setup = (LATEX / "SlideMage_setup.tex").read_text(encoding="utf-8")
     catalog = theme_fields.catalog(setup)
-    wanted = [name for name, entry in catalog.items() if entry.kind in ("length", "macro", "colour", "optional_colour")]
+    wanted = [name for name, entry in catalog.items() if entry.kind in ("length", "macro", "color", "optional_color")]
     missing = [name for name in wanted if edited.find(name) is None]
     assert not missing, missing
 
 
-# --- macros that hold a colour's name (v0.16.45: the form wrote a \colorlet for them) -------------------------------
+# --- macros that hold a color's name (v0.16.45: the form wrote a \colorlet for them) -------------------------------
 
 def bare(lines: str = "") -> str:
     return "\\input{SlideMage_setup}\n" + BLOCK_BEGIN + "\n" + lines + BLOCK_END + "\n\\input{SlideMage_base}\n"
 
 
-@pytest.mark.parametrize("key", sorted(theme_fields.MACRO_COLOURS))
-def test_a_colour_name_macro_is_set_with_renewcommand(key):
+@pytest.mark.parametrize("key", sorted(theme_fields.MACRO_COLORS))
+def test_a_color_name_macro_is_set_with_renewcommand(key):
     theme = ThemeFile(bare())
     theme.set(key, " c_secondary_blue ")
     assert f"\\renewcommand{{\\{key}}}{{c_secondary_blue}}\n" in theme.text and "\\colorlet" not in theme.text
@@ -337,7 +337,7 @@ def test_a_colorlet_of_a_macros_name_is_not_its_value_and_an_edit_puts_it_right(
              "\\colorlet{SMTitleBoxColor}{c_secondary_blue} % the bar\n")
     theme = ThemeFile(bare(stale))
     assert theme.value("SMTitleBoxColor") is None           # TeX reads the macro, which these lines leave alone
-    assert "SMTitleBoxColor" not in theme.own_colours() and "SMBulletColor" not in theme.own_colours()
+    assert "SMTitleBoxColor" not in theme.own_colors() and "SMBulletColor" not in theme.own_colors()
     theme.set("SMTitleBoxColor", "c_secondary_blue")         # the last such line becomes the \renewcommand, in place
     assert theme.text == bare("\\colorlet{SMBulletColor}{c_primary_gray}\n"
                               "\\renewcommand{\\SMTitleBoxColor}{c_secondary_blue} % the bar\n")
@@ -349,6 +349,6 @@ def test_a_colorlet_of_a_macros_name_is_not_its_value_and_an_edit_puts_it_right(
     assert both.value("SMTitleBoxColor") == "c_primary_gray"
     both.set("SMTitleBoxColor", "c_secondary_red")
     assert both.text == bare("\\renewcommand{\\SMTitleBoxColor}{c_secondary_red}\n")
-    palette = ThemeFile(bare())                               # a real colour of the catalog is still a colour
+    palette = ThemeFile(bare())                               # a real color of the catalog is still a color
     palette.set("SMCodeKeywordColor", "c_secondary_blue")
     assert "\\colorlet{SMCodeKeywordColor}{c_secondary_blue}" in palette.text

@@ -1403,7 +1403,7 @@ def test_the_tabs_of_a_deck_stay_together_with_their_stripe_and_tabs_without_a_d
     first_path = centre.tabs.slide_tab.context
     assert contexts == [first_path, first_path, other.path, other.path, None]
     buttons = centre.tab_strip.tab_buttons()
-    assert [b.property("deckColour") for b in buttons] == ["0", "0", "1", "1", ""]
+    assert [b.property("deckColor") for b in buttons] == ["0", "0", "1", "1", ""]
     assert buttons[0].close_button.isVisibleTo(buttons[0]) and buttons[2].close_button.isVisibleTo(buttons[2])
     assert "second" in buttons[3].label.toolTip()
 

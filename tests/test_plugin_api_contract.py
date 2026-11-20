@@ -208,7 +208,7 @@ def test_theme_tokens_never_drift_from_core(dark):
     for field in fields(theme):
         value = getattr(theme, field.name)
         if annotations[field.name] is str and field.name not in {"font_sans", "font_mono"}:
-            # Deliberately no hasattr filter: every public colour must map to a core token.
+            # Deliberately no hasattr filter: every public color must map to a core token.
             assert value == getattr(core, field.name), field.name
     assert theme.accents == tokens.ACCENTS["dark" if dark else "light"]
     for field in fields(tokens.TYPE):

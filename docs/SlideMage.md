@@ -104,7 +104,7 @@ deck switcher offers the rest). From top to bottom and left to right:
 - **Readability check** (v8.14.0; `readability.py`, `readability_pdf.py`, `readability_check.py`,
   `ui/workspace/readability_panel.py`, the tool `ai/tools/readability.py`): "can an audience read this?", measured
   on the rendered pages, with no AI. `readability_pdf.read_pages` runs in the raster child (op `layout`; the GUI
-  never opens the PDF): per page the visible text as lines (dominant size, colour, box; invisible text such as the
+  never opens the PDF): per page the visible text as lines (dominant size, color, box; invisible text such as the
   slide-id stamp and alt text is dropped), the placed raster images, the opaque fills (the background under the
   text, the footer bar) and the vector figures (clusters of at least 12 paths). `readability.analyse` classifies
   each line (the footer and the id stamp are not content): **figure text** (centre inside an image or figure),
@@ -711,8 +711,8 @@ What matters when touching *this code*:
 - [`transcript.py`](../src/slidemage/transcript.py) -- per-deck accessible transcripts,
   Markdown source and HTML delivery. Resolves deck versions exactly as the
   PDF compile does and keeps PDF slide numbering. Student versions only.
-  Colour commands are dropped with their colour arguments, keeping the
-  text (`_COLOR_COMMAND_RE`, v4.1.0; the colour name used to end up glued
+  Color commands are dropped with their color arguments, keeping the
+  text (`_COLOR_COMMAND_RE`, v4.1.0; the color name used to end up glued
   to the text, e.g. "c_primary_highlightdata dredging").
   A slide's `SlideNotes.summary` (alt_images.py), when set, renders as
   `**Summary.**` right after the `*Slide ID ...*` line and before the

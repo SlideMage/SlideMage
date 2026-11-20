@@ -64,7 +64,7 @@ def test_what_a_role_comes_to_follows_the_frameworks_order(shipped, modeshape):
     assert shipped.resolve("role:alert", "dark") == shipped.palette_hex("c_secondary_orange", "dark")
 
 
-def test_a_theme_colorlet_keeps_the_base_palettes_colour_in_every_mode(shipped):
+def test_a_theme_colorlet_keeps_the_base_palettes_color_in_every_mode(shipped):
     """\\colorlet{SMCodeKeywordColor}{c_primary_highlight} runs before the mode applies: dark keeps the dark blue."""
     assert shipped.resolve("role:code_keyword", "dark") == "#0066cc"
 
@@ -89,7 +89,7 @@ def test_palette_edits_change_one_line(modeshape):
     assert modeshape.palette_hex("c_primary_highlight", "light") == "#ff0000"
     modeshape.set_palette("c_custom_red", "dark", None)
     assert modeshape.palette_written("c_custom_red", "dark") is None
-    assert modeshape.palette_hex("c_custom_red", "dark") == "#b00000"      # the base colour again
+    assert modeshape.palette_hex("c_custom_red", "dark") == "#b00000"      # the base color again
     with pytest.raises(ValueError):
         modeshape.set_palette("c_custom_red", "dark", "c_primary_dark!50")
 
@@ -137,13 +137,13 @@ def test_a_header_that_names_other_modes_is_reported(shipped):
     assert format_modes_header([("light", ""), ("dark", "Dark")]) == "light, dark=Dark"
 
 
-def test_own_colours(modeshape):
-    modeshape.add_own_colour("c_test_accent", "#123456")
-    assert "c_test_accent" in modeshape.palette_names() and "c_test_accent" in modeshape.colour_names()
+def test_own_colors(modeshape):
+    modeshape.add_own_color("c_test_accent", "#123456")
+    assert "c_test_accent" in modeshape.palette_names() and "c_test_accent" in modeshape.color_names()
     assert modeshape.palette_hex("c_test_accent", "dark") == "#123456"
     for bad in ("x_test", "c_primary_dark", "c_test_dark_card", "c_Bad"):
         with pytest.raises(ValueError):
-            modeshape.add_own_colour(bad, "#000000")
+            modeshape.add_own_color(bad, "#000000")
 
 
 def test_footnote_styles(modeshape):
@@ -191,7 +191,7 @@ def test_the_shipped_templates_code_panels_read_in_every_mode(template):
 
 
 def test_where_a_value_comes_from_in_each_mode(shipped):
-    shipped.add_mode("cb", "colorblind", "Colour-blind")
+    shipped.add_mode("cb", "colorblind", "Color-blind")
     assert shipped.set_count("dark") == 5 and shipped.set_count("cb") == 0
     assert shipped.provenance("palette", "c_primary_highlight", "light") == ("framework default", "muted")
     assert shipped.provenance("palette", "c_primary_highlight", "dark") == ("set here", "warning")

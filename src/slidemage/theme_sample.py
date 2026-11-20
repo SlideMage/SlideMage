@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 r"""The theme sample deck, rendered with a theme as it is being edited (docs/plans/theme-editor.md, section 3.3, stage
-C1c): the theme form shows its pages beside the fields, in the colour mode chosen there.
+C1c): the theme form shows its pages beside the fields, in the color mode chosen there.
 
 The deck (assets/theme_sample/theme-sample.tex) is compiled in a work folder of the project's build folder
 (.build/theme-sample/<key>/<mode>/), with the buffer's text written there as SlideMage_template_<key>.tex: that folder
@@ -74,7 +74,7 @@ def work_dir(build_dir: Path, key: str, mode: str) -> Path:
 
 
 def deck_text(key: str, mode: str, root: Path, home: Optional[Path] = None) -> str:
-    """The sample deck with its colour mode and theme lines filled in. `home` is the theme file's folder when that is
+    """The sample deck with its color mode and theme lines filled in. `home` is the theme file's folder when that is
     not the project (a theme's source folder): its logos are found there first."""
     text = (SAMPLE_DIR / f"{DECK}.tex").read_text(encoding="utf-8")
     mode_line = f"\\newcommand{{\\SMModeOverride}}{{{mode}}}" if mode else "% (the theme's base mode)"
@@ -105,7 +105,7 @@ def texinputs(work: Path, root: Path, env: dict, home: Optional[Path] = None) ->
 
 def render(ctx, theme_text: str, key: str, mode: str, *, cancel: Optional[compiler.CancelToken] = None,
            log: Callable[[str], None] = lambda _line: None, home: Optional[Path] = None) -> SampleResult:
-    """Compile the sample deck with `theme_text` as the theme `key` in colour mode `mode` ("" for the base)."""
+    """Compile the sample deck with `theme_text` as the theme `key` in color mode `mode` ("" for the base)."""
     # a theme edited in its source folder has a work folder of its own, apart from a project copy of the key
     work = work_dir(ctx.build_dir, f"{key}@source" if home and home != ctx.root else key, mode)
     deck = prepare(work, theme_text, key, mode, ctx.root, home)

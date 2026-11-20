@@ -57,7 +57,7 @@ class HostUi(Protocol):
     def add_theme_listener(self, listener: Callable[[bool], None]) -> Callable[[], None]:
         """Call listener(dark) after a theme switch; returns the function that removes it."""
 
-    # Optional (the host asks with getattr): the terminal's colours, what the user is looking at, and the theme.
+    # Optional (the host asks with getattr): the terminal's colors, what the user is looking at, and the theme.
     # def terminal_tokens(self) -> Tokens
     # def focus(self) -> plugin_api.Focus
     # def dark(self) -> bool | None
@@ -483,7 +483,7 @@ def _theme_tokens(dark: bool) -> plugin_api.ThemeTokens:
         **{f"font_{n}": v for n, v in dataclasses.asdict(tokens.TYPE).items()},
         **{f"space_{n.removeprefix('s_')}": v for n, v in dataclasses.asdict(tokens.SPACE).items()},
     }
-    # Every other field is a colour of the same name in Tokens; a missing one raises here rather than fall back to
+    # Every other field is a color of the same name in Tokens; a missing one raises here rather than fall back to
     # the field's default.
     return plugin_api.ThemeTokens(**{
         f.name: scales[f.name] if f.name in scales else getattr(t, f.name)

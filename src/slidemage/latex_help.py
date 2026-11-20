@@ -224,7 +224,7 @@ _COMMANDS = [
        example=r"\SMCmd{cornerfigure}"),
     _c("SMCodeFile", r"\SMCodeFile[listings keys]{file}",
        "LaTeX source on a slide, read from its own file (the frame needs no [fragile]), with commands and "
-       "comments in colour on a light panel. The keys go to \\lstinputlisting (firstline=, lastline=, ...). Name "
+       "comments in color on a light panel. The keys go to \\lstinputlisting (firstline=, lastline=, ...). Name "
        "the files snippets/<slide id>-<n>.tex and write them in ASCII.",
        example=r"\SMCodeFile{snippets/1c9-1.tex}"),
     _c("EUR", r"\EUR", "The euro sign in the slide font, in text and in math alike.", example=r"5\,\EUR"),
@@ -407,8 +407,8 @@ _ENVIRONMENTS = [
        example="\\begin{figureframe}{Title}\n\t\\figurecenter\n\t\\includegraphics[height=0.7\\textheight]{x}\n"
                "\\end{figureframe}"),
     _e("highlightframe", r"\begin{highlightframe}{title} ... \end{highlightframe}",
-       "A standardframe whose title bar and footer are in the highlight colour, so the presenter notices it. "
-       "The colour is SMHighlightColor (\\colorlet{SMHighlightColor}{...} in the deck)."),
+       "A standardframe whose title bar and footer are in the highlight color, so the presenter notices it. "
+       "The color is SMHighlightColor (\\colorlet{SMHighlightColor}{...} in the deck)."),
     _e("sideimageframe", r"\begin{sideimageframe}{title}{image file} ... \end{sideimageframe}",
        "A standardframe with an image from the title bar down to the footer, flush with the right edge. Its "
        "footnotes go into a rotated strip left of the image.",
@@ -421,7 +421,7 @@ _ENVIRONMENTS = [
        example="\\begin{SMTable}[gap=12pt]{lccc}\n\t\\toprule ... \\bottomrule\n\\end{SMTable}"),
     _e("SMFloatingBlock", r"\begin{SMFloatingBlock}[keys]{width}{title} ... \end{SMFloatingBlock}",
        "A block of the given width, to place freely: beside a table, in a TikZ overlay node, or with "
-       "\\cornerfigure. Same colours and font as block.",
+       "\\cornerfigure. Same colors and font as block.",
        *_FLOATING_KEYS, example=r"\begin{SMFloatingBlock}{5cm}{Title} ... \end{SMFloatingBlock}"),
     _e("SMFloatingExampleBlock", r"\begin{SMFloatingExampleBlock}[keys]{width}{title} ... "
                                  r"\end{SMFloatingExampleBlock}",

@@ -269,7 +269,7 @@
 
 
 
-% The colour roles of the theme follow the template's palette: SMColorDark and SMColorA, the canvas
+% The color roles of the theme follow the template's palette: SMColorDark and SMColorA, the canvas
 % default and the roles (beamerthemeSlideMage.sty). Needs to go after the template's color redefinitions.
 \SMApplyColorRoles
 % The hooks that go into registers of beamer's and LaTeX's own (text margins, footnote font
@@ -5242,7 +5242,7 @@
 % closes, with no explicit reset needed.
 %
 % v5.30.5: 3.1pt became 2.1pt. Measured on a rendered slide whose rotated footnote
-% text was finally visible (see the colour note at the strip's drawing code), 3.1pt
+% text was finally visible (see the color note at the strip's drawing code), 3.1pt
 % left 3.9pt between the ink of the line nearest the image and the image -- the
 % text's own depth strut adds ~0.8pt -- against the 2.93pt this was meant to match.
 %
@@ -5871,7 +5871,7 @@
 % the TeX search path like any \input (the project root is on it, see
 % .latexmkrc). Optional keys go to \lstinputlisting (firstline=, lastline=,
 % basicstyle=...). Fira Mono Regular (the theme's \ttfamily is Fira Mono Bold),
-% control sequences, comments and the panel in the SMCode* colours below
+% control sequences, comments and the panel in the SMCode* colors below
 % (set per template). Write snippets in ASCII; the few non-ASCII characters below are mapped.
 % SlideMage's transcript shows the file as a code block, and the pre-render
 % check reports a missing file.
@@ -5881,16 +5881,16 @@
 % non-empty keyword list to be active, hence the dummy). An escaped \% and a
 % \\ are mapped literally (\% must not start a comment; \\ otherwise loses a
 % backslash to the \% mapping) and reset the prefix flag, which would
-% otherwise colour the word after them.
+% otherwise color the word after them.
 %
-% Code colours (2026-10-05, direct instruction: "set them to something more
-% readable in the institutions' template files"): three named colours a
+% Code colors (2026-10-05, direct instruction: "set them to something more
+% readable in the institutions' template files"): three named colors a
 % template defines before \input{SlideMage_base} --
 % SMCodeKeywordColor (control sequences), SMCodeCommentColor (% comments),
 % SMCodeBackgroundColor (the panel), SMCodeTextColor (ordinary code). A template that doesn't keeps the
-% original look: highlight colour, primary gray, tertiary gray -- which in
+% original look: highlight color, primary gray, tertiary gray -- which in
 % a palette with a yellow or orange highlight is yellow/orange and light gray on light
-% gray, about 1.1-1.3:1 contrast; such templates set readable colours.
+% gray, about 1.1-1.3:1 contrast; such templates set readable colors.
 \makeatletter
 \@ifundefinedcolor{SMCodeKeywordColor}{\colorlet{SMCodeKeywordColor}{c_primary_highlight}}{}
 \@ifundefinedcolor{SMCodeCommentColor}{\colorlet{SMCodeCommentColor}{c_primary_gray}}{}
@@ -5929,8 +5929,8 @@
 % typeset, so write \_ \{ \} \# as in any text. The transcript shows both as
 % `code`. Ligatures=TeXOff: code shows -- and `` as typed, not as an en dash
 % and a curly quote (fontspec's default for \newfontfamily).
-% The role inline_code (SlideMage_setup.tex) colours it, but only in body text: text that has another
-% colour (a title bar, a block title, \textcolor) keeps it. Without the role this does nothing.
+% The role inline_code (SlideMage_setup.tex) colors it, but only in body text: text that has another
+% color (a title bar, a block title, \textcolor) keeps it. Without the role this does nothing.
 \makeatletter
 \begingroup\color{c_text}\global\let\SM@bodycolorspec\current@color\endgroup
 \newcommand{\SMInlineCodeStyle}{%
@@ -6259,7 +6259,7 @@
 \def\SM@nav@labels#1,#2,#3,#4\@nil{%
 	\gdef\SMNavigationLabelDeck{#1}\gdef\SMNavigationLabelChapter{#2}\gdef\SMNavigationLabelPreviews{#3}%
 }
-% Link text in the footer: the footer's own text colour, underlined in
+% Link text in the footer: the footer's own text color, underlined in
 % c_secondary_blue (the \href underline, see \SMHrefUnderline).
 \newcommand{\SMLinkUnderline}[1]{%
 	\sbox{\SMHrefTextBox}{#1}%

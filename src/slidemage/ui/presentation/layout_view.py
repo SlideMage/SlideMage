@@ -13,7 +13,7 @@ from ..kit.tokens import SPACE, STAGE
 
 STRIP_HEIGHT = 58
 # Larger than the window's default text: the presenter reads the counter, the clock and the timer, and hits the
-# buttons, from a step or two away. Children with their own sheet (the lit buttons, the timer's colours) keep it.
+# buttons, from a step or two away. Children with their own sheet (the lit buttons, the timer's colors) keep it.
 STRIP_STYLE = (f"QLabel, QToolButton, QPushButton {{ font-size: {STAGE.strip}px; }}"
                f" QToolButton, QPushButton {{ padding: {SPACE.sm}px {SPACE.xl}px; }}")
 

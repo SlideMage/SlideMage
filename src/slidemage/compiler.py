@@ -616,7 +616,7 @@ class CompileJob:
     # change in between, from later ones. None: not stamped.
     run_id: Optional[str] = None
     language: Optional[str] = None   # EN/DE override; None uses the deck's setting
-    # A one-off colour mode for this build (v0.16.4, the Compile menu's "Current view in another colour mode"):
+    # A one-off color mode for this build (v0.16.4, the Compile menu's "Current view in another color mode"):
     # a mode id of the view's template, written as \SMModeOverride instead of the deck's and the view's own (the
     # template's base mode removes it). The PDF gets the mode as a suffix, so the view's usual PDF stays. None: the
     # deck's and the view's mode.
@@ -726,7 +726,7 @@ def uses_saved_versions(ctx: project.ProjectContext, job: CompileJob) -> bool:
 
 
 def with_mode(ctx: project.ProjectContext, preamble: str, mode: str) -> str:
-    """`preamble` in colour mode `mode` of its template: \\SMModeOverride written, or removed for the template's base
+    """`preamble` in color mode `mode` of its template: \\SMModeOverride written, or removed for the template's base
     mode; unchanged when the preamble has no template line."""
     from . import deck_settings
     modes = deck_settings.template_modes(ctx.root, slide_templates.detect_template(preamble))

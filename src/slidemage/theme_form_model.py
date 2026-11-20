@@ -1,14 +1,14 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-r"""What the theme form shows and does, without Qt (docs/plans/theme-editor.md, stage C1b): the theme's colour modes as
-columns, the palette (with the theme's own colours), the colour roles, code colours, logo and footnote markers, the
-colour each cell comes to in each mode, and the contrast checks of the catalog. Every edit goes through
+r"""What the theme form shows and does, without Qt (docs/plans/theme-editor.md, stage C1b): the theme's color modes as
+columns, the palette (with the theme's own colors), the color roles, code colors, logo and footnote markers, the
+color each cell comes to in each mode, and the contrast checks of the catalog. Every edit goes through
 theme_file.ThemeFile, so it changes one line (or adds one) and nothing else.
 
 A cell's value has two parts: what the theme WRITES for it (a line of its own, or None: it follows) and what it COMES
-TO in that mode (the colour a slide gets). The resolution follows latex/SlideMage_setup.tex (\SM@applymode): in a mode
+TO in that mode (the color a slide gets). The resolution follows latex/SlideMage_setup.tex (\SM@applymode): in a mode
 that is not the base, a role takes the mode's \SMSetRole line, else the mode's derive preset (dark), else its base
-value; a palette colour takes the mode's \SMSetColor line, else the preset's change (gray, colorblind), else its base
+value; a palette color takes the mode's \SMSetColor line, else the preset's change (gray, colorblind), else its base
 value. theme_colors does the palette part; the roles are resolved here, hook macros (\SMTitleBoxColor ...) included."""
 from __future__ import annotations
 
@@ -21,15 +21,15 @@ from typing import Optional
 from . import theme_colors, theme_fields
 from .theme_file import ThemeFile
 
-# Colours the beamer theme defines, which hook defaults name (beamerthemeSlideMage.sty); "" is a standout frame's text
+# Colors the beamer theme defines, which hook defaults name (beamerthemeSlideMage.sty); "" is a standout frame's text
 # when no template names one: the theme's pale yellow.
-FRAMEWORK_COLOURS = {"SMLightOrange": "#eb811b", "SMDeepYellowOrange": "#ffcc00", "": "#fffff0"}
+FRAMEWORK_COLORS = {"SMLightOrange": "#eb811b", "SMDeepYellowOrange": "#ffcc00", "": "#fffff0"}
 DERIVES = ("dark", "gray", "colorblind", "")
 PRESET_LABELS = {"dark": "dark", "gray": "gray", "colorblind": "color-blind"}
 MODE_ID_RE = re.compile(r"[a-z][a-z0-9_]{0,23}")
-OWN_COLOUR_RE = re.compile(r"c_[a-z][a-z0-9_]{0,40}")
+OWN_COLOR_RE = re.compile(r"c_[a-z][a-z0-9_]{0,40}")
 
-# The roles, grouped as the form shows them (code_* go with the code colours).
+# The roles, grouped as the form shows them (code_* go with the code colors).
 ROLE_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Slide colors", ("text", "text_muted", "canvas", "card", "line", "text_on_accent", "link")),
     ("Title bar and footer", ("title_fill", "title_text", "footer_fill", "footer_text", "standout_fill",
@@ -42,11 +42,11 @@ ROLE_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
                                 "image_border", "quote_attribution", "inline_code", "process_line", "button_text",
                                 "progress", "strip_fill", "strip_text")),
 )
-CODE_COLOURS = (("SMCodeKeywordColor", "code_keyword"), ("SMCodeCommentColor", "code_comment"),
+CODE_COLORS = (("SMCodeKeywordColor", "code_keyword"), ("SMCodeCommentColor", "code_comment"),
                 ("SMCodeBackgroundColor", "code_panel"), ("SMCodeTextColor", "code_text"))
 
 # The contrast pairs the catalog asks for (SlideMage_setup.tex, "Palette"), and the ones a form should check too:
-# (what is checked, foreground, background, minimum). "role:<id>" is a role, anything else a colour expression or a
+# (what is checked, foreground, background, minimum). "role:<id>" is a role, anything else a color expression or a
 # hook macro ("\SMHighlightTitleTextColor").
 CHECKS: tuple[tuple[str, str, str, float], ...] = (
     ("Body text on the slide", "role:text", "role:canvas", 4.5),
@@ -73,7 +73,7 @@ _DERIVED_RE = re.compile(r"SM@derived@(\w+)(?:\\endcsname)?\{([^{}]*)\}")
 
 @dataclass(frozen=True)
 class Mode:
-    id: str          # "" for a theme that declares no modes (one column: its colours)
+    id: str          # "" for a theme that declares no modes (one column: its colors)
     derive: str
     label: str
 
@@ -82,7 +82,7 @@ class Mode:
 class Check:
     label: str
     mode: str
-    ratio: float | None     # None: a colour could not be worked out
+    ratio: float | None     # None: a color could not be worked out
     minimum: float
 
     @property
@@ -91,7 +91,7 @@ class Check:
 
 
 def contrast(first: str, second: str) -> float:
-    """The WCAG contrast ratio of two "#rrggbb" colours."""
+    """The WCAG contrast ratio of two "#rrggbb" colors."""
     def luminance(value: str) -> float:
         def channel(c: float) -> float:
             return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
@@ -125,7 +125,7 @@ class ThemeModel:
         self.catalog = theme_fields.catalog(setup_text)
         self.preset_dark = {role: value for role, value in _DERIVED_RE.findall(setup_text)}
         self.file = ThemeFile(text)
-        self._colours: dict[tuple[str, str], dict[str, str]] = {}
+        self._colors: dict[tuple[str, str], dict[str, str]] = {}
 
     # --- the text --------------------------------------------------------------------------------------------------
 
@@ -185,7 +185,7 @@ class ThemeModel:
             header = [(m, "") for m in declared]
         self.file.set("mode:" + mode_id, derive)
         self.file.set("header:modes", format_modes_header(header + [(mode_id, label.strip())]))
-        self._colours.clear()
+        self._colors.clear()
 
     def remove_mode(self, mode_id: str) -> None:
         """Take a mode out: its declaration, its header entry and every line of it. Not the base mode."""
@@ -196,49 +196,49 @@ class ThemeModel:
         self.file.remove("mode:" + mode_id)
         header = [(m, label) for m, label in parse_modes_header(self.file.value("header:modes") or "") if m != mode_id]
         self.file.set("header:modes", format_modes_header(header))
-        self._colours.clear()
+        self._colors.clear()
 
-    # --- colours ---------------------------------------------------------------------------------------------------
+    # --- colors ---------------------------------------------------------------------------------------------------
 
-    def colours(self, mode: str) -> dict[str, str]:
-        """{name: "#rrggbb"} of the palette (and the seven colour roles) in `mode`, from the current text."""
+    def colors(self, mode: str) -> dict[str, str]:
+        """{name: "#rrggbb"} of the palette (and the seven color roles) in `mode`, from the current text."""
         key = (self.text, mode)
-        if key not in self._colours:
-            if len(self._colours) > 32:
-                self._colours.clear()
-            self._colours[key] = theme_colors.theme_colors_for_text(self.text, self.root, mode)
-        return self._colours[key]
+        if key not in self._colors:
+            if len(self._colors) > 32:
+                self._colors.clear()
+            self._colors[key] = theme_colors.theme_colors_for_text(self.text, self.root, mode)
+        return self._colors[key]
 
     def palette_names(self) -> list[str]:
-        return [f.name for f in theme_fields.FIELDS if f.group == "palette"] + self.file.own_colours()
+        return [f.name for f in theme_fields.FIELDS if f.group == "palette"] + self.file.own_colors()
 
     def palette_written(self, name: str, mode: str) -> str | None:
-        """What the theme writes for the palette colour in `mode` (the base: its \\definecolor), None if it follows."""
+        """What the theme writes for the palette color in `mode` (the base: its \\definecolor), None if it follows."""
         return self.file.value(name, "" if mode == self.base else mode)
 
     def palette_hex(self, name: str, mode: str) -> str | None:
-        return self.colours(mode).get(name)
+        return self.colors(mode).get(name)
 
     def set_palette(self, name: str, mode: str, value: str | None) -> None:
-        """Give the palette colour `name` the value `value` ("#rrggbb", an expression in the base) in `mode`; None takes
-        the line out (the base: the framework's colour; another mode: the base colour, or its preset's)."""
+        """Give the palette color `name` the value `value` ("#rrggbb", an expression in the base) in `mode`; None takes
+        the line out (the base: the framework's color; another mode: the base color, or its preset's)."""
         mode = "" if mode == self.base else mode
         if value is None:
             self.file.remove(name, mode)
         else:
             self.file.set(name, value, mode)
-        self._colours.clear()
+        self._colors.clear()
 
-    def add_own_colour(self, name: str, value: str) -> None:
-        """A palette colour of the theme's own (c_..._canvas), offered to the roles."""
-        if not OWN_COLOUR_RE.fullmatch(name):
+    def add_own_color(self, name: str, value: str) -> None:
+        """A palette color of the theme's own (c_..._canvas), offered to the roles."""
+        if not OWN_COLOR_RE.fullmatch(name):
             raise ValueError("A color's name starts with c_ and has lower-case letters, digits and _.")
         if name in theme_fields.BY_NAME or name in ("c_true_black", "c_true_white") or self.file.find(name):
             raise ValueError(f"{name} exists already.")
         self.file.set(name, value)
-        self._colours.clear()
+        self._colors.clear()
 
-    def colour_names(self) -> list[str]:
+    def color_names(self) -> list[str]:
         """The names a role may take, for its drop-down."""
         return self.palette_names() + ["c_true_black", "c_true_white"]
 
@@ -275,7 +275,7 @@ class ThemeModel:
         return {"SM@processline": "none", "SM@inlinecode": "(the text's color)"}.get(source, source)
 
     def role_expression(self, role: str, mode: str) -> str:
-        """The colour expression the role comes to in `mode` ("\\SMTitleBoxColor" for one that follows a hook)."""
+        """The color expression the role comes to in `mode` ("\\SMTitleBoxColor" for one that follows a hook)."""
         explicit = self.file.value("role:" + role, mode) if mode else None
         if explicit is not None:
             return explicit
@@ -287,7 +287,7 @@ class ThemeModel:
         return "\\" + hook if hook else self.catalog["role:" + role].source
 
     def set_role(self, role: str, mode: str, value: str | None) -> None:
-        """Give the role a colour in `mode` (None: follow). In the base mode a hook role writes its macro."""
+        """Give the role a color in `mode` (None: follow). In the base mode a hook role writes its macro."""
         hook = self.hook(role)
         if mode == self.base and hook:
             if value is None:
@@ -301,10 +301,10 @@ class ThemeModel:
                 self.file.set("role:" + role, value, mode)
         else:
             raise ValueError("Declare color modes before giving this role a color of its own.")
-        self._colours.clear()
+        self._colors.clear()
 
     def resolve(self, expression: str, mode: str, _depth: int = 0) -> str | None:
-        """"#rrggbb" of a colour expression, a role ("role:text") or a hook macro ("\\SMTitleBoxColor") in `mode`."""
+        """"#rrggbb" of a color expression, a role ("role:text") or a hook macro ("\\SMTitleBoxColor") in `mode`."""
         if _depth > 8:
             return None
         expression = expression.strip()
@@ -317,26 +317,26 @@ class ThemeModel:
             value = explicit if explicit is not None else self.file.value(hook)
             if value is None:
                 value = self.catalog[hook].default if hook in self.catalog else ""
-            return self.resolve(value, mode, _depth + 1) if value else FRAMEWORK_COLOURS[""]
-        if expression in FRAMEWORK_COLOURS:
-            return FRAMEWORK_COLOURS[expression]
-        colours = dict(self.colours(mode))
-        base_colours = self.colours(self.base)
+            return self.resolve(value, mode, _depth + 1) if value else FRAMEWORK_COLORS[""]
+        if expression in FRAMEWORK_COLORS:
+            return FRAMEWORK_COLORS[expression]
+        colors = dict(self.colors(mode))
+        base_colors = self.colors(self.base)
         for name, entry in self.catalog.items():
-            if entry.kind != "optional_colour":
+            if entry.kind != "optional_color":
                 continue
             # The theme's own \definecolor / \colorlet runs before any mode applies, so it is the base palette's
-            # colour; the framework's default (\SM@applymode) is made after the mode's palette lines.
+            # color; the framework's default (\SM@applymode) is made after the mode's palette lines.
             own = self.file.value(name)
             if own is not None:
-                resolved = own if own.startswith("#") else theme_colors.evaluate(own, base_colours)
+                resolved = own if own.startswith("#") else theme_colors.evaluate(own, base_colors)
             else:
-                resolved = theme_colors.evaluate(entry.default, colours) if entry.default else None
+                resolved = theme_colors.evaluate(entry.default, colors) if entry.default else None
             if resolved:
-                colours[name] = resolved
+                colors[name] = resolved
         if expression in ("none", ""):
             return None
-        return theme_colors.evaluate(expression, colours)
+        return theme_colors.evaluate(expression, colors)
 
     # --- checks ----------------------------------------------------------------------------------------------------
 
@@ -355,7 +355,7 @@ class ThemeModel:
 
     def set_count(self, mode: str) -> int:
         """How many values the mode `mode` (not the base) sets itself: its \\SMSetColor and \\SMSetRole lines."""
-        return sum(1 for s in self.file.settings if s.mode == mode and s.editable and s.kind in ("role", "modecolour"))
+        return sum(1 for s in self.file.settings if s.mode == mode and s.editable and s.kind in ("role", "modecolor"))
 
     def _derive(self, mode: str) -> str:
         return next((m.derive for m in self.modes() if m.id == mode), "")
@@ -368,7 +368,7 @@ class ThemeModel:
         return False
 
     def provenance(self, kind: str, name: str, mode: str) -> tuple[str, str]:
-        """Where the value of a palette colour (`kind` "palette"), a role ("role") or an optional colour ("optional")
+        """Where the value of a palette color (`kind` "palette"), a role ("role") or an optional color ("optional")
         in `mode` comes from, and a tone for its tag: ("set here", "warning"), ("dark preset", "info"),
         ("from Light", "muted"), ("framework default", "muted"), ("set", "neutral")."""
         base = self.base
@@ -395,7 +395,7 @@ class ThemeModel:
         return f"from {base_label}", "muted"
 
     def strip(self, kind: str, name: str) -> list[tuple[str, str, Optional[str]]]:
-        """[(mode id, mode label, "#rrggbb" or None)] of a palette colour or a role in every mode, for the row's strip."""
+        """[(mode id, mode label, "#rrggbb" or None)] of a palette color or a role in every mode, for the row's strip."""
         found = []
         for mode in self.modes():
             if kind == "palette":
@@ -406,8 +406,8 @@ class ThemeModel:
         return found
 
     def palette_matters(self, name: str) -> bool:
-        """Whether the palette colour is worth a row when the form shows only what matters: the theme sets it in some
-        mode, or it is one of its own colours, or it differs between modes."""
+        """Whether the palette color is worth a row when the form shows only what matters: the theme sets it in some
+        mode, or it is one of its own colors, or it differs between modes."""
         if name not in theme_fields.BY_NAME:
             return True
         if any(s.key == name and s.editable for s in self.file.settings):

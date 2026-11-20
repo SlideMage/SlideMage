@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 r"""The theme form (docs/plans/theme-editor.md, stages C1 and C2; its look: the mockup of 2026-11-12): five tabs
-(Identity, Colours, Layout, Logo & notes, Advanced) for one colour mode at a time, the mode picked in the theme tab's
-mode bar (theme_workspace). A colour row says where its value comes from in that mode (set here, a preset, the base
+(Identity, Colors, Layout, Logo & notes, Advanced) for one color mode at a time, the mode picked in the theme tab's
+mode bar (theme_workspace). A color row says where its value comes from in that mode (set here, a preset, the base
 mode, the framework) and ends in a strip of small swatches, one per mode.
 
 Form and source are two views of one buffer: an edit here goes into the editor as one undo step
@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
 
 from ... import slide_templates, theme_fields, theme_measures, theme_source_folder
 from .. import layout_settings
-from ...theme_form_model import (ADVANCED_SECTIONS, BULLETS, CODE_COLOURS, DERIVES, FOOTNOTE_STYLES, LAYOUT_SECTIONS, PRESET_LABELS,
+from ...theme_form_model import (ADVANCED_SECTIONS, BULLETS, CODE_COLORS, DERIVES, FOOTNOTE_STYLES, LAYOUT_SECTIONS, PRESET_LABELS,
                                  ROLE_SECTIONS,
                                  UNITS, ThemeModel, check_choice, check_length, check_number, citation_formats, format_size_pair, layout_profiles,
                                  parse_size_pair, split_length)
@@ -50,26 +50,26 @@ def _label(field_name: str) -> str:
 
 
 class _Swatch(ColorSwatchButton):
-    """A colour beside a value; clicking it opens the colour picker."""
+    """A color beside a value; clicking it opens the color picker."""
 
     def __init__(self) -> None:
         super().__init__("")
         self.setFixedWidth(30)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
-    def show_colour(self, value: Optional[str]) -> None:
+    def show_color(self, value: Optional[str]) -> None:
         if value:
             self.setText("")
             self.set_color(value)
             self.setToolTip(value)
-        else:           # no colour: a role that is off ("none"), or one that takes the text's colour
+        else:           # no color: a role that is off ("none"), or one that takes the text's color
             self.setStyleSheet("")
             self.setText("–")
             self.setToolTip("No color of its own")
 
 
 class _Cell(Surface):
-    """One colour value in the picked mode: a swatch with what it comes to, the field with what the theme writes (empty:
+    """One color value in the picked mode: a swatch with what it comes to, the field with what the theme writes (empty:
     it follows, and the field's grey text says what), a tag saying where the value comes from, Reset when the mode sets
     it itself, and a strip of small swatches, one per mode, so differences between the modes show at a glance."""
 
@@ -152,8 +152,8 @@ class _Cell(Surface):
             self.form.hover_usage(None)
 
     def update_value(self) -> None:
-        written, follows, colour = self.read()
-        self.swatch.show_colour(colour)
+        written, follows, color = self.read()
+        self.swatch.show_color(color)
         if not self.edit.hasFocus():
             self.edit.setText(written or "")
         self.edit.setPlaceholderText(follows)
@@ -202,8 +202,8 @@ class _Cell(Surface):
         self.form.apply(lambda: self.write(text or None))
 
     def _pick(self) -> None:
-        _, _, colour = self.read()
-        chosen = QColorDialog.getColor(QColor(colour or "#ffffff"), self, "Choose a color")
+        _, _, color = self.read()
+        chosen = QColorDialog.getColor(QColor(color or "#ffffff"), self, "Choose a color")
         if chosen.isValid():
             self.form.apply(lambda: self.write(chosen.name()))
 
@@ -219,9 +219,9 @@ class _WheelGuard(QObject):
 
 
 class ThemeForm(QWidget):
-    """The form of one theme file, editing `editor`'s buffer, one colour mode at a time (`mode`, picked in the theme
+    """The form of one theme file, editing `editor`'s buffer, one color mode at a time (`mode`, picked in the theme
     tab's mode bar: theme_workspace). `root` is the project; `setup_path` the framework's SlideMage_setup.tex (its
-    catalog gives defaults and the roles). Five tabs: Identity, Colours, Layout, Logo & notes, Advanced."""
+    catalog gives defaults and the roles). Five tabs: Identity, Colors, Layout, Logo & notes, Advanced."""
 
     TABS = ("Identity", "Colors", "Layout", "Logo & notes", "Advanced")
 
@@ -240,14 +240,14 @@ class ThemeForm(QWidget):
         self.layout_fields: dict[str, QWidget] = {}
         self._shape: tuple = ()
         self._pushing = False
-        self._tab = 1                                   # Colours: what most edits are about
+        self._tab = 1                                   # Colors: what most edits are about
         self._show_all_palette = False
         self._show_checks = False
         self._open_groups: set[str] = {"Title bar and footer"}
         # Told when the modes (or the picked one) change, so the mode bar and the sample slides follow (theme_workspace).
         self.on_structure: Optional[Callable[[], None]] = None
-        # The sample slides' "where is this colour used" (theme_sample_view.ThemeSampleView.show_usage / clear_usage):
-        # set by the source tab; the focused cell's colour, overridden while the mouse is over another cell.
+        # The sample slides' "where is this color used" (theme_sample_view.ThemeSampleView.show_usage / clear_usage):
+        # set by the source tab; the focused cell's color, overridden while the mouse is over another cell.
         self.on_usage: Optional[Callable[[str, str, str], None]] = None
         self.on_usage_cleared: Optional[Callable[[], None]] = None
         # The marks of a focused length on the sample slides (C2b) and the geometry of the last render, set by the tab.
@@ -332,7 +332,7 @@ class ThemeForm(QWidget):
                 tuple(sorted(self._open_groups)))
 
     def set_mode(self, mode: str) -> None:
-        """Show the colour mode `mode` (the mode bar's pick)."""
+        """Show the color mode `mode` (the mode bar's pick)."""
         if mode != self.mode:
             self.mode = mode
             self.rebuild()
@@ -341,7 +341,7 @@ class ThemeForm(QWidget):
         self.tab_bar.setCurrentIndex(self.TABS.index(name))
 
     def reveal(self, kind: str, name: str) -> bool:
-        """Go to the field of a colour role (kind "role", in the mode shown) or of a layout setting (kind "layout", a
+        """Go to the field of a color role (kind "role", in the mode shown) or of a layout setting (kind "layout", a
         hook's name) or of the logo's file (kind "logo"): its tab, its group opened, the field scrolled into view, focused and lit for a moment. A click
         on the sample slides asks for this. False when the form has no such field."""
         if self.model is None or not self.model.readable:
@@ -368,7 +368,7 @@ class ThemeForm(QWidget):
                 self._tells[name]()
             return True
         title = next((title for title, roles in ROLE_SECTIONS if name in roles), None)
-        if title is None and name in [role for _hook, role in CODE_COLOURS]:
+        if title is None and name in [role for _hook, role in CODE_COLORS]:
             title = "Code panels"
         if title is None:
             return False
@@ -617,7 +617,7 @@ class ThemeForm(QWidget):
             self.apply(lambda: self.model.remove_mode(mode_id))
 
     def _mode_heading(self) -> QWidget:
-        """Which mode the Colours tab shows, and what it starts from."""
+        """Which mode the Colors tab shows, and what it starts from."""
         mode = next((m for m in self.model.modes() if m.id == self.mode), self.model.modes()[0])
         if not mode.id:
             text = "The theme's colors (it has no color modes; add one under Identity)."
@@ -735,7 +735,7 @@ class ThemeForm(QWidget):
         more.clicked.connect(self._toggle_palette)
         buttons.addWidget(more)
         add = Button("Add a color of the theme's own…", "ghost", compact=True)
-        add.clicked.connect(self._add_own_colour)
+        add.clicked.connect(self._add_own_color)
         buttons.addWidget(add)
         buttons.addStretch(1)
         layout.addLayout(buttons)
@@ -747,14 +747,14 @@ class ThemeForm(QWidget):
 
     def _palette_read(self, name: str, mode: str) -> tuple[Optional[str], str, Optional[str]]:
         written = self.model.palette_written(name, mode)
-        colour = self.model.palette_hex(name, mode)
+        color = self.model.palette_hex(name, mode)
         if mode == self.model.base:
             follows = f"framework: {self.model.default(name) or '?'}"
         else:
-            follows = colour or "base color"
-        return written, follows, colour
+            follows = color or "base color"
+        return written, follows, color
 
-    def _add_own_colour(self) -> None:
+    def _add_own_color(self) -> None:
         dialog = QDialog(self)
         dialog.setWindowTitle("Add a color of the theme's own")
         form = QFormLayout(dialog)
@@ -768,7 +768,7 @@ class ThemeForm(QWidget):
         buttons.rejected.connect(dialog.reject)
         form.addRow(buttons)
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            self.apply(lambda: self.model.add_own_colour(name.text().strip(), value.text().strip()))
+            self.apply(lambda: self.model.add_own_color(name.text().strip(), value.text().strip()))
 
     def _group(self, title: str, summary: str) -> tuple[QWidget, Optional[QVBoxLayout]]:
         """A folding group: its header (a button with the title and `summary`) and, when open, its body's layout."""
@@ -804,7 +804,7 @@ class ThemeForm(QWidget):
             grid.addWidget(label, row, 0)
             cell = _Cell(self, read=lambda r=role, m=self.mode: self._role_read(r, m),
                          write=lambda value, r=role, m=self.mode: self.model.set_role(r, m, value),
-                         choices=self.model.colour_names(), picker=False,
+                         choices=self.model.color_names(), picker=False,
                          enabled=self.model.role_editable(role, self.mode), usage=("role", role, self.mode),
                          source=("role", role))
             self._cells.append(cell)
@@ -822,7 +822,7 @@ class ThemeForm(QWidget):
             return box
         grid = self._row_grid(layout)
         base = self.mode == self.model.base
-        for row, (name, role) in enumerate(CODE_COLOURS):
+        for row, (name, role) in enumerate(CODE_COLORS):
             label = text_label(_label(name), "body")
             grid.addWidget(label, row, 0)
             if base:
@@ -832,7 +832,7 @@ class ThemeForm(QWidget):
             else:
                 cell = _Cell(self, read=lambda r=role, m=self.mode: self._role_read(r, m),
                              write=lambda value, r=role, m=self.mode: self.model.set_role(r, m, value),
-                             choices=self.model.colour_names(), picker=False, usage=("role", role, self.mode),
+                             choices=self.model.color_names(), picker=False, usage=("role", role, self.mode),
                              source=("role", role))
             self._cells.append(cell)
             cell.bind_label(label)

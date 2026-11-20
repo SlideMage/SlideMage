@@ -115,8 +115,8 @@ class Dial(QWidget):
         track = QColor(text)
         track.setAlpha(50)
         tokens = self._tokens()
-        colours = {"done": QColor(tokens.ok), "working": QColor(tokens.info), "failed": QColor(tokens.warning)}
-        arc = colours.get(self.state, QColor(text))
+        colors = {"done": QColor(tokens.ok), "working": QColor(tokens.info), "failed": QColor(tokens.warning)}
+        arc = colors.get(self.state, QColor(text))
         if self.state in ("idle", "waiting"):
             arc.setAlpha(150)
         scale = self.width() / DIAL_SIZE

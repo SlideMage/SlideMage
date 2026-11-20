@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Where a colour is used on the sample slides (theme_probe; docs/plans/theme-editor.md, section 3.3, stage C1c part 2):
+"""Where a color is used on the sample slides (theme_probe; docs/plans/theme-editor.md, section 3.3, stage C1c part 2):
 the probe lines, the boxes read from the PDF, a real probe render, the sample panel's dimming and page jump, and the theme form telling
-it which colour field has the focus; and the way back: a click on the slide that goes to the field of what is
-there (a colour role or a layout setting)."""
+it which color field has the focus; and the way back: a click on the slide that goes to the field of what is
+there (a color role or a layout setting)."""
 import os
 import shutil
 from pathlib import Path
@@ -31,7 +31,7 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8").replace("\r\n", "\n")
 
 
-def test_probe_colours_are_distinct_and_no_greys():
+def test_probe_colors_are_distinct_and_no_greys():
     assert len(theme_probe.PROBES) == 60 == len(set(theme_probe.PROBES))
     assert all(len({p[0:2], p[2:4], p[4:6]}) > 1 for p in theme_probe.PROBES)
     roles = theme_probe.names("role", ThemeFile(read(SHIPPED)))
@@ -71,7 +71,7 @@ def rgb(probe: str) -> tuple:
 FIRST, SECOND, THIRD = theme_probe.PROBES[0], theme_probe.PROBES[1], theme_probe.PROBES[2]
 
 
-def test_the_boxes_are_the_fills_and_the_text_of_a_probe_colour(tmp_path):
+def test_the_boxes_are_the_fills_and_the_text_of_a_probe_color(tmp_path):
     def draw(page):
         page.draw_rect(pymupdf.Rect(0, 0, 200, 20), color=None, fill=rgb(FIRST))          # a title bar
         page.insert_text((10, 60), "Some words", fontsize=10, color=rgb(SECOND))
@@ -96,7 +96,7 @@ def test_a_rectangle_painted_later_covers_what_is_under_it(tmp_path):
         page.draw_rect(pymupdf.Rect(0, 0, 200, 100), color=None, fill=rgb(FIRST))         # the canvas
         page.draw_rect(pymupdf.Rect(0, 0, 200, 20), color=None, fill=rgb(SECOND))         # the title bar over it
         page.draw_rect(pymupdf.Rect(150, 0, 200, 30), color=None, fill=rgb(FIRST))        # the canvas again, a corner
-        page.draw_rect(pymupdf.Rect(0, 90, 200, 100), color=None, fill=(0.5, 0.5, 0.5))   # a footer of no probe colour
+        page.draw_rect(pymupdf.Rect(0, 90, 200, 100), color=None, fill=(0.5, 0.5, 0.5))   # a footer of no probe color
         page.draw_circle((100, 50), 3, color=None, fill=rgb(THIRD))                        # a bullet: covers nothing
         page.draw_rect(pymupdf.Rect(20, 40, 60, 60), color=None, fill=rgb(THIRD))
         page.draw_rect(pymupdf.Rect(20, 40, 60, 60), color=None, fill=rgb(SECOND))        # hides the one before fully
@@ -118,7 +118,7 @@ def test_a_rectangle_painted_later_covers_what_is_under_it(tmp_path):
     assert not bullet.exact and bullet.x1 - bullet.x0 == pytest.approx((6 + 2 * theme_probe.PAD_X) / 200, abs=0.002)
 
 
-def test_words_on_one_line_are_one_box_and_another_colour_between_them_splits_it(tmp_path):
+def test_words_on_one_line_are_one_box_and_another_color_between_them_splits_it(tmp_path):
     def draw(page):
         page.insert_text((10, 30), "one", fontsize=10, color=rgb(FIRST))
         page.insert_text((10 + pymupdf.get_text_length("one ", fontsize=10), 30), "two", fontsize=10, color=rgb(FIRST))
@@ -148,7 +148,7 @@ def test_a_real_probe_finds_the_block_titles_and_the_code_panel():
     assert bar.exact and bar.x0 < 0.001 and bar.y0 < 0.001 and 0.85 < bar.x1 < 1 and 0.05 < bar.y1 < 0.15
     footer = usage.boxes(2, "footer_text")
     assert footer and all(not b.exact and b.y0 > 0.9 for b in footer)
-    assert all(b.y0 > 0.1 for b in usage.boxes(2, "text"))         # no body text colour in the title bar
+    assert all(b.y0 > 0.1 for b in usage.boxes(2, "text"))         # no body text color in the title bar
     assert not any(b.y0 < 0.05 and b.x0 < 0.5 for b in usage.boxes(2, "canvas"))   # the canvas: not under the bar
 
 
@@ -201,7 +201,7 @@ def make_view(tmp_path, pages_with_role=(3,)):
 qapp_ref = [None]
 
 
-def test_the_panel_lights_up_the_focused_colour_and_jumps_to_its_page(qapp, tmp_path):
+def test_the_panel_lights_up_the_focused_color_and_jumps_to_its_page(qapp, tmp_path):
     qapp_ref[0] = qapp
     editor, view, renders = make_view(tmp_path)
     assert view._page == 2
@@ -234,7 +234,7 @@ def test_the_panel_lights_up_the_focused_colour_and_jumps_to_its_page(qapp, tmp_
     view.close()
 
 
-def test_the_form_tells_which_colour_has_the_focus(qapp):
+def test_the_form_tells_which_color_has_the_focus(qapp):
     editor = LatexPlainTextEdit(ThemeManager())
     editor.set_text(read(SHIPPED))
     form = ThemeForm(editor, SHIPPED, ROOT / "example", ROOT / "latex" / "SlideMage_setup.tex")
