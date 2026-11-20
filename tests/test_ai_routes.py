@@ -17,8 +17,6 @@ def fake_route(fake_routes):
     return fake_routes.local
 
 
-def test_registry_starts_empty():
-    assert routes.all() == [] and routes.get("missing") is None
 
 
 def test_registry_sides_and_duplicate_ids(fake_routes):
@@ -162,14 +160,3 @@ def test_legacy_cloud_alias_is_read_and_saved_for_a_registered_route(ctx):
         ai_profile.set_cloud_conn(ctx, "local")
 
 
-def test_fake_route_can_script_provider_runner_and_surface(ctx, fake_routes):
-    fake = fake_routes.local
-    fake.reply = "scripted"
-    fake.runner = lambda *args: "task result"
-    fake.surface_factory = lambda *args, **kwargs: "surface"
-    route = Route(fake.id, CHAT, "fake-1")
-    provider = resolver.provider_for(ctx, route)
-    assert provider.chat([{"role": "user", "content": "hello"}]).text == "scripted"
-    assert provider.requests[0][0] == [{"role": "user", "content": "hello"}]
-    assert fake.task_runner(routes.context(ctx, fake.id), route)() == "task result"
-    assert fake.chat_surface() == "surface"

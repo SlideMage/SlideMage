@@ -7,7 +7,9 @@ Every non-backwards-compatible change of SlideMage or its LaTeX framework gets
 one :class:`Change` in :data:`CHANGES`, added in the same commit as the change
 (tests/test_compat.py fails a "BREAKING:" release without one). A change has
 
-- ``since``: the SlideMage version that introduced it;
+- ``since``: the SlideMage version that introduced it; ``"NEXT"`` (change_fragments.NEXT) in a change that is
+  not released yet, which packaging/make_release.py replaces with the release's version. Until then it counts as
+  the running version, so a build from source applies it;
 - ``severity``: BREAKS (a project may stop compiling), LAYOUT (a file layout
   changed) or APPEARANCE (it compiles, but looks different);
 - ``detect(root)``: optional, a fast static scan of the project that returns
@@ -52,6 +54,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
+from . import change_fragments
 from . import (compat_bibliography, compat_citation_format, compat_color_cut, compat_color_roles, compat_hooks,
                compat_names, compat_own_theme, compat_project_macros, project)
 from .fileio import atomic_write
@@ -449,7 +452,8 @@ class Evaluation:
     @property
     def readable_from(self) -> str:
         """The oldest SlideMage that still reads the project after the applied changes ("" for none)."""
-        versions = [p.change.since for p in self.applied if _tuple(p.change.since) is not None]
+        versions = [change_fragments.resolve(p.change.since) for p in self.applied]
+        versions = [v for v in versions if _tuple(v) is not None]
         return max(versions, key=_tuple, default="")
 
     @property
@@ -514,7 +518,7 @@ def evaluate(root: Path, app_version: str, changes: Optional[list[Change]] = Non
     base, current = _tuple(checked_version(root)), _tuple(app_version)
     skipped = dismissed_ids(root)
     for change in changes:
-        since = _tuple(change.since)
+        since = _tuple(change_fragments.resolve(change.since, app_version))
         if change.id in skipped or since is None or current is None:
             continue
         if since > current or (base is not None and since <= base):

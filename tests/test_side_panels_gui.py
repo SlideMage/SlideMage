@@ -12,7 +12,7 @@ from PySide6.QtCore import QCoreApplication, QEvent, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QPushButton, QWidget
 
-from conftest import build_window, make_project, wait_until
+from conftest import build_window, make_project, wait_until, pause
 from slidemage import app_settings, deck_scan, languages, slide_templates
 from slidemage.fileio import read_text_exact as read
 from slidemage.slide_source import read_slide_source
@@ -1211,7 +1211,7 @@ def test_a_bib_tab_keeps_the_focused_slide_and_rebuilds_nothing(window, monkeypa
     window.open_slide_editor(window.project.bibliography_path, tab=True)
     assert window.centre.tab_slide() is None and panels._panel_state() == built
     assert not panels._rebuild.isActive() and not panels._shield.isVisible()
-    QTest.qWait(50)
+    pause(50)
     assert rebuilt == []
 
 

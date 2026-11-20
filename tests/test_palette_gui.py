@@ -165,18 +165,6 @@ def test_a_slide_of_the_deck_is_found_by_id_or_title_and_focused(window):
     assert slide_list.find.text() == "" and not item.isHidden() and slide_list.tree.currentItem() is item
 
 
-def test_a_slide_outside_the_deck_opens_in_the_source_view(window, monkeypatch):
-    in_deck = {r.call.id_slug for r in window.slide_list.rows()}
-    outside = next(s for s in slide_ids.list_id_slugs(window.project) if s not in in_deck)
-    opened = []
-    monkeypatch.setattr(window, "open_slide_editor", lambda path, **kwargs: opened.append(path))
-    palette = window.palette
-    palette.open()
-    type_text(palette, outside)
-    entry = next(e for e in palette._entries if e.group == GO_TO_SLIDE and e.label == outside)
-    assert entry.meta == "not in this deck"
-    palette._run(palette._entries.index(entry))
-    assert [p.name for p in opened] == [f"{outside}-current.tex"]
 
 
 def test_a_slide_from_outside_the_deck_opens_a_tab_and_keeps_the_focus_when_it_is_saved(window):

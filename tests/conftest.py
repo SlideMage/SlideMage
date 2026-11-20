@@ -103,6 +103,22 @@ def _isolated_config_dir(monkeypatch, tmp_path):
     monkeypatch.setattr(updater, "config_dir", lambda: project.config_dir())
 
 
+@pytest.fixture(scope="module")
+def _module_config_home(tmp_path_factory):
+    return tmp_path_factory.mktemp("tex-config")
+
+
+@pytest.fixture
+def same_tex_configuration(monkeypatch, _isolated_config_dir, _module_config_home):
+    """XDG_CONFIG_HOME for every test of a module of real TeX: one empty folder of the module's own.
+
+    latexmk reads an rc file under XDG_CONFIG_HOME, so that path is part of the key of the precompiled preamble and of
+    a preview's build folder (preview_build.configuration_key). _isolated_config_dir gives each test a new folder,
+    so each test built the format again (about 3 s) and started every view's build from scratch. The machine
+    preferences stay the test's own: project.config_dir and APPDATA are left as _isolated_config_dir set them."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(_module_config_home))
+
+
 @pytest.fixture(autouse=True)
 def _diagnostics_reset():
     """A test that runs cli.main() sets up the error log and the exception hooks; the next test starts without."""
@@ -443,6 +459,22 @@ def server():
     srv = Server()
     yield srv
     srv.close()
+
+
+def pause(milliseconds):
+    """Wait a fixed time while Qt events and background threads keep running.
+
+    Use this instead of QTest.qWait(): qWait holds the GIL while it waits, so a worker thread the test waits for
+    gets it only between two waits and can take seconds under load (the cause of several load-flaky tests).
+    """
+    from PySide6.QtWidgets import QApplication
+
+    end = time.monotonic() + milliseconds / 1000
+    while True:
+        QApplication.processEvents()
+        if time.monotonic() >= end:
+            break
+        time.sleep(0.005)
 
 
 def wait_until(condition, seconds=5.0):

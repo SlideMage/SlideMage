@@ -14,8 +14,9 @@ from conftest import EXAMPLE_PROJECT
 from slidemage import qr_code, slide_preview
 from slidemage.qr_code import QRSpec
 
-pytestmark = pytest.mark.skipif(shutil.which("latexmk") is None or shutil.which("lualatex") is None,
-                                reason="needs a TeX installation")
+pytestmark = [pytest.mark.skipif(shutil.which("latexmk") is None or shutil.which("lualatex") is None,
+                                 reason="needs a TeX installation"),
+              pytest.mark.usefixtures("same_tex_configuration")]     # one format and build folder for the module
 
 
 def underline_gaps(page):

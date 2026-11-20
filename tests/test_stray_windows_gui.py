@@ -5,12 +5,11 @@ that is shown, even for one event, is a small top-level window in the middle of 
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QObject
-from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
 
 from slidemage import deck_scan
 from slidemage.ui.kit.widgets import clear_layout
-from conftest import EXAMPLE_PROJECT, build_window
+from conftest import EXAMPLE_PROJECT, build_window, pause
 
 
 class _TopLevelShows(QObject):
@@ -39,7 +38,7 @@ def test_clear_layout_never_shows_a_widget_it_removes(qapp):
     qapp.installEventFilter(spy)
     try:
         clear_layout(layout)
-        QTest.qWait(50)
+        pause(50)
     finally:
         qapp.removeEventFilter(spy)
         parent.close()
@@ -63,7 +62,7 @@ def test_clicking_slides_opens_no_window_of_its_own(qapp, monkeypatch):
     deck = next(d for d in deck_scan.scan_decks(EXAMPLE_PROJECT) if d.name == "slidemage-manual")
     window.state.set_deck(deck)
     window.state.set_mode("source")
-    QTest.qWait(200)
+    pause(200)
     spy = _TopLevelShows(window, *QApplication.topLevelWidgets())
     qapp.installEventFilter(spy)
     try:
@@ -71,7 +70,7 @@ def test_clicking_slides_opens_no_window_of_its_own(qapp, monkeypatch):
         for item in tree.slide_items()[:4]:
             tree.setCurrentItem(item)
             tree.itemClicked.emit(item, 0)
-            QTest.qWait(100)
+            pause(100)
     finally:
         qapp.removeEventFilter(spy)
     assert spy.shown == []

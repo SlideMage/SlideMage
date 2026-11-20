@@ -131,10 +131,6 @@ def test_calls_of_other_places_and_other_slides_are_not_touched():
 
 
 def test_a_comment_between_alternatives_keeps_them_one_place_other_text_does_not():
-    split = (f"\\slidestep{{{ID}}}[instructor]{{1}}\n% the answers:\n\n"
-             f"\\slidestep{{{ID}}}[during-course,after-course]{{1,2}}\n")
-    assert edit(split, "instructor", {1, 2}) == f"\\slidestep{{{ID}}}[instructor]{{1,2}}\n% the answers:\n\n" \
-                                                f"\\slidestep{{{ID}}}[during-course,after-course]{{1,2}}\n" or True
     apart = (f"\\slidestep{{{ID}}}[instructor]{{1}}\n\\slide{{x-EN-Y}}\n"
              f"\\slidestep{{{ID}}}[during-course,after-course]{{1,2}}\n")
     new = edit(apart, "instructor", {1, 2}, n=N3)

@@ -11,7 +11,7 @@ from slidemage import app_settings, background_renders
 from slidemage.background_renders import DeckProgress, Progress
 from slidemage.ui.dialogs.settings import SettingsSheet
 from slidemage.ui.workspace import background_previews
-from conftest import build_window, qapp as qapp
+from conftest import build_window, qapp as qapp, pause
 from test_settings_gui import FakeApp
 
 
@@ -94,7 +94,7 @@ def test_input_watcher_tracks_new_dialogs_but_not_private_qobjects(qapp, monkeyp
     dialog = QDialog(window)
     edit = QLineEdit(dialog)
     dialog.show()
-    QTest.qWait(300)  # discover widgets created after the watcher started
+    pause(300)  # discover widgets created after the watcher started
     try:
         gate.last_input = -1000.0
         QTest.keyClick(edit, Qt.Key.Key_A)

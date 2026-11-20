@@ -4,6 +4,8 @@
 states and renders (the renderer is faked), and unsaved edits across slides."""
 from __future__ import annotations
 
+from conftest import pause
+
 import time
 from types import SimpleNamespace
 
@@ -130,11 +132,16 @@ def wait_idle(centre):
 
     deadline = time.monotonic() + 5
     recorded = False
+    idle_since = None                    # a render starts on a later turn of the event loop: idle must last a moment
     while time.monotonic() < deadline:
-        QTest.qWait(10)
+        pause(10)
         recorded = recorded or recording()
-        if not (preview._busy or bool(preview._lookups) or recording()):
-            break
+        if preview._busy or bool(preview._lookups) or recording():
+            idle_since = None
+        else:
+            idle_since = idle_since or time.monotonic()
+            if time.monotonic() - idle_since >= 0.06:
+                break
         QApplication.processEvents()
         time.sleep(0.01)
     if recorded:                         # the check runs on the next poll of _check_when_recorded (every 50 ms)
@@ -607,7 +614,7 @@ def test_an_unsaved_draft_offers_to_render_the_buffer_not_the_saved_file(held_au
     centre.state.set_focused_slide('aaa')
     centre.state.set_mode('split')
     centre.source.current.editor.insertPlainText('% a draft, never saved\n')
-    QTest.qWait(300)
+    pause(300)
     wait_idle(centre)
     preview = centre.preview
     assert 'Unsaved edits' in preview._status_chip.text()
@@ -621,7 +628,7 @@ def test_an_unsaved_draft_offers_to_render_the_buffer_not_the_saved_file(held_au
     assert len(renders) == 1 and 'a draft, never saved' in str(renders[0])
     assert centre.source.current.dirty
     centre.source.current.editor.insertPlainText('% a second edit while still dirty\n')
-    QTest.qWait(200)
+    pause(200)
     wait_idle(centre)
     assert preview._status_draft
     assert len(renders) == 1  # status refresh never compiles on a keystroke

@@ -5,14 +5,19 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+from pathlib import Path
 
 import pytest
 
 from slidemage import processes, version
 
 
-@pytest.mark.parametrize("commit_dt", [None, "2026-10-11 12:34"])
-def test_version_is_lazy_cached_and_importable(monkeypatch, commit_dt):
+@pytest.mark.parametrize("git_out, unreleased, expected", [
+    (None, False, ""),
+    ("3e7142f9 2026-10-11 12:34", False, " (2026-10-11 12:34)"),
+    ("3e7142f9 2026-10-11 12:34", True, "+dev (3e7142f9, 2026-10-11 12:34)"),
+])
+def test_version_is_lazy_cached_and_importable(monkeypatch, git_out, unreleased, expected):
     def unexpected_git(*args, **kwargs):
         raise AssertionError("Git ran while importing version.py")
 
@@ -28,11 +33,11 @@ def test_version_is_lazy_cached_and_importable(monkeypatch, commit_dt):
 
     def run_git(*args):
         calls.append(args)
-        return commit_dt
+        return git_out
 
     monkeypatch.setattr(module, "run_git", run_git)
-    expected = (f"{module.VERSION_NUMBER} ({commit_dt})"
-                if commit_dt is not None else module.VERSION_NUMBER)
+    monkeypatch.setattr(module, "unreleased_fragments", lambda: [Path("changes/x.md")] if unreleased else [])
+    expected = module.VERSION_NUMBER + expected
     assert module.VERSION == expected
     assert module.VERSION == expected
     imported = {}
