@@ -4,7 +4,6 @@ r"""\SMFinalStateForStudents that no deck needs any longer is taken out of the s
 no frozen file, and one undo."""
 from __future__ import annotations
 
-import hashlib
 
 import pytest
 
@@ -144,7 +143,6 @@ def test_taking_the_flag_out_does_not_make_the_slide_look_changed_but_putting_it
     with pytest.raises(ValueError, match="has not changed"):
         slide_versioning.plan_update(current, ID, text, "patch")
     assert slide_versioning.mark_external_edit(project, current) is False
-    assert hashlib.sha256(current.read_bytes()).hexdigest()
 
 
 # -- the slide list: the deck edit, the cleanup and one undo ------------------------------------------

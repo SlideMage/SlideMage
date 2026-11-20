@@ -105,27 +105,16 @@ def test_multi_unknown_fields_ignored():
     assert [r.version for r in cat.plugins[0].releases] == ["2.0.0", "1.5.0", "1.0.0"]
 
 
-def test_multi_best_release_oldest_for_v9_with_api_1():
+@pytest.mark.parametrize("app, apis, expected", [
+    ("v9.0.0", {1}, "1.0.0"),           # the oldest: the only one for v9 with API 1
+    ("v9.0.0", {1, 2}, "1.5.0"),        # API 2 when it is supported
+    ("v99.0.0", {1}, "2.0.0"),          # the newest when the app is 99
+    ("v8.64.0", {1, 2}, None),          # nothing fits
+], ids=["oldest_for_v9_with_api_1", "api_2_when_supported", "newest_when_app_is_99", "none_when_nothing_fits"])
+def test_multi_best_release(app, apis, expected):
     plugin = parse(_json("index-multi.json")).plugins[0]
-    release = best_release(plugin, "v9.0.0", {1})
-    assert release is not None and release.version == "1.0.0"
-
-
-def test_multi_best_release_api_2_when_supported():
-    plugin = parse(_json("index-multi.json")).plugins[0]
-    release = best_release(plugin, "v9.0.0", {1, 2})
-    assert release is not None and release.version == "1.5.0"
-
-
-def test_multi_best_release_newest_when_app_is_99():
-    plugin = parse(_json("index-multi.json")).plugins[0]
-    release = best_release(plugin, "v99.0.0", {1})
-    assert release is not None and release.version == "2.0.0"
-
-
-def test_multi_best_release_none_when_nothing_fits():
-    plugin = parse(_json("index-multi.json")).plugins[0]
-    assert best_release(plugin, "v8.64.0", {1, 2}) is None
+    release = best_release(plugin, app, apis)
+    assert (release.version if release is not None else None) == expected
 
 
 def test_best_release_defaults_to_this_app():

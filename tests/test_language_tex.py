@@ -19,8 +19,9 @@ from conftest import EXAMPLE
 from slidemage import languages, slide_preview
 from slidemage.project import ProjectContext, _ignore_template_build_output
 
-pytestmark = pytest.mark.skipif(shutil.which("latexmk") is None or shutil.which("lualatex") is None,
-                                reason="needs a TeX installation")
+pytestmark = [pytest.mark.skipif(shutil.which("latexmk") is None or shutil.which("lualatex") is None,
+                                 reason="needs a TeX installation"),
+              pytest.mark.usefixtures("same_tex_configuration")]     # one format and build folder per project copy
 
 BODY = ("\\begin{standardframe}{Language}\nSlide language: [\\slideLanguage] "
         "\\ifSMSlideLanguageSet is set\\else is not set\\fi. Main: [\\SMMainLanguage]. "
@@ -36,23 +37,42 @@ def example_copy(parent: Path) -> ProjectContext:
     return ctx
 
 
-@pytest.fixture
-def ctx(tmp_path):
-    return example_copy(tmp_path)
+def reset(ctx: ProjectContext) -> ProjectContext:
+    """The copy as example_copy made it: English and German, no strings or patterns of the project's own. The copy
+    and its .build/ are kept from test to test, so its precompiled preamble is built once, not once per test."""
+    (ctx.root / "SlideMage_project_macros.tex").unlink(missing_ok=True)
+    shutil.rmtree(ctx.root / "hyphenation", ignore_errors=True)
+    languages.set_project_languages(ctx, "en", ["de"])
+    return ctx
+
+
+@pytest.fixture(scope="module")
+def _module_copy(tmp_path_factory):
+    return example_copy(tmp_path_factory.mktemp("languages"))
 
 
 @pytest.fixture
-def ctx_on_tex_path(tmp_path):
+def ctx(_module_copy):
+    return reset(_module_copy)
+
+
+@pytest.fixture(scope="module")
+def _module_copy_on_tex_path(tmp_path_factory):
     """example_copy where TeX finds the project's own files. On Windows that is not under %TEMP%: Git for Windows' Perl,
     which runs latexmk, calls that folder /tmp, so .latexmkrc puts a path on TEXINPUTS that TeX cannot resolve."""
     if sys.platform != "win32":
-        yield example_copy(tmp_path)
+        yield example_copy(tmp_path_factory.mktemp("languages-tex-path"))
         return
     parent = Path(tempfile.mkdtemp(prefix="slidemage-test-", dir=Path.home()))
     try:
         yield example_copy(parent)
     finally:
         shutil.rmtree(parent, ignore_errors=True)
+
+
+@pytest.fixture
+def ctx_on_tex_path(_module_copy_on_tex_path):
+    return reset(_module_copy_on_tex_path)
 
 
 def render(ctx, id_slug: str, language: str = "en"):
@@ -62,16 +82,28 @@ def render(ctx, id_slug: str, language: str = "en"):
         return " ".join(doc[0].get_text().split())
 
 
+def render_all(ctx, id_slugs, language: str = "en"):
+    """The text of each slide's page, the slides compiled together in one document (one compile, not one each). A slide
+    whose slug names no language goes first: in one document \\slideLanguage keeps the previous slide's tag (only
+    \\ifSMSlideLanguageSet is reset), which a page compiled on its own never shows."""
+    slides = [(slug, BODY, 1, None, None, False, False) for slug in id_slugs]
+    pdf = slide_preview.render_slide_texts_to_pdf(ctx, slides, "instructor", language, None)
+    with pymupdf.open(pdf) as doc:
+        pages = [" ".join(page.get_text().split()) for page in doc]
+    assert len(pages) == len(id_slugs)
+    return dict(zip(id_slugs, pages))
+
+
 def test_a_project_language_in_a_slug_sets_the_slide_language_only_with_the_line(ctx):
-    text = render(ctx, "zz7-FR-Test")
-    assert "Slide language: [] is not set" in text                  # English and German: FR is not a language
+    pages = render_all(ctx, ["zz7-FR-Test", "zz7-EN-Test", "zz7-DE-Test", "zz7-mult-Test"])
+    assert "Slide language: [] is not set" in pages["zz7-FR-Test"]  # English and German: FR is not a language
     for slug, tag in (("zz7-EN-Test", "EN"), ("zz7-DE-Test", "DE"), ("zz7-mult-Test", "mult")):
-        assert f"Slide language: [{tag}] is set" in render(ctx, slug)
+        assert f"Slide language: [{tag}] is set" in pages[slug]
     languages.set_project_languages(ctx, "en", ["de", "fr"])
-    text = render(ctx, "zz7-FR-Test")
-    assert "Slide language: [FR] is set" in text and "Main: [en]" in text
-    assert "Slide language: [] is not set" in render(ctx, "zz7-IT-Test")      # Italian is not one of them
-    assert "Slide language: [mult] is set" in render(ctx, "zz7-mult-Test")
+    pages = render_all(ctx, ["zz7-IT-Test", "zz7-FR-Test", "zz7-mult-Test"])
+    assert "Slide language: [FR] is set" in pages["zz7-FR-Test"] and "Main: [en]" in pages["zz7-FR-Test"]
+    assert "Slide language: [] is not set" in pages["zz7-IT-Test"]      # Italian is not one of them
+    assert "Slide language: [mult] is set" in pages["zz7-mult-Test"]
 
 
 def test_the_main_language_and_a_main_language_other_than_english(ctx):
@@ -203,10 +235,12 @@ def test_a_slide_hyphenates_in_its_own_language_and_a_multilingual_one_in_the_de
     ctx = ctx_on_tex_path
     fake_french(ctx)
     languages.set_project_languages(ctx, "en", ["fr"])
-    text, _log = render_hyphenation(ctx, "fr", "EN")             # not translated yet: English, also in a French deck
-    assert "Language: [0] mins [2/3]" in text and "xqz- xqz-" not in text
-    text, _log = render_hyphenation(ctx, "fr", "mult")
-    assert "xqz- xqz-" in text
+    slides = [(f"zz7-{slide}-Test", HYPHENATION, 1, None, None, False, False) for slide in ("EN", "mult")]
+    pdf = slide_preview.render_slide_texts_to_pdf(ctx, slides, "instructor", "fr", None)     # both in a French deck
+    with pymupdf.open(pdf) as doc:
+        english, multilingual = (" ".join(page.get_text().split()) for page in doc)
+    assert "Language: [0] mins [2/3]" in english and "xqz- xqz-" not in english      # not translated yet: English
+    assert "xqz- xqz-" in multilingual
     text, _log = render_hyphenation(ctx, "en", "FR")             # a French slide in an English deck
     assert "xqz- xqz-" in text
 

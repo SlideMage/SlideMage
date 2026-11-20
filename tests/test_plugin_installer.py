@@ -74,12 +74,9 @@ def test_not_a_zip(tmp_path):
     fails(p, "zip")
 
 
-def test_zip_slip(tmp_path):
-    fails(make_zip(tmp_path, extra=[("../x", "bad")]), "unsafe")
-
-
-def test_absolute_path(tmp_path):
-    fails(make_zip(tmp_path, extra=[("/etc/x", "bad")]), "unsafe")
+@pytest.mark.parametrize("member", ["../x", "/etc/x"])        # a path that leaves the folder; an absolute path
+def test_zip_slip_and_absolute_path(tmp_path, member):
+    fails(make_zip(tmp_path, extra=[(member, "bad")]), "unsafe")
 
 
 def test_drive_letter_and_backslash(tmp_path):
@@ -120,20 +117,17 @@ def test_manifest_not_at_root(tmp_path):
     fails(make_zip(tmp_path, toml=None, files={"sub/plugin.toml": HELLO_TOML, "hello/__init__.py": ""}), "plugin.toml")
 
 
-def test_bad_manifest(tmp_path):
-    fails(make_zip(tmp_path, toml=HELLO_TOML.replace('id = "hello"', 'id = "Hello!"')), "not valid")
-
-
 def test_missing_package(tmp_path):
     fails(make_zip(tmp_path, files={"other/__init__.py": ""}), "package folder")
 
 
-def test_wrong_api_version(tmp_path):
-    fails(make_zip(tmp_path, toml=HELLO_TOML.replace("api_version = 1", "api_version = 99")), "interface 99")
-
-
-def test_requires_newer_slidemage(tmp_path):
-    fails(make_zip(tmp_path, toml=HELLO_TOML.replace(">=8.0", ">=99.0")), "needs SlideMage")
+@pytest.mark.parametrize("old, new, message", [
+    ('id = "hello"', 'id = "Hello!"', "not valid"),                 # a bad id
+    ("api_version = 1", "api_version = 99", "interface 99"),         # a newer plugin interface
+    (">=8.0", ">=99.0", "needs SlideMage"),                         # needs a newer SlideMage
+])
+def test_a_manifest_that_cannot_be_installed(tmp_path, old, new, message):
+    fails(make_zip(tmp_path, toml=HELLO_TOML.replace(old, new)), message)
 
 
 def test_reinstall_stages_update_until_startup_cleanup(tmp_path):

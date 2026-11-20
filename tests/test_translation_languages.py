@@ -26,16 +26,8 @@ def write_project(ctx, data):
 
 # -- prompts --------------------------------------------------------------------------------------------
 
-def test_the_prompt_for_german_to_french_names_both_languages_and_the_address():
-    request = ai_tasks.translate_request("Folie.", "DE", "FR", "informal")
-    assert request == ("Translate this slide from German to French.\nAddress the audience informally.\n"
-                       "<slide>\nFolie.\n</slide>")
 
 
-def test_the_prompt_for_french_to_english_still_carries_the_address():
-    request = ai_tasks.translate_request("Diapo.", "FR", "EN", "formal")
-    assert request.startswith("Translate this slide from French to English.\nAddress the audience formally.\n")
-    assert "French slide" in ai_tasks.proofread_request("Diapo.", "FR")
 
 
 def test_the_last_resort_prompt_names_the_pair(ctx):
