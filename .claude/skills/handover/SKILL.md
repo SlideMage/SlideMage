@@ -50,17 +50,22 @@ says it could not notify Claude, the user tells you in chat. Either way, then:
 3. For each picked task, in that order: read only the handover section its `src` points to (grep for the heading), plus the
    "Working rule" and "How to work" parts of the section it sits in. The user's note refines or overrides the task text: integrate it into the task's description first
    (`desc`, the text between its markers, and its section), clear the block line's `notes` field, and then work from the result.
-4. Do the task. Apply the file's standing rules (a worktree and branch per step from `origin/develop`; add a `changes/` fragment for
-   app-code changes, never a version bump; merge only on the user's go; never touch the main checkout's `latex/`). If the note leaves a decision the
+4. Do the task. Apply the file's standing rules (a worktree and branch per step from `origin/develop`; bump the version with
+   app-code commits; merge only on the user's go; never touch the main checkout's `latex/`). If the note leaves a decision the
    task text says to ask about open, ask before building.
 5. After each step, update `docs/handover.md`: the task's line in the TASKS block (`status`: `done` or `blocked`, and a
    changed `desc` if the scope moved) and its section, as the working rule says. Re-read the lines right before editing:
    other sessions append to this file.
 6. **Run choice.** Each pick carries `run` = `{mode, model, effort}`, preselected from the task's `run` recommendation and possibly
    changed by the user, so it is the user's instruction, not a suggestion:
-   - `mode: "session"` (page label "Subsession"): start a session of its own with `start_session` (`initiation: "user_asked"`, the
-     given `model` and `effort`, a worktree for work that ends in a branch or PR), with a brief that names the files, the
-     handover section and what done looks like. Do not do that task yourself.
+   - `mode: "session"` (page label "Subsession"): **start it directly** with `start_session` (`initiation: "user_asked"`:
+     the Start click is the user's ask; the given `model` and `effort`, a worktree for work that ends in a branch or PR; with
+     `context: "fresh"` also a `background` of at least 80 characters), with a brief that names the files, the handover
+     section and what done looks like. One session per task, in the picked order; say in one line which started, and carry
+     on with the other picks. Do not do that task yourself. This needs the allow rule `mcp__ccd_session__start_session` in
+     the main checkout's `.claude/settings.local.json` (gitignored, so each machine needs its own; with it a Haiku subsession
+     started directly in auto mode, user, 2026-11-20). If the call is refused anyway, fall back to a card
+     (`initiation: "own_initiative"`) that the user clicks, and tell them the rule is missing on this machine.
    - `mode: "agent"` (page label "Subagent"): run it inside this turn with the `Agent` tool, with the given `model` and `effort`.
    - `mode: ""`: do it in this session.
    Tasks that touch the same files go one after another, whatever their modes.
