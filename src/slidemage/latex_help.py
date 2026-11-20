@@ -211,6 +211,11 @@ _COMMANDS = [
        "starred form takes any number of languages, keyed by the \\decklanguage code; a deck in another language "
        "gets the main language's text. Commas and equals signs inside a value need braces.",
        example=r"\multilingualtext*{EN={Hello}, DE={Hallo}, FR={Bonjour}}"),
+    _c("SMNoteImage", r"\SMNoteImage[keys]{image file}",
+       "An image inside \\note{...}, scaled to fit the notes page (90% of its width, 45% of its height) so it "
+       "cannot push the note's text off the page. Notes show only in the presenter compile. Keys are "
+       "\\includegraphics keys and override the limits.",
+       example=r"\note{Ask for the chart's source. \SMNoteImage{media/chart-x.png}}"),
     _c("SMCode", r"\SMCode{text}",
        "Code in running text, in Fira Mono at 90%. The argument is typeset, so write \\_, \\{, \\} as in any text.",
        example=r"\SMCode{standardframe[c]}"),

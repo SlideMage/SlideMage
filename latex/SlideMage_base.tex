@@ -2511,6 +2511,15 @@
 	\setbeamertemplate{note page}[SMPresenter]
 	\makeatother
 \fi
+% \SMNoteImage[keys]{image file} (2026-11-20, user request: images on notes pages): an image inside \note{...},
+% bounded so it can never overflow the notes page. Beamer's note page does not break: an image taller than the
+% notes area is cut off and pushes the text after it off the page. The image is scaled to fit 90% of the note's
+% width and 45% of the page height (keepaspectratio), whichever limit is reached first; keys are
+% \includegraphics keys and come last, so [width=0.5\linewidth] or [height=4cm] override the defaults (their own
+% size is then the author's to keep within the page). Notes appear only in the presenter compile; elsewhere the
+% note, and this image with it, is not typeset.
+\newcommand{\SMNoteImage}[2][]{%
+	\includegraphics[width=0.9\linewidth,height=0.45\paperheight,keepaspectratio,#1]{#2}}
 % \SMHideFooterText: opt-in flag suppressing just \FooterText (the left
 % part of the footer) -- default false. Set true by the standout template's
 % own hook below, so `\begin{frame}[standout]` hides only that left part,
