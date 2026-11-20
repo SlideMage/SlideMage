@@ -200,30 +200,41 @@ them, zipped, to that tag's release page. The workflow refuses a tag that
 doesn't equal `VERSION_NUMBER` in `src/slidemage/version.py`, so a release
 always says which code it was built from:
 
-1. Bump `VERSION_NUMBER` in `src/slidemage/version.py` and append its history
-   entry to `src/slidemage/CHANGELOG.md`, commit.
-   The entry ends with a paragraph starting `NEW:` -- a one-sentence
-   summary, then one `- ` bullet per change users notice, in plain words:
+1. Every PR that changes the app adds a fragment to `changes/` (format in
+   `changes/README.md`): its kind (`fixed`, `new` or `breaking`), its reason,
+   the technical text, and a paragraph starting `NEW:` -- an optional
+   one-sentence summary, then one `- ` bullet per change users notice, in
+   plain words:
    ```
    NEW: Faster compiles for small edits.
    - Compile only some pages of a deck: type them into the Pages field.
-   - Fixed: the progress bar no longer keeps running after a page compile.
    ```
-2. `git tag vX.Y.Z && git push origin HEAD vX.Y.Z` (the branch and the tag).
-3. A few minutes later the release has `SlideMage-windows.zip` and
+   A PR leaves `VERSION_NUMBER` and `CHANGELOG.md` alone, so PRs open at the
+   same time do not conflict (issue #247). The PR check
+   (`.github/workflows/changelog-check.yml`) enforces both.
+2. On an up-to-date `develop`: `python packaging/make_release.py --dry-run`
+   shows the version (the last release raised by the biggest kind among the
+   fragments), the CHANGELOG entry and the release notes. Add
+   `--summary "..."` for a one-sentence summary of a release of several
+   changes.
+3. `python packaging/make_release.py --publish` writes the entry, sets
+   `VERSION_NUMBER`, fills in `since="NEXT"` in `compat`, deletes the
+   fragments, commits on `release/vX.Y.Z`, merges that PR with `--admin`,
+   tags the merge commit and pushes the tag.
+4. A few minutes later the release has `SlideMage-windows.zip` and
    `SlideMage-linux.zip`, and its release notes
-   (`packaging/release_notes.py`) list the `NEW:` bullets of every version
-   since the previous release, with the tagged version's summary on top,
-   then any breaking changes and a link to the full changelog. The
-   workflow refuses a release whose versions lack a `NEW:` paragraph.
+   (`packaging/release_notes.py`) give the release's summary, its `NEW:`
+   bullets, any breaking changes and a link to the full changelog. The
+   workflow refuses a tag with fragments or `NEXT` left over.
 
 **Breaking releases.** A release that breaks with the past -- a project,
 deck, setting or workflow that worked before no longer does, or now
-behaves differently -- raises the major number (`v5.0.0`), and its
-history entry in `src/slidemage/CHANGELOG.md` gets a paragraph of its own
-starting `BREAKING:` that says what changes and what to do about it. The release
-workflow refuses a major bump without that paragraph. Try it before
-tagging: `python packaging/release_notes.py vX.Y.Z`.
+behaves differently -- raises the minor number while SlideMage is in 0.x
+(`v0.18.0`; the major from v1.0.0 on). Its fragment has `kind: breaking`, a
+paragraph starting `BREAKING:` that says what changes and what to do about
+it, and a `compat:` line naming its `slidemage.compat.CHANGES` entries, which
+use `since="NEXT"`. The release script then raises the version accordingly, and
+the release workflow refuses such a bump without the `BREAKING:` paragraph.
 
 A downloaded executable can update itself. **File → Settings… → General →
 Updates** chooses what happens when SlideMage starts (per user and

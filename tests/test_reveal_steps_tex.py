@@ -12,8 +12,9 @@ import pytest
 from conftest import EXAMPLE_PROJECT
 from slidemage import slide_preview
 
-pytestmark = pytest.mark.skipif(shutil.which("latexmk") is None or shutil.which("lualatex") is None,
-                                reason="needs a TeX installation")
+pytestmark = [pytest.mark.skipif(shutil.which("latexmk") is None or shutil.which("lualatex") is None,
+                                 reason="needs a TeX installation"),
+              pytest.mark.usefixtures("same_tex_configuration")]     # one format and build folder for the module
 
 SLIDE_ID = "zz9-EN-Steps-Test"
 FRAME = "\\begin{standardframe}{Steps}\nA\\pause B\\pause C\n\\end{standardframe}\n"

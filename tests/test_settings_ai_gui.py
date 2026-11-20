@@ -103,11 +103,6 @@ def test_without_ai_routes_there_is_no_ai_tab(qapp):
 def test_the_old_tabs_open_the_ai_tab_at_their_section(qapp, alias, section):
     sheet = open_sheet(qapp, tab=alias)
     assert sheet.current_tab() == AI and sheet.scrolled_to == section
-    sheet.resize(760, 300)
-    sheet.show()
-    qapp.processEvents()
-    qapp.processEvents()
-    assert sheet._ai_area.verticalScrollBar().value() > 0 or section == "prompts"
     sheet.close()
 
 

@@ -26,8 +26,8 @@ Say in one line which case you take.
 
 1. Stop running work: cancel background commands you started (`TaskStop`), do not wait for them. Leave sessions you started
    running unless the user says otherwise; name them in the handover.
-2. Save the work without merging: commit what exists on the work branch as a WIP commit (`WIP: <what>`; no version bump
-   needed for WIP) and push the branch, so nothing lives only in a worktree. Never commit on develop or main. If committing is
+2. Save the work without merging: commit what exists on the work branch as a WIP commit (`WIP: <what>`; the `changes/`
+   fragment can wait) and push the branch, so nothing lives only in a worktree. Never commit on develop or main. If committing is
    not possible (conflicts, broken state), leave the files and say exactly where they are.
 3. Update the handover (see "Writing the handover" below) with status **in progress**: what is done, what is half done,
    the exact next step, the branch, worktree path, last commit, PR number if any, failing tests with their names, open
@@ -36,16 +36,15 @@ Say in one line which case you take.
 
 ## B. Done: ship it, clean up, hand over
 
-1. **Commit.** All changes of the task, on its branch (never on develop/main; branch first if you are on one). App-code
-   commits bump the version and append the CHANGELOG entry, as "How to work" in the handover says. End commit messages with
-   the attribution line the system gives.
-2. **Sync and push.** `git fetch origin`; if `origin/develop` moved, merge it in, renumber the version if it was taken, and
-   rerun the tests that matter: the task's own tests and those of every file the merge touched, and after any renumbering
-   `tests/test_version.py`, `tests/test_release_notes.py` and `tests/test_compat.py` (the version, its CHANGELOG entry
-   and its NEW: paragraph). A failing test stops here: switch to case A.
-   Every CHANGELOG entry needs a `NEW:` paragraph (one summary sentence, then `- ` bullets): the Release workflow
-   fails after the merge otherwise (v0.14.49, v0.16.45, v0.17.38). The PR check `changelog-check.yml` runs the same
-   check; wait for it to pass before merging.
+1. **Commit.** All changes of the task, on its branch (never on develop/main; branch first if you are on one). A change to
+   the app adds a fragment to `changes/` (format in `changes/README.md`) and leaves `VERSION_NUMBER` and CHANGELOG.md
+   alone (issue #247): the release sets the version. End commit messages with the attribution line the system gives.
+2. **Sync and push.** `git fetch origin`; if `origin/develop` moved, merge it in and rerun the tests that matter: the
+   task's own tests and those of every file the merge touched. A failing test stops here: switch to case A.
+   A branch from before the release-time scheme that still bumps `VERSION_NUMBER` or adds a CHANGELOG entry: undo both
+   and move the entry into a fragment. Check fragments with `python -m slidemage.change_fragments --check`: one `NEW:`
+   paragraph with `- ` bullets, and for `kind: breaking` a `BREAKING:` paragraph and a `compat:` id whose CHANGES
+   entry has `since="NEXT"`. The PR check `changelog-check.yml` runs the same check; wait for it to pass before merging.
 3. **PR.** Open one against `develop` (the repo's default branch for other repositories) if none exists, with the attribution
    line the system gives. Bind it with the ccd_pr tools.
 4. **Merge.** `/finish` is the user's go to merge. Run, as a bare command, `gh pr merge <n> --admin --merge` (plain
@@ -60,7 +59,7 @@ Say in one line which case you take.
    - Update the main checkout: `git -C D:\Dropbox\repos\SlideMage pull --ff-only` on develop (only if it is on develop and clean).
    - Close panes you opened (picker page, browser preview) and stop dev servers you started.
    - Remove your scratch files in the repository (not the user's untracked files: list those instead of deleting).
-6. **Update the handover** (below) with status **done**: PR number, merge commit, version, what was verified and what was not
+6. **Update the handover** (below) with status **done**: PR number, merge commit, fragment file, what was verified and what was not
    (e.g. "not checked in the real app").
 7. **Failed cleanup goes to the handover's standing "Cleanup" section** (`# Cleanup`, between its `<!-- task:cleanup -->`
    markers, under "Pending items (newest last)"), not into the task's section: one item per failed step, appended at the end,
@@ -71,7 +70,7 @@ Say in one line which case you take.
    `handover.md`; `--dry-run` shows what it would do). It moves every TASKS line with status `done`, and every section
    whose Status line says done, finished, answered or task deleted, to `handover-archive.md`, unedited. Run it after step 6,
    so this task's own finished section goes too. Mention a held-back section (Status still open) only if it is yours.
-9. Report in a few lines: what was merged, version, what went to Cleanup, what was archived.
+9. Report in a few lines: what was merged, its fragment, what went to Cleanup, what was archived.
 
 ## Writing the handover
 

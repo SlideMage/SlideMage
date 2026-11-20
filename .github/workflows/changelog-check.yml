@@ -1,19 +1,20 @@
 name: Changelog check
 
-# The Release workflow refuses a tag when any version since the previous release lacks a NEW: paragraph of "- "
-# bullets in src/slidemage/CHANGELOG.md (packaging/release_notes.py, exit 3). That failure only showed after the
-# merge (v0.14.49, v0.16.45, v0.17.38), so the same check runs here on every PR to develop.
+# Release-time versioning (issue #247): a PR that changes the app adds a fragment to changes/ and leaves
+# VERSION_NUMBER and CHANGELOG.md alone; packaging/make_release.py turns the fragments into one release. This check
+# makes a PR follow that, and checks every fragment the way the release script will. A release PR (branch
+# release/*) is the one that may set VERSION_NUMBER and write CHANGELOG.md; for it the release notes are built as
+# the Release workflow will build them.
+#
+# A PR that touches src/ without changing the app (comments, tests data) can carry the label no-changes-entry.
 
 on:
   pull_request:
     branches: [develop]
-    paths:
-      - "src/slidemage/CHANGELOG.md"
-      - "src/slidemage/version.py"
-      - "packaging/release_notes.py"
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 
 jobs:
-  notes:
+  fragments:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,7 +23,46 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Release notes build
+      - name: Fragment, version and CHANGELOG rules
+        shell: bash
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD_REF: ${{ github.head_ref }}
+          SKIP: ${{ contains(github.event.pull_request.labels.*.name, 'no-changes-entry') }}
+          PYTHONPATH: src
+        run: |
+          set -euo pipefail
+          base=$(git merge-base "$BASE" HEAD)
+          changed=$(git diff --name-only "$base" HEAD)
+          added=$(git diff --name-only --diff-filter=AM "$base" HEAD -- 'changes/*.md' | grep -vx 'changes/README.md' || true)
+          echo "changed files:"; echo "$changed" | sed 's/^/  /'
+          status=0
+          if [[ "$HEAD_REF" == release/* ]]; then
+            echo "release branch: VERSION_NUMBER and CHANGELOG.md may change"
+          else
+            if git diff "$base" HEAD -- src/slidemage/version.py | grep -qE '^[-+]VERSION_NUMBER ='; then
+              echo "::error::VERSION_NUMBER changed: the release sets it now. Add a fragment to changes/ instead (changes/README.md)."
+              status=1
+            fi
+            # Correcting an old entry or the introduction is fine; a new entry is the release's to write.
+            if git diff "$base" HEAD -- src/slidemage/CHANGELOG.md | grep -qE '^\+v[0-9]+(\.[0-9]+){2,3} \('; then
+              echo "::error::A new CHANGELOG.md entry: packaging/make_release.py writes those from changes/. Add a fragment there instead (changes/README.md)."
+              status=1
+            fi
+            app=$(echo "$changed" | grep -E '^(src/slidemage/|add_deck_headers\.py$)' || true)
+            if [ -n "$app" ] && [ -z "$added" ] && [ "$SKIP" != "true" ]; then
+              echo "::error::This PR changes the app but adds no fragment to changes/ (see changes/README.md; label no-changes-entry if nothing users or the history should hear about changed)."
+              status=1
+            fi
+          fi
+          if [ -n "$added" ]; then
+            python -m slidemage.change_fragments --check $added || status=1
+          fi
+          exit $status
+      - name: Release notes build (release PR)
+        if: startsWith(github.head_ref, 'release/')
+        shell: bash
         run: |
           tag=$(sed -n 's/^VERSION_NUMBER = "\(v[^"]*\)".*/\1/p' src/slidemage/version.py)
-          python packaging/release_notes.py "$tag" --previous "$(git tag --sort=-v:refname | grep -vx "$tag" | head -1)" > /dev/null
+          previous=$(git show "${{ github.event.pull_request.base.sha }}:src/slidemage/version.py" | sed -n 's/^VERSION_NUMBER = "\(v[^"]*\)".*/\1/p')
+          python packaging/release_notes.py "$tag" --previous "$previous" > /dev/null

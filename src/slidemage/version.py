@@ -53,7 +53,7 @@ class HistoryEntry:
 NEW_PREFIX = "NEW:"
 
 
-def _parse_news(paragraph: str) -> tuple[str, list[str]]:
+def parse_news(paragraph: str) -> tuple[str, list[str]]:
     """(summary, bullets) of a "NEW:" paragraph: the text after NEW: on its
     first line is the summary, every line starting with "- " a bullet, and
     other lines continue the line before them."""
@@ -71,9 +71,11 @@ def _parse_news(paragraph: str) -> tuple[str, list[str]]:
     return " ".join(summary_lines), bullets
 
 
-def parse_history() -> list[HistoryEntry]:
-    """Every per-bump entry in CHANGELOG.md, oldest first."""
-    text = Path(__file__).with_name("CHANGELOG.md").read_text(encoding="utf-8")
+def parse_history(text: str | None = None) -> list[HistoryEntry]:
+    """Every entry in CHANGELOG.md (or in `text`), oldest first: one per release from issue #247 on, one per
+    version bump before."""
+    if text is None:
+        text = Path(__file__).with_name("CHANGELOG.md").read_text(encoding="utf-8")
     entries = []
     for match in _HISTORY_ENTRY_RE.finditer(text):
         version, meta, body = match.group(1), match.group(2), match.group(3)
@@ -84,7 +86,7 @@ def parse_history() -> list[HistoryEntry]:
         summary, news = "", []
         for paragraph in raw:
             if paragraph.strip().startswith(NEW_PREFIX):
-                summary, news = _parse_news(paragraph)
+                summary, news = parse_news(paragraph)
         entries.append(HistoryEntry(
             version=version, meta=meta, description=description, paragraphs=paragraphs,
             summary=summary, news=news))
@@ -99,12 +101,25 @@ def run_git(*args: str) -> str | None:
     return None if out is None else out.strip()
 
 
+def unreleased_fragments() -> list[Path]:
+    """The checkout's changes/*.md fragments (issue #247; see change_fragments): changes merged since the release
+    VERSION_NUMBER names. A frozen build has no checkout, so none."""
+    folder = Path(__file__).resolve().parents[2] / "changes"
+    try:
+        return sorted(p for p in folder.glob("*.md") if p.name != "README.md")
+    except OSError:
+        return []
+
+
 def _compute_version_string() -> str:
-    commit_dt = run_git(
-        "show", "-s", "--format=%cd", "--date=format:%Y-%m-%d %H:%M", "HEAD"
-    )
-    if commit_dt is None:
+    """VERSION_NUMBER, from a checkout with the commit date; with unreleased fragments the number is that of the
+    last release, so it gets "+dev" and the commit: "v0.17.38+dev (3e7142f9, 2026-11-18 14:02)"."""
+    out = run_git("show", "-s", "--format=%h %cd", "--date=format:%Y-%m-%d %H:%M", "HEAD")
+    if out is None:
         return VERSION_NUMBER
+    commit, _, commit_dt = out.partition(" ")
+    if unreleased_fragments():
+        return f"{VERSION_NUMBER}+dev ({commit}, {commit_dt})"
     return f"{VERSION_NUMBER} ({commit_dt})"
 
 

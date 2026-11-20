@@ -58,6 +58,21 @@ jobs:
             echo "::error::Tag $GITHUB_REF_NAME doesn't match VERSION_NUMBER $expected"
             exit 1
           fi
+      # packaging/make_release.py (issue #247) folds every fragment of changes/ into CHANGELOG.md and writes the
+      # version over since="NEXT": a tag with either left over was not made by it, and its notes would miss changes.
+      - name: Nothing left unreleased
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          left=$(find changes -name '*.md' ! -name README.md 2>/dev/null)
+          if [ -n "$left" ]; then
+            echo "::error::Unreleased fragments at the tag (run packaging/make_release.py): $left"
+            exit 1
+          fi
+          if grep -nE "since\s*=\s*[\"']NEXT[\"']" src/slidemage/compat*.py; then
+            echo "::error::since=\"NEXT\" left in compat at the tag (run packaging/make_release.py)"
+            exit 1
+          fi
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

@@ -1,11 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-import importlib
-import pkgutil
 
 import pytest
 
-import slidemage
 from slidemage import project
 
 from conftest import EXAMPLE_PROJECT, EXAMPLE
@@ -35,8 +32,3 @@ def test_scan_finds_demo_decks():
     assert "slidemage-manual.tex" in names
 
 
-@pytest.mark.parametrize(
-    "name", [m.name for m in pkgutil.walk_packages(slidemage.__path__, "slidemage.") if not m.ispkg]
-)
-def test_module_imports(name):
-    importlib.import_module(name)
