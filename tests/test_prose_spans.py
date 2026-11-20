@@ -72,6 +72,11 @@ def texts(source: str, language: str = "en") -> list[str]:
     (r"\begin{standardframe}{Title here} Body \end{standardframe}", ["Title here", "Body"]),
     (r'Gr\"o\ss e Sache', ["Sache"]),
     (r"Trenn\-ung hier", ["hier"]),
+    (r"\href{https://x.org/w?title=Data_dredging&oldid=12}{https://x.org/w?title=Data\_dredging\&oldid=12}, accessed",
+     [", accessed"]),
+    (r"\underline{h}ypothesizing is fun", ["is fun"]),
+    (r"un\textbf{like}ly but \emph{bold} text", ["but", "bold", "text"]),
+    (r"a \textbf{Teh} market\footnote{Teh note}", ["a", "Teh", "market", "Teh note"]),
     (r"Fig.~3 shows", ["Fig.", "3 shows"]),
 ])
 def test_prose_is_what_the_audience_reads(source, expected):

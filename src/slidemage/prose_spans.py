@@ -127,6 +127,13 @@ SKIPPED_BODIES = frozenset({
     "filecontents", "filecontents*",
 })
 
+# Inline formatting commands: letters right before or after the braces belong to the same word (\underline{h}ypothesizing,
+# \textbf{un}likely), so a word that crosses their edge is left out whole, like one with an accent inside.
+INLINE_FORMATTING = frozenset({
+    "textbf", "textit", "textsl", "textsc", "textup", "textmd", "textrm", "textsf", "textnormal", "emph", "underline",
+    "alert", "structure", "textcolor",
+})
+
 # TeX inside a word: these join letters, so the word around them is left out whole.
 _ACCENT_SYMBOLS = frozenset("'\"^~=.`")
 _ACCENT_WORDS = frozenset({"u", "v", "H", "c", "d", "b", "t", "r", "k"})
@@ -135,7 +142,9 @@ _GLUE_SYMBOLS = frozenset("-/")
 
 # Inside prose: addresses and file names are not words. Found before the scan, so a URL's own %, # or _ do not cut
 # it into pieces that then look like prose.
-_URL_RE = re.compile(r"(?:https?|ftp)://[^\s{}\\]+|\bwww\.[^\s{}\\]+|\b[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+# (An address typed in LaTeX escapes its own special characters: Data\_dredging\&oldid=1, so \_ \& \% \# \~ belong to it.)
+_URL_RE = re.compile(
+    r"(?:https?|ftp)://(?:[^\s{}\\]|\\[_&%#~])+|\bwww\.(?:[^\s{}\\]|\\[_&%#~])+|\b[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 _FILE_RE = re.compile(
     r"[\w./-]*\w\.(?:tex|sty|cls|bib|bst|png|jpe?g|gif|svg|pdf|eps|tikz|txt|csv|tsv|json|xml|ya?ml|toml|md|html?"
     r"|py|r|do|js|css|zip|docx?|xlsx?|pptx?|odt|mp4|mov|mp3|wav)\b", re.IGNORECASE)
@@ -392,9 +401,22 @@ class _Scanner:
             groups, after = self.args(cursor, end, spec)
             for letter, start, stop in groups:
                 if letter in "TU":
+                    if name in INLINE_FORMATTING:
+                        self.join_words(pos, start, stop, end)
                     self.scan(start, stop, kind if own_kind in ("arg", "body") else own_kind, language)
             return after, own_kind if own_kind == "item" else kind
         return self.skip_groups(self.assignment(cursor, end), end), kind
+
+    def join_words(self, command: int, start: int, stop: int, end: int) -> None:
+        """Mark the edges of the formatted text text[start:stop] (its command starts at `command`) where a word
+        continues across them, so that the pieces of that word are not checked on their own."""
+        text = self.text
+        if command > 0 and text[command - 1].isalpha() and start < stop and text[start].isalpha():
+            self.glue_starts.add(command)
+            self.glue_ends.add(start)
+        if start < stop and stop + 1 < end and text[stop - 1].isalpha() and text[stop + 1].isalpha():
+            self.glue_starts.add(stop)
+            self.glue_ends.add(stop + 1)
 
     def assignment(self, pos: int, end: int) -> int:
         """Past `= value` after a register name (\\prevdepth=0pt, \\parskip = 1ex plus 1pt): to the end of the
