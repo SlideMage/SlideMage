@@ -290,15 +290,6 @@ def test_host_storage_ids_are_left_out(plugin_id):
     assert parse(data).plugins == []
 
 
-def test_legacy_cache_is_migrated_once():
-    base = loader.plugins_dir()
-    base.mkdir(parents=True)
-    (base / "catalogue.json").write_bytes(_raw("index-test.json"))
-    assert catalogue.cached().plugins[0].id == "hello"
-    assert (base / catalogue.CACHE_NAME).is_file()
-    assert not (base / "catalogue.json").exists()
-
-
 # --- citation formats (the optional "citations" list) -----------------------------------------------------
 
 

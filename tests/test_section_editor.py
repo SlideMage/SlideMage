@@ -119,19 +119,6 @@ def test_slide_boundary_move_refuses_nonadjacent_lines(tmp_path):
         deck_editor.move_slide_past_section(deck.path, text, call, deck.chapters[1])
 
 
-def test_legacy_block_comments_do_not_prevent_section_move(tmp_path):
-    text = (
-        "\\begin{document}\n\\section{Before}\n"
-        "%% Block: old-copy\n%%\n\\slide{aaa-EN-First}\n"
-        "%% End block: old-copy\n%%\n\\section{After}\n"
-        "\\end{document}\n"
-    )
-    deck = _deck(tmp_path / "deck.tex", text)
-    call = deck_editor.parse_slide_calls(deck)[0]
-    moved = deck_editor.move_slide_past_section(deck.path, text, call, deck.chapters[1])
-    assert moved.index("\\section{After}") < moved.index("\\slide{aaa-EN-First}")
-
-
 def test_move_slide_calls_shifts_slides_in_between_and_changes_section(tmp_path):
     text = (
         "\\begin{document}\n\\slide{aaa-A}\n\\section{S}\n\\slide{bbb-B}\n"

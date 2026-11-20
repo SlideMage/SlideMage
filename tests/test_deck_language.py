@@ -282,20 +282,6 @@ def test_cleanup_keeps_explicit_pins_of_folded_translations(project, monkeypatch
     assert filename not in {p.name for p in unused_content.find_unused_slides(ctx)}
 
 
-def test_usage_scans_preserve_comment_policy_and_legacy_slides(ctx, project, monkeypatch):
-    from slidemage import deck_headers, unused_content
-
-    legacy = project / "slides/eee-Legacy-current.tex"
-    legacy.write_text("Legacy slide\n")
-    deck(project, "\\slide {eee-Legacy}\n% \\slide{bbb-EN-Two}\n"
-                  "\\% \\slide\n{ccc-mult-Three}\n")
-    assert unused_content.find_used_slide_filenames(ctx) == {legacy.name, "ccc-mult-Three-current.tex"}
-    assert "bbb-EN-Two-current.tex" in {p.name for p in unused_content.find_unused_slides(ctx)}
-    deck_headers.regenerate_headers(ctx)
-    for filename in (legacy.name, "bbb-EN-Two-current.tex", "ccc-mult-Three-current.tex"):
-        assert "%% Included in decks: course" in (project / "slides" / filename).read_text()
-
-
 def test_compile_can_keep_both_language_files_independent(project):
     d = deck(project, "\\slide{aaa-EN-One}\n\\slide{ddd-DE-Eins}\n")
     job = compiler.CompileJob(d, None, None, language="DE", resolve_translations=False)

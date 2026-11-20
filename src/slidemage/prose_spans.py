@@ -81,7 +81,7 @@ NO_PROSE = frozenset({
     # SlideMage
     "cornerfigure", "fitfigure", "sectionfigure", "figurecenter", "fullbleedframe", "progressstrip", "chapterlogo",
     "sidefootnotes", "SMFinalStateForStudents", "SMManualTopMargin", "setSlideVersion", "SMDeckAgenda",
-    "SMChapterAgenda", "SMSubsectionAgenda", "SMNavigationBar", "multilingualtext", "SMCode", "SMCmd",
+    "SMChapterAgenda", "SMSubsectionAgenda", "SMNavigationBar", "multilingualtext", "SMCode", "SMCmd", "SMNoteImage",
     "SMCodeFile", "EUR", "SMUnderbrace", "SMTikzmark", "SMLineTop", "SMBulletEllipsis", "SMBulletEllipsisScript",
     "SMAlphaItem", "SMNumItem", "SMAlphaPeriodItem", "SMNumPeriodItem", "shrinklists", "SMTightDisplaySkips",
     "conditionalpause", "deckitem", "ifSMInstructorVersion", "ifSMDuringCourseVersion", "ifSMAfterCourseVersion",

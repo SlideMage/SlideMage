@@ -463,12 +463,6 @@ def test_the_profile_menu_lists_the_layouts_with_the_active_one_checked_and_appl
     assert controller.profile.name == "Mirror and clock"
 
 
-def test_an_old_saved_profile_name_opens_the_new_layout(make):
-    controller = make(settings=PresentationSettings(profile="Next large, clock"))
-    assert controller.profile.name == "Mirror and clock"
-    assert controller.audience.canvas.input is not None
-
-
 def test_the_projector_takes_the_mouse_while_the_layout_has_no_current_slide(make):
     controller = make()
     audience = controller.audience

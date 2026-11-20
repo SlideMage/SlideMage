@@ -55,8 +55,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from . import change_fragments
-from . import (compat_bibliography, compat_citation_format, compat_color_cut, compat_color_roles, compat_hooks,
-               compat_names, compat_own_theme, compat_project_macros, project)
+from . import project
 from .fileio import atomic_write
 from .progress import Progress
 from .tex_source import is_commented
@@ -75,23 +74,17 @@ REPORT_JSON = Path(".slidemage") / "compat-report.json"
 BACKUP_DIR = Path(".slidemage") / "backups"
 
 
-def _detect_omitslide(root: Path) -> list[Finding]:
-    findings = []
-    for path in compat_bibliography.decks(root):
-        text = path.read_text(encoding="utf-8", errors="replace")
-        for match in re.finditer(r"\\omitslide(?:version)?\s*\{", text):
-            if not is_commented(text, match.start()):
-                findings.append(Finding(path.relative_to(root).as_posix(),
-                                        text.count("\n", 0, match.start()) + 1,
-                                        "Instructor-only slide is skipped in student deck versions."))
-    return findings
+def _decks(root: Path):
+    for folder in (root / "decks", root / "decks" / "archive"):
+        if folder.is_dir():
+            yield from sorted(folder.glob("*.tex"))
 
 
 def _detect_blocks_and_appendix_views(root: Path) -> list[Finding]:
     """v0.17.20: the decks that use topic blocks (\\slideblock) or name views in \\deckappendixtoc[...], which
     SlideMage v0.16 and older cannot compile."""
     findings = []
-    for path in compat_bibliography.decks(root):
+    for path in _decks(root):
         text = path.read_text(encoding="utf-8", errors="replace")
         for match in re.finditer(r"\\slideblock\s*\{|\\deckappendixtoc\s*\[", text):
             if not is_commented(text, match.start()):
@@ -101,318 +94,10 @@ def _detect_blocks_and_appendix_views(root: Path) -> list[Finding]:
     return findings
 
 
-def _detect_converted_image_descriptions(root: Path) -> list[Finding]:
-    """v0.13.30: media/alt-text.json in format 3 next to the older file alt_images.convert_store kept."""
-    media = root / "media"
-    try:
-        version = json.loads((media / "alt-text.json").read_text(encoding="utf-8")).get("version")
-    except (OSError, ValueError, AttributeError):
-        return []
-    if not isinstance(version, int) or version < 3:
-        return []
-    kept = sorted(media.glob("alt-text.v[12].json"))
-    return [Finding("media/alt-text.json", 0, f"Converted to format 3; the old file is media/{kept[0].name}.")
-            ] if kept else []
-
-
-# v10.7.0: these names are derived by the base from the hooks and the font, and the setup layer stops a
-# template or profile that sets them with an error.
-DERIVED_LAYOUT_NAMES = ("SMContentTopAlign", "SMTitleBarBottomAlign", "SMFooterRightShift", "SMFootnoteRightShift")
-_DERIVED = r"\\(" + "|".join(DERIVED_LAYOUT_NAMES) + r")(?![A-Za-z@])"
-# A setting command in front of the name, or a direct assignment after it; reading the name is fine.
-_SETS_DERIVED_NAME = re.compile(
-    r"(?:\\(?:setlength|addtolength|(?:re)?newcommand\*?|providecommand\*?)\s*\{?\s*"
-    r"|\\(?:global\s*)?\\?(?:[egx]?def|let)\s*)" + _DERIVED
-    + r"|" + _DERIVED.replace("(", "(?P<assigned>", 1) + r"\s*=")
-
-
-def _detect_derived_layout_names(root: Path) -> list[Finding]:
-    """Project-root templates, layout profiles and project macros that still set a derived name."""
-    findings = []
-    paths = [p for pattern in ("SlideMage_template_*.tex", "SlideMage_layout_*.tex", "SlideMage_project_macros.tex")
-             for p in sorted(root.glob(pattern))]
-    for path in paths:
-        text = path.read_text(encoding="utf-8", errors="replace")
-        for match in _SETS_DERIVED_NAME.finditer(text):
-            if not is_commented(text, match.start()):
-                findings.append(Finding(path.name, text.count("\n", 0, match.start()) + 1,
-                                        f"\\{match.group(1) or match.group('assigned')} is derived now; "
-                                        "remove this line."))
-    return findings
-
-
-# v10.8.0: the font measurements the layout profiles held are evaluated in the font where they are used. The setup
-# layer guards these names like those of v10.7.0 (a profile's \newlength of one is a LaTeX error "already defined",
-# a setting is the "is derived, not set" error); \SMFootlineVOffset is derived from the new hook \SMFootnoteFooterGap.
-GUARDED_V98_NAMES = (
-    "SMFooterTextDrop", "SMFootlineVOffset", "SMLabelItemWidth", "SMLabelItemSep", "SMEnumerateNestedMinNumber",
-    "SMEnumerateNestedLabelSep", "SMEnumerateNestedLeftMargin", "SMEnumerateLabelBox", "SMSectionframeRefDepth",
-    "SMSectionframeBottomGap", "SMSectionframeBottomPadCorrection", "SMSectionframeHeightCorrection")
-_V98 = r"\\(" + "|".join(GUARDED_V98_NAMES) + r")(?![A-Za-z@])"
-_SETS_V98_NAME = re.compile(
-    r"(?:\\(?:newlength|setlength|addtolength|(?:re)?newcommand\*?|providecommand\*?)\s*\{?\s*"
-    r"|\\(?:global\s*)?\\?(?:[egx]?def|let)\s*)" + _V98
-    + r"|" + _V98.replace("(", "(?P<assigned>", 1) + r"\s*=")
-# \SMEnumerateTextExtra is a hook of the catalog now: setting it is fine, defining it (a profile's \newlength) is not.
-_DEFINES_TEXT_EXTRA = re.compile(r"\\newlength\s*\{?\s*\\(SMEnumerateTextExtra)(?![A-Za-z@])")
-
-
-def _detect_font_measurement_names(root: Path) -> list[Finding]:
-    """Project-root layout profiles, templates and project macros that still define or set a number v10.8.0 derives."""
-    findings = []
-    paths = [p for pattern in ("SlideMage_layout_*.tex", "SlideMage_template_*.tex", "SlideMage_project_macros.tex")
-             for p in sorted(root.glob(pattern))]
-    for path in paths:
-        text = path.read_text(encoding="utf-8", errors="replace")
-        matches = list(_SETS_V98_NAME.finditer(text))
-        if path.name.startswith("SlideMage_layout_"):
-            matches += list(_DEFINES_TEXT_EXTRA.finditer(text))
-        for match in sorted(matches, key=lambda m: m.start()):
-            if is_commented(text, match.start()):
-                continue
-            name = match.group(1) or match.groupdict().get("assigned")
-            hint = ("set \\SMFootnoteFooterGap instead" if name == "SMFootlineVOffset"
-                    else "it is a hook of the catalog now, remove the \\newlength" if name == "SMEnumerateTextExtra"
-                    else "remove this line")
-            findings.append(Finding(path.name, text.count("\n", 0, match.start()) + 1,
-                                    f"\\{name} is derived from the font now; {hint}."))
-    return findings
-
-
-# v10.9.0: the last three numbers of the layout profiles, the pull-ups of the frames the automatic Top Margin does not
-# correct by their content, are measured on the page. Guarded like v10.8.0's names: a profile's \newlength of one is a
-# LaTeX error "already defined", a setting the "is derived, not set" error.
-GUARDED_V99_NAMES = ("SMContentTopShift", "SMColumnsTopCorrection", "SMColumnsTTopCompensation")
-_V99 = r"\\(" + "|".join(GUARDED_V99_NAMES) + r")(?![A-Za-z@])"
-_SETS_V99_NAME = re.compile(
-    r"(?:\\(?:newlength|setlength|addtolength|(?:re)?newcommand\*?|providecommand\*?)\s*\{?\s*"
-    r"|\\(?:global\s*)?\\?(?:[egx]?def|let)\s*)" + _V99
-    + r"|" + _V99.replace("(", "(?P<assigned>", 1) + r"\s*=")
-
-
-def _detect_top_pullup_names(root: Path) -> list[Finding]:
-    """Project-root layout profiles, templates and project macros that still define or set a pull-up v10.9.0 measures."""
-    findings = []
-    paths = [p for pattern in ("SlideMage_layout_*.tex", "SlideMage_template_*.tex", "SlideMage_project_macros.tex")
-             for p in sorted(root.glob(pattern))]
-    for path in paths:
-        text = path.read_text(encoding="utf-8", errors="replace")
-        for match in _SETS_V99_NAME.finditer(text):
-            if not is_commented(text, match.start()):
-                findings.append(Finding(path.name, text.count("\n", 0, match.start()) + 1,
-                                        f"\\{match.group(1) or match.group('assigned')} is measured on the page now; "
-                                        "remove this line."))
-    return findings
-
-
-# v10.10.0: \SMTitleframeBottomPad is the space from the subtitle's last line to the title box's bottom edge (until then it
-# also held beamer's offset at the top of a frame body, 32.5pt with the SlideMage template's fonts). A project template that
-# sets it gets its title slide's text that much lower.
-_SETS_TITLEFRAME_PAD = re.compile(
-    r"\\(?:setlength|addtolength|(?:re)?newcommand\*?|providecommand\*?)\s*\{?\s*\\SMTitleframeBottomPad(?![A-Za-z@])"
-    r"|\\SMTitleframeBottomPad(?![A-Za-z@])\s*=")
-
-
-def _detect_titleframe_bottom_pad(root: Path) -> list[Finding]:
-    """Project-root templates and project macros that set \\SMTitleframeBottomPad, whose value means something else since v10.10.0."""
-    findings = []
-    paths = [p for pattern in ("SlideMage_template_*.tex", "SlideMage_project_macros.tex") for p in sorted(root.glob(pattern))]
-    for path in paths:
-        text = path.read_text(encoding="utf-8", errors="replace")
-        for match in _SETS_TITLEFRAME_PAD.finditer(text):
-            if not is_commented(text, match.start()):
-                findings.append(Finding(path.name, text.count("\n", 0, match.start()) + 1,
-                                        "\\SMTitleframeBottomPad is the space under the subtitle's last line now:"
-                                        "subtract about 32.5pt from this value to keep the title slide's text where it is."))
-    return findings
-
-
-def _detect_ai_settings(root: Path) -> list[Finding]:
-    from . import app_settings
-    from .ai import ai_profile
-    from .project import ProjectContext
-
-    ctx = ProjectContext.at(root)
-    policy = project.read_project_json(root).get("ai")
-    keys = (ai_profile.MODELS_KEY, ai_profile.CONNECTION_KEY, "ollama_host", "anthropic_api_key",
-            "chat_model", "drafting_model", "translation_model", "syntax_check_model", "ai_draft_model")
-    if policy or any(app_settings.peek(ctx, key) for key in keys):
-        return [Finding(".slidemage/project.json" if policy else ".slidemage/app_settings.json", 0,
-                        "AI settings are in use; install the corresponding AI plugin.")]
-    return []
-
-
-# The comment the CampusOnline plugin keeps in a deck's preamble. Core never writes it, but still recognises it.
-_COURSE_URL_RE = re.compile(r"^[ \t]*%% SlideMage course URL:[ \t]*\S", re.MULTILINE)
-
-
-def _detect_course_link(root: Path) -> list[Finding]:
-    findings = []
-    for path in compat_bibliography.decks(root):
-        text = path.read_text(encoding="utf-8", errors="replace")
-        begin = re.search(r"^[ \t]*\\begin\{document\}", text, re.MULTILINE)
-        match = _COURSE_URL_RE.search(text[:begin.start()] if begin else text)
-        if match:
-            findings.append(Finding(path.relative_to(root).as_posix(), text.count("\n", 0, match.start()) + 1,
-                                    "This deck has a CampusOnline course link."))
-    return findings
-
-
-# Newest last. Entries start with v5.29.0's rule that every breaking change
-# registers itself here (the changes before that were announced in
-# version.py's BREAKING paragraphs and are not retrofitted). Entries with real
-# work (detect/migrate) live in modules of their own, e.g. compat_bibliography.
-CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
-    id="workspace-redesign",
-    since="v0.6.0.0",
-    severity=APPEARANCE,
-    title="SlideMage's window was rebuilt as one workspace per deck",
-    description=(
-        "Version 6.0 replaced the window of tabs, the deck table and the deck editor by a "
-        "workspace (slide list, Preview / Source / Split / Details, side panels, an AI "
-        "assistant, a command palette). Projects, decks, slides and settings files are "
-        "unchanged and compile as before; what changed is how you work with them."),
-    fix=(
-        "Nothing to do in the project. Compile the other versions from the arrow of Compile PDF "
-        "(they were the deck table's checkboxes), and use the chat instead of AI drafting."),
-), Change(
-    id="language-switch-translations",
-    since="v0.7.0.0",
-    severity=APPEARANCE,
-    title="EN / DE follows linked translations",
-    description=(
-        "The language switch now selects the linked slide file for editing, previewing and "
-        "compiling the open deck. Linked EN / DE calls are one logical slot, including old "
-        "decks that list both. The original call keeps visibility and reveal steps; a "
-        "translation uses its own current version, independently of an English pin."),
-    fix=(
-        "No project migration is needed. Select EN or DE to edit that language's slide; "
-        "missing partners fall back to the called file. To include both languages as "
-        "separate slides, use independent copies without translation links. Raw LaTeX "
-        "compiles outside SlideMage keep the literal deck calls."),
-), Change(
-    id="omitslide-instructor-only",
-    since="v0.8.0.0",
-    severity=APPEARANCE,
-    title="Omitted slides are instructor-only",
-    description=(
-        "\\omitslide and \\omitslideversion now skip slides in during-course and after-course "
-        "decks, keeping frame numbers aligned. Instructor and presenter compiles, and decks "
-        "without \\deckversion, still include them unless \\studentversion is set."),
-    fix=(
-        "Use \\slide or \\slideversion for slides students should receive; keep omission "
-        "calls for instructor-only content."),
-    detect=_detect_omitslide,
-), Change(
-    id="campusonline-plugin",
-    since="v0.9.0.0",
-    severity=APPEARANCE,
-    title="CampusOnline course links are now a plugin",
-    description=(
-        "Version 9.0 moved the CampusOnline features (the Course page link of Deck settings, the Admin slides "
-        "tab and Deck menu entry, and rendering ahead of a course session) out of SlideMage into the CampusOnline "
-        "plugin. A deck keeps its '%% SlideMage course URL:' comment and compiles as before; without the plugin "
-        "the link is not shown or used."),
-    fix=(
-        "Nothing to change in the project. To use the course link, admin slides and session-aware rendering "
-        "again, install the CampusOnline plugin from Settings > Plugins (or the first-start sheet)."),
-    detect=_detect_course_link,
-), Change(
-    id="ai-plugins", since="v0.9.1.0", severity=LAYOUT,
-    title="AI routes are provided by plugins",
-    description="Claude and Ollama AI features now require their respective plugins. Existing settings remain available.",
-    fix="Install the Claude or Ollama plugin from Settings → Extensions.", detect=_detect_ai_settings,
-), compat_names.CHANGE, compat_own_theme.CHANGE, Change(
-    id="derived-layout-names",
-    since="v0.10.7.0",
-    severity=BREAKS,
-    title="Four layout positions follow the template's settings and can no longer be set",
-    description=(
-        "\\SMContentTopAlign follows \\SMTopMargin, \\SMTitleBarBottomAlign follows the frame title's "
-        "padding, font and the logo height, and \\SMFooterRightShift and \\SMFootnoteRightShift follow the "
-        "text margin and the logo's right padding. Slides may still read them; a template, layout profile "
-        "or project macros file that sets one stops the compile with an error that names it."),
-    fix=(
-        "Delete the line that sets the name, e.g. \\setlength{\\SMTitleBarBottomAlign}{25.32pt}. To move "
-        "the position, change the setting it follows (\\SMTopMargin, the \\SMFrametitle...Padding lengths, "
-        "\\SMLogoHeight, \\SMTextMarginRight)."),
-    detect=_detect_derived_layout_names,
-), Change(
-    id="font-measurements-derived",
-    since="v0.10.8.0",
-    severity=BREAKS,
-    title="A layout profile no longer holds the footer, list, footnote and section-frame numbers",
-    description=(
-        "The footer text's drop, the label and numeral boxes of lettered and numbered lists, the footnotes' offset "
-        "and the section frame's corrections are read from the font where they are used, with design hooks in the "
-        "catalog (\\SMLabelItemGap, \\SMEnumerateNestedSlotExtra, \\SMEnumerateNestedLabelGap, \\SMEnumerateTextExtra, "
-        "\\SMFootnoteFooterGap, \\SMSectionframeTitleGap). A project layout profile that still defines "
-        "\\SMFooterTextDrop, \\SMEnumerateLabelBox, \\SMEnumerateNestedLabelSep, \\SMEnumerateNestedLeftMargin, "
-        "\\SMEnumerateNestedMinNumber, \\SMEnumerateTextExtra, \\SMLabelItemWidth, \\SMLabelItemSep or one of the four "
-        "\\SMSectionframe corrections stops the compile with a LaTeX error at its \\newlength; a template or profile "
-        "that sets one of them or \\SMFootlineVOffset gets the error that names the name."),
-    fix=(
-        "Delete the lines that define or set these names from the profile or template; the framework derives them "
-        "from the font. To move the footnotes, set \\SMFootnoteFooterGap (the clear space between the last "
-        "footnote line's descenders and the footer box) instead of \\SMFootlineVOffset; to change a list's gaps, "
-        "set \\SMLabelItemGap, \\SMEnumerateNestedLabelGap or \\SMEnumerateNestedSlotExtra."),
-    detect=_detect_font_measurement_names,
-), Change(
-    id="top-pullups-measured",
-    since="v0.10.9.0",
-    severity=BREAKS,
-    title="A layout profile no longer holds the top pull-ups",
-    description=(
-        "\\SMContentTopShift (where a frame with \\SMManualTopMargin, a section frame or a deck with "
-        "\\SMAutoTopMarginfalse starts its body) and \\SMColumnsTopCorrection and \\SMColumnsTTopCompensation (a "
-        "columns environment that starts such a frame) are measured on the page, so they follow the template's "
-        "title bar and Top Margin and the profile's font. A project layout profile that still defines one stops "
-        "the compile with a LaTeX error at its \\newlength; a template or profile that sets one gets the error that "
-        "names it. Slides may still read them."),
-    fix=(
-        "Delete the lines that define or set these three names from the profile or template; no number replaces "
-        "them. To move the first line of every frame, change \\SMTopMargin in the template."),
-    detect=_detect_top_pullup_names,
-), Change(
-    id="titleframe-bottom-pad",
-    since="v0.10.10.0",
-    severity=APPEARANCE,
-    title="The title slide's bottom pad is the space under the subtitle",
-    description=(
-        "\\SMTitleframeBottomPad is now the space from the bottom of the subtitle's last line to the title "
-        "box's bottom edge, and the text is placed against that edge from the page's corner. Until now the hook also "
-        "held beamer's offset at the top of a frame body (32.5pt with the SlideMage template's fonts), so a value "
-        "was the space plus that offset. The default went from 41pt to 8.505pt and looks the same. A project "
-        "template that sets the hook gets its title slide's text lower by about 32.5pt."),
-    fix=(
-        "In the template, subtract about 32.5pt from the value of \\SMTitleframeBottomPad, or delete the line to "
-        "take the default; then set the space you want under the subtitle's last line."),
-    detect=_detect_titleframe_bottom_pad,
-), compat_hooks.CHANGE, compat_bibliography.CHANGE_SHORTEN,
-   compat_project_macros.CHANGE, compat_citation_format.CHANGE, Change(
-    id="image-descriptions-per-language",
-    since="v0.13.30",
-    severity=LAYOUT,
-    title="Image descriptions are saved per language",
-    description=(
-        "media/alt-text.json keeps each image's descriptions per language (format version 3). SlideMage converts "
-        "it the first time it opens the project and keeps the old file as media/alt-text.v2.json. An older "
-        "SlideMage shows no descriptions in the new file and cannot change them."),
-    fix="Nothing to change in the project. Update SlideMage on every computer before opening the project there.",
-    detect=_detect_converted_image_descriptions,
-    automatic=True,
-), Change(
-    id="flat-snapshots-removed",
-    since="v0.15.0",
-    severity=LAYOUT,
-    title="Slide previews now use the local render store",
-    description=(
-        ".previews/slide_previews/ is gone. This deletion syncs to your other computers; update SlideMage on "
-        "every computer. References rebuild from the local render store and no longer sync."),
-    detect=lambda root: [Finding(".slidemage/project.json", 0, "Flat slide snapshots removed.")]
-        if project.read_project_json(root).get("flat_snapshots_removed") else [],
-    automatic=True,
-), compat_color_roles.CHANGE, compat_color_cut.CHANGE, Change(
+# Newest last. Every breaking change registers itself here. The entries before v0.17 were removed on
+# 2026-11-20 (user: nothing older than v0.17 is migrated any more); entries with real work (detect/migrate)
+# live in modules of their own.
+CHANGES: list[Change] = [Change(
     id="topic-blocks-and-appendix-views",
     since="v0.17.20",
     severity=BREAKS,
@@ -428,7 +113,7 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
 
 # Releases from this one on need a registry entry for every "BREAKING:"
 # paragraph of their version.py history (tests/test_compat.py).
-REGISTRY_FROM = (0, 5, 29, 0)
+REGISTRY_FROM = (0, 17, 0, 0)
 
 
 @dataclass

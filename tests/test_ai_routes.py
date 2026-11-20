@@ -8,15 +8,13 @@ import pytest
 from fake_routes import FakeProvider, FakeRoute
 from slidemage import alt_draft, app_settings, plugin_api
 from slidemage.ai import ai_profile, resolver, routes
-from slidemage.ai.ai_profile import CHAT, CLOUD, FIXES, LOCAL, TRANSLATION, Route
+from slidemage.ai.ai_profile import CHAT, CLOUD, FIXES, LOCAL, Route
 from slidemage.ai.providers import RouteUnavailable
 
 
 @pytest.fixture
 def fake_route(fake_routes):
     return fake_routes.local
-
-
 
 
 def test_registry_sides_and_duplicate_ids(fake_routes):
@@ -75,15 +73,6 @@ def test_empty_local_side_never_falls_back_to_cloud(ctx, fake_routes):
     assert ai_profile.mode(ctx) == LOCAL and ai_profile.active_route(ctx) == ""
     with pytest.raises(RouteUnavailable):
         resolver.provider_for(ctx, ai_profile.resolve(ctx, CHAT))
-
-
-def test_legacy_model_ids_read_and_migrate_without_routes(ctx):
-    app_settings.set(ctx, ai_profile.MODELS_KEY, {"local": {TRANSLATION: "old"}, "api": {TRANSLATION: "remote"}})
-    assert ai_profile.model_choice(ctx, "ollama", TRANSLATION) == "old"
-    assert ai_profile.model_choice(ctx, "anthropic_api", TRANSLATION) == "remote"
-    ai_profile.set_model_choice(ctx, "ollama", CHAT, "new")
-    assert app_settings.get(ctx, ai_profile.MODELS_KEY) == {"ollama": {TRANSLATION: "old", CHAT: "new"},
-                                                         "anthropic_api": {TRANSLATION: "remote"}}
 
 
 def test_route_calls_receive_a_public_project_context(ctx, fake_route, monkeypatch):
@@ -147,16 +136,3 @@ def test_task_refusal_checks_support_and_route_problem(ctx, fake_routes):
     fake_routes.local.runner = lambda *args: None
     fake_routes.local.problem_text = "Fake route needs setup."
     assert TaskRunner.refusal(runner, tasks.FIX_LATEX, route) == "Fake route needs setup."
-
-
-def test_legacy_cloud_alias_is_read_and_saved_for_a_registered_route(ctx):
-    cloud = FakeRoute(id="anthropic_api")
-    routes.register(cloud)
-    app_settings.set(ctx, ai_profile.CONNECTION_KEY, "api")
-    assert ai_profile.cloud_conn(ctx) == "anthropic_api"
-    ai_profile.set_cloud_conn(ctx, "api")
-    assert app_settings.get(ctx, ai_profile.CONNECTION_KEY) == "anthropic_api"
-    with pytest.raises(ValueError):
-        ai_profile.set_cloud_conn(ctx, "local")
-
-

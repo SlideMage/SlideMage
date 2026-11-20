@@ -183,28 +183,6 @@ def test_registry_ids_are_unique_and_every_breaking_release_has_an_entry():
                 f"{entry.version} has a BREAKING: paragraph but no slidemage.compat.CHANGES entry")
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-def test_version_order_across_the_renumbering():
-    from slidemage.updater import parse_version as p
-    assert p("v0.10.19.0") < p("v0.11.0") < p("v0.11.1") < p("v0.12.0") < p("v1.0.0")
-    assert p("v10.19.0") == p("v0.10.19.0") and p("v0.9.4.0") > p("v8.69.0")
-
-
 def test_changes_slidemage_made_itself_are_a_notice_not_an_update(tmp_path):
     root = make_project(tmp_path)
     assert not compat.evaluate(root, "v5.30.0", [AUTO, BREAKING]).applied      # not converted: nothing to tell

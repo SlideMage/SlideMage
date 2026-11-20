@@ -12,9 +12,8 @@ import sys
 import pytest
 
 from slidemage import project
-from slidemage.plugins import credentials as creds, migrate
+from slidemage.plugins import credentials as creds
 from slidemage.plugins.credentials import PluginCredentials
-from slidemage.plugins.migrate import legacy_anthropic_key
 from slidemage.project import ProjectContext
 
 
@@ -135,44 +134,8 @@ def test_a_keychain_that_refuses_falls_back_to_the_file(monkeypatch):
     assert c.set("sk-1") == "file" and c.where() == "file"
 
 
-def test_an_old_keychain_entry_that_cannot_be_removed_is_reported(monkeypatch):
-    fake = FakeKeyring(broken_delete=True)
-    fake.store[("SlideMage:claude", "key")] = "old"
-    monkeypatch.setattr(creds, "_keyring", lambda: fake)
-    with pytest.raises(OSError, match="keychain still holds"):
-        PluginCredentials("claude").set("")
-
-
 # -- the old Anthropic key -----------------------------------------------------------------------------------------
 
 @pytest.fixture
 def pctx(tmp_path):
     return ProjectContext.at(tmp_path)
-
-
-def test_no_old_key(pctx, monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.setattr(migrate, "_keyring", lambda: None)
-    monkeypatch.setattr(migrate.app_settings, "peek", lambda ctx, key: None)
-    assert legacy_anthropic_key(pctx) is None
-
-
-def test_old_key_places_in_order(pctx, monkeypatch):
-    fake = FakeKeyring()
-    monkeypatch.setattr(migrate, "_keyring", lambda: fake)
-    monkeypatch.setattr(migrate.app_settings, "peek", lambda ctx, key: "from-file" if key == "anthropic_api_key" else None)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    assert legacy_anthropic_key(pctx) == "from-file"
-    fake.store[("SlideMage", "anthropic-api-key")] = "from-keychain"
-    assert legacy_anthropic_key(pctx) == "from-keychain"
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "from-env")
-    assert legacy_anthropic_key(pctx) == "from-env"
-
-
-def test_old_key_is_left_where_it_is(pctx, monkeypatch):
-    fake = FakeKeyring()
-    fake.store[("SlideMage", "anthropic-api-key")] = "k"
-    monkeypatch.setattr(migrate, "_keyring", lambda: fake)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    legacy_anthropic_key(pctx)
-    assert fake.store == {("SlideMage", "anthropic-api-key"): "k"}

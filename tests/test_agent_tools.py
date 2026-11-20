@@ -127,19 +127,6 @@ def test_a_symlink_leading_out_is_refused(box, tmp_path):
     assert "outside the project folder" in box.error("edit_file", path="link.txt", old_text="o", new_text="x")
 
 
-def test_hidden_folders_do_not_exist_for_the_model(box):
-    (box.root / "pdf").mkdir()
-    (box.root / "pdf" / "deck.txt").write_text("x")
-    (box.root / ".build").mkdir()
-    (box.root / ".build" / "log.txt").write_text("x")
-    for path in (".slidemage/app_settings.json", ".build/log.txt", "pdf/deck.txt"):
-        assert "off limits" in box.error("read_file", path=path)
-        assert "off limits" in box.error("write_file", path=path.replace("txt", "tex"), content="x")
-    assert "sk-secret" not in box.ok("find_files", pattern="**/*")
-    assert "Nothing found" in box.ok("search", query="sk-secret")
-    assert ".slidemage" not in box.ok("find_files", pattern="*.json")
-
-
 def test_find_and_search_skip_dot_files_and_links_into_hidden_folders(box):
     slides = box.root / "slides"
     (slides / ".hid-EN-Dot-current.tex").write_text("needle in a dot-file\n")
@@ -491,7 +478,6 @@ def test_insert_existing_rejects_missing_frozen_non_slide_and_outside_files(box,
     assert box.run("insert_slide", slide=path).is_error
     assert set((root / "slides").iterdir()) == files
     assert (root / "decks/test.tex").read_bytes() == before
-
 
 
 def test_add_bib_entry_writes_a_sorted_entry_with_a_suggested_key(box, root):

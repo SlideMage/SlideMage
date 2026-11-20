@@ -103,38 +103,12 @@ def test_a_course_link_in_the_body_or_empty_does_not_count():
     assert not upgrade.has_course_link("%% SlideMage course URL:   \n\\begin{document}\n")
 
 
-def test_each_removed_feature_is_migrated_in_the_release_that_removed_it():
-    assert upgrade.MIGRATIONS == [upgrade.Migration("campusonline", "v9.0.0"), upgrade.Migration("claude", "v9.1.0"),
-                                  upgrade.Migration("ollama", "v9.1.0")]
-
-
 def test_linked_deck_is_due_even_after_onboarding_was_dismissed(ctx, monkeypatch):
     monkeypatch.setattr(deck_scan, "scan_decks", lambda c: [SimpleNamespace(
         text="%% SlideMage course URL: https://campus.example/c/1\n\\begin{document}\n")])
     upgrade.mark_offer_seen()
     assert upgrade.migrations_due(ctx) == {"campusonline": "A deck of this project has a CAMPUSonline course link"}
     upgrade.mark_migrations_seen(["campusonline"])
-    assert upgrade.migrations_due(ctx) == {}
-
-
-def test_migrations_due(ctx, monkeypatch):
-    monkeypatch.setattr(upgrade, "MIGRATIONS", [upgrade.Migration("campusonline", "v8.70.0"),
-                                                upgrade.Migration("claude", "v9.0.0")])
-    monkeypatch.setattr(upgrade, "used_features", lambda c: {"campusonline": "why", "claude": "why2"})
-    assert upgrade.migrations_due(ctx, "v8.70.0") == {"campusonline": "why"}       # claude: release is newer
-    assert upgrade.migrations_due(ctx, "v9.1.0") == {"campusonline": "why", "claude": "why2"}
-    upgrade.mark_migrations_seen(["campusonline"])
-    assert upgrade.migrations_seen() == {"campusonline"}
-    assert upgrade.migrations_due(ctx, "v9.1.0") == {"claude": "why2"}
-    assert not upgrade.offer_seen()                      # onboarding is a separate flag
-    monkeypatch.setattr(upgrade, "used_features", lambda c: {})
-    assert upgrade.migrations_due(ctx, "v9.1.0") == {}
-
-
-def test_a_migrated_plugin_that_is_installed_is_not_due(ctx, monkeypatch):
-    monkeypatch.setattr(upgrade, "MIGRATIONS", [upgrade.Migration("campusonline", "v8.0.0")])
-    monkeypatch.setattr(upgrade, "used_features", lambda c: {"campusonline": "why"})
-    monkeypatch.setattr(upgrade, "discover", lambda: [SimpleNamespace(id="campusonline")])
     assert upgrade.migrations_due(ctx) == {}
 
 

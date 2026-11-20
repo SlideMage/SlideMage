@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from slidemage import (citation_sources, citations, compat, compat_citation_format, compiler,
+from slidemage import (citation_sources, citations, compiler,
                        project, theme_sources, updater)
 from slidemage.project import ProjectContext
 
@@ -88,7 +88,6 @@ def test_requires_slidemage_must_accept_this_slidemage(folder):
 
 
 # -- the package rules
-
 
 
 def test_extra_tex_files_must_carry_the_formats_prefix(folder):
@@ -252,7 +251,6 @@ def test_a_snapshot_compile_gets_no_citation_folders(package, tmp_path, monkeypa
     assert "sample" not in compiler.build_env(ProjectContext(root=tmp_path / "proj")).get("TEXINPUTS", "")
 
 
-
 def test_citation_of_finds_the_folder_a_file_lies_in(package, tmp_path):
     citations.install_file(package)
     target = project.config_dir() / "citations" / "sample"
@@ -373,46 +371,6 @@ def test_a_format_installed_from_a_file_has_no_source_and_is_never_checked(packa
 
 # -- the compatibility entry
 
-def _root(tmp_path, template: str):
-    (tmp_path / "SlideMage_template_acme.tex").write_bytes(template.encode())
-    return tmp_path
-
-
-LEGACY = BS + "input{SlideMage_bibliography_default}"
-
-
-def test_the_compat_entry_removes_the_line_and_its_introducing_comment_keeping_line_endings(tmp_path):
-    root = _root(tmp_path, BS + "input{SlideMage_base}\r\n\r\n% The house citation format.\r\n" + LEGACY + "\r\nmore\r\n")
-    assert [f.line for f in compat_citation_format.detect(root)] == [4]
-    plan = compat_citation_format.migrate(root)
-    assert plan[Path("SlideMage_template_acme.tex")].decode() == BS + "input{SlideMage_base}\r\n\r\nmore\r\n"
-    (root / "SlideMage_template_acme.tex").write_bytes(plan[Path("SlideMage_template_acme.tex")])
-    assert compat_citation_format.detect(root) == [] and compat_citation_format.migrate(root) == {}
-
-
-def test_a_comment_that_is_not_about_the_format_stays(tmp_path):
-    root = _root(tmp_path, "% colors below\n" + LEGACY + "\n")
-    plan = compat_citation_format.migrate(root)
-    assert plan[Path("SlideMage_template_acme.tex")].decode() == "% colors below\n"
-    root = _root(tmp_path, "% one\n% bibliography\n" + LEGACY + "\n")
-    assert compat_citation_format.migrate(root)[Path("SlideMage_template_acme.tex")].decode() == "% one\n% bibliography\n"
-
-
-@pytest.mark.parametrize("text", [
-    BS + "renewcommand{" + BS + "SMCitationFormat}{apa}\n" + LEGACY + "\n",          # another format chosen
-    LEGACY + "\n" + BS + "renewcommand{" + BS + "SMBibliographyStyle}{x}\n",         # customised after the default
-    "% " + LEGACY + "\n", "no line at all\n",
-])
-def test_the_compat_entry_leaves_a_template_that_is_not_plain_default_alone(tmp_path, text):
-    root = _root(tmp_path, text)
-    assert compat_citation_format.detect(root) == [] and compat_citation_format.migrate(root) == {}
-
-
-def test_the_compat_entry_is_registered_and_not_breaking():
-    change = next(c for c in compat.CHANGES if c.id == compat_citation_format.CHANGE_ID)
-    assert change.since == "v0.13.0" and "SMCitationFormat" in change.description and "SMCitationFormat" in change.fix
-
-
 # -- \SMCitationFormat chosen by a deck, compiled
 
 needs_tex = pytest.mark.skipif(shutil.which("lualatex") is None, reason="needs a TeX installation")
@@ -446,16 +404,6 @@ def test_a_deck_chooses_an_installed_format_which_is_loaded_and_applied_once(pac
                    citations.citation_dirs())
     assert log.count("SM-CITATION-SAMPLE-LOADED") == 1 and log.count("SM-CITATION-SAMPLE-APPLIED") == 1
     assert not compiler.FATAL_ERROR_RE.search(log), log[-1500:]
-
-
-@needs_tex
-def test_the_default_is_loaded_for_a_plain_deck_and_a_legacy_input_changes_nothing(tmp_path):
-    plain = _compile(tmp_path, DECK % "", [])
-    assert "SM-CITATION-SAMPLE" not in plain and not compiler.FATAL_ERROR_RE.search(plain), plain[-1500:]
-    assert "SlideMage_citation_default.tex" in _unwrapped(plain)
-    legacy = _compile(tmp_path, DECK % (BS + "input{SlideMage_bibliography_default}\n"), [])
-    assert not compiler.FATAL_ERROR_RE.search(legacy), legacy[-1500:]
-    assert "SlideMage_bibliography_default.tex" in _unwrapped(legacy)
 
 
 @needs_tex

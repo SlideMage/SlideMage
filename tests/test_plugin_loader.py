@@ -171,17 +171,6 @@ def test_ai_routes_are_registered_after_activation_and_duplicates_fail_atomicall
     with pytest.raises(RuntimeError):
         registrar.add_ai_route(SimpleNamespace(id='late'))
 
-def test_legacy_state_is_migrated_once():
-    base = loader.plugins_dir()
-    base.mkdir(parents=True)
-    (base / "state.json").write_text('{"disabled": ["hello"]}')
-    assert not loader.is_enabled("hello")
-    assert (base / ".state.json").is_file()
-    assert not (base / "state.json").exists()
-    loader.set_enabled("hello", True)
-    assert loader.is_enabled("hello")
-
-
 def test_reserved_installed_folder_is_refused_even_with_another_manifest_id():
     folder = loader.plugins_dir() / "settings"
     shutil.copytree(FIXTURES / "hello", folder)

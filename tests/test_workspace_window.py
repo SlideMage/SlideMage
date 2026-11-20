@@ -1093,25 +1093,6 @@ def test_hidden_columns_keep_their_remembered_widths(window):
     assert layout_settings.get(side_panels.WIDTH_SETTING) == 520
 
 
-def test_the_right_column_migrates_the_project_width_only_once(qapp, monkeypatch):
-    app_settings.set(EXAMPLE_PROJECT, side_panels.WIDTH_SETTING, 520)
-    first = build_window(monkeypatch)
-    first.resize(2400, 800)
-    first.show()
-    assert first.side_panels.width() == 520
-    assert layout_settings.get(side_panels.WIDTH_SETTING) == 520
-    assert app_settings.get(EXAMPLE_PROJECT, side_panels.WIDTH_SETTING) == 520
-    app_settings.set(EXAMPLE_PROJECT, side_panels.WIDTH_SETTING, 600)       # a different project's old preference
-    second = build_window(monkeypatch)
-    second.resize(2400, 800)
-    second.show()
-    assert second.side_panels.width() == 520
-    second.set_column_widths(right=580)
-    second.splitter.splitterMoved.emit(0, 2)
-    assert layout_settings.get(side_panels.WIDTH_SETTING) == 580
-    assert app_settings.get(EXAMPLE_PROJECT, side_panels.WIDTH_SETTING) == 600
-
-
 @pytest.mark.parametrize("value, expected", [(None, 360), (200, 312), (330, 330), (1000, 900), ("wide", 360)])
 def test_the_right_column_keeps_its_width_limits(value, expected):
     layout_settings.set(side_panels.WIDTH_SETTING, value)

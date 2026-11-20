@@ -37,22 +37,6 @@ def test_every_project_on_this_machine_sees_the_same_ai_settings(tmp_path):
     assert app_settings.peek_ollama_host(two) == "http://gpu-box:11434"
 
 
-def test_a_project_s_old_ai_settings_move_out_of_it_once_and_this_machine_s_win(tmp_path):
-    from slidemage.fileio import write_json
-
-    ctx = _project(tmp_path)
-    write_json(app_settings.MACHINE_STORE_PATH, {"cloud_conn": "api"})
-    write_json(ctx.settings_dir / "app_settings.json",
-               {"ai_models": {"local": {"chat": "old:7b"}}, "cloud_conn": "claude_code", "anthropic_api_key": "sk-x",
-                "dark_mode": True})
-    settings = app_settings.load(ctx)
-    assert settings["ai_models"] == {"local": {"chat": "old:7b"}} and settings["cloud_conn"] == "api"
-    assert _project_file(ctx) == {"dark_mode": True}                                  # nothing AI left behind
-    assert read_json(app_settings.MACHINE_STORE_PATH)["anthropic_api_key"] == "sk-x"
-
-
-
-
 def test_a_project_folder_that_refuses_new_files_does_not_stop_a_setting_change(tmp_path, monkeypatch, caplog):
     """A synced folder whose client is not running refuses every new file ("[Errno 22] Invalid argument" with
     Nextcloud's virtual files); the deck switch or window close that saved a preference raised it (2026-11-05)."""

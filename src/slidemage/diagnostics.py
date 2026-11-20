@@ -251,23 +251,8 @@ def setup(role: str = "app", debug: Optional[bool] = None) -> None:
                       threading_excepthook=threading.excepthook, qt_handler=None, session=None)
         sys.excepthook = _excepthook
         threading.excepthook = _threading_excepthook
-        if role == "app":
-            remove_old_traces()
         if wanted():
             _start_session()
-
-
-def remove_old_traces() -> None:
-    """The files of the traces that wrote on every machine before v0.13.7 (their lines are in the debug log now):
-    status-progression.log in the config folder, background-trace.log and its .1 in the cache folder."""
-    from . import project
-
-    for path in (project.config_dir() / "status-progression.log", project.cache_dir() / "background-trace.log",
-                 project.cache_dir() / "background-trace.log.1"):
-        try:
-            path.unlink(missing_ok=True)
-        except OSError:
-            pass
 
 
 def debug_enabled() -> bool:

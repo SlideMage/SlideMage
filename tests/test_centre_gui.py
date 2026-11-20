@@ -1957,19 +1957,6 @@ def test_file_tabs_are_saved_and_restored_per_project_in_their_own_mode(centre, 
     assert reopened.tabs.active is reopened.tabs.tab_for(files.deck)
 
 
-def test_the_old_save_format_is_still_restored(centre, files, ctx, deck, monkeypatch):
-    app_settings.set(ctx, CENTRE_TABS_SETTING, {"tabs": [{"path": "course.tex", "mode": "source"},
-                                                         {"path": "slides/ccc-DE-Drei-current.tex", "mode": "preview"}],
-                                                "active": "course.tex"})
-    reopened = _reopened(ctx, deck, monkeypatch)
-    reopened.restore_tabs()
-    assert [t.path for t in reopened.tabs.tabs if t.kind == "file"] == [files.deck, files.ccc]
-    assert reopened.tabs.tab_for(files.ccc).mode == "preview"
-    assert reopened.tabs.active is reopened.tabs.tab_for(files.deck)
-    reopened.save_tabs()                                       # and is written in the new one
-    assert app_settings.get(ctx, CENTRE_TABS_SETTING)["v"] == 2
-
-
 def test_the_new_format_round_trips_with_the_slide_tab_active(centre, files, ctx, deck, monkeypatch):
     centre.open_file(files.bib)
     centre.tabs.activate(centre.tabs.slide_tab)
@@ -1982,7 +1969,6 @@ def test_the_new_format_round_trips_with_the_slide_tab_active(centre, files, ctx
 
 
 def test_tabs_of_the_deck_follow_it_and_a_bib_has_none(centre, files):
-    from slidemage.ui.workspace.centre_tabs import FOLLOW
     centre.open_file(files.ccc, tab=True)
     centre.open_file(files.bib)
     assert [t.context == centre.state.deck.path for t in centre.tabs.tabs] == [True, True, False]
@@ -2040,9 +2026,6 @@ def test_a_frozen_tabs_details_show_the_frozen_file_with_its_chip_and_no_changin
     centre.tabs.activate(centre.tabs.tab_for(frozen))
     centre.state.set_mode("details")
     assert "Frozen v1.0.0" in facts()[2]
-
-
-from slidemage.ui.workspace.centre_tabs import FOLLOW  # noqa: E402
 
 
 def test_a_file_that_is_no_slide_and_no_deck_has_no_context_and_the_list_shows_a_placeholder(centre, files):

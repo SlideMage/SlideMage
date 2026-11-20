@@ -86,14 +86,6 @@ def test_the_usual_last_footnote_line_is_the_decks_own(tmp_path):
     assert cl.usual_footnote_top(steps) == 243.0 + cl.FOOTNOTE_MARKER_ALLOWANCE
 
 
-def test_the_geometric_hooks_come_from_the_pdf_and_an_older_pdf_has_none(tmp_path):
-    doc = pdf(tmp_path, SMTopMargin="50", SMFrametitleRightPadding="14.17322", SMTitleframeBottomPad="8.505",
-              SMFontAscender="0.806")
-    assert cl.pdf_hooks(doc) == {"SMFrametitleRightPadding": 14.17322, "SMTitleframeBottomPad": 8.505}      # the four margin keys have readers of their own
-    (tmp_path / "old").mkdir()
-    assert cl.pdf_hooks(pdf(tmp_path / "old")) == {}
-
-
 def page_with(draw, hooks):
     """A page of the deck size on which `draw(page)` puts what a check looks at, wrapped in a check_layout.Page."""
     doc = pymupdf.open()

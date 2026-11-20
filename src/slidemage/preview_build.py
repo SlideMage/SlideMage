@@ -201,7 +201,7 @@ def prune_unused(project_root: Path, build_dir: Path, days=UNUSED_DAYS):
 
     A cached job keeps its wrapper so latexmk's dependency check keeps working, one per slide and preamble.
     Wrappers are in build_dir/WRAPPER_FOLDER, in a background workspace's decks/, and, from before v8.58.0,
-    in a project's decks/ (remove_legacy_wrappers deletes those at once)."""
+    in a project's decks/."""
     cache_root = build_dir / 'preview-cache'
     limit = time.time() - days * 86400
     wrappers = [*(project_root / 'decks').glob(WRAPPER_PREFIX + '*.tex'),
@@ -234,27 +234,6 @@ def prune_unused(project_root: Path, build_dir: Path, days=UNUSED_DAYS):
             except FileNotFoundError:
                 continue
             shutil.rmtree(directory, ignore_errors=True)
-
-
-_LEGACY_SWEPT: set[str] = set()
-
-
-def remove_legacy_wrappers(ctx: ProjectContext) -> int:
-    """Delete the preview wrappers SlideMage before v8.58.0 left in the project's decks/ (once per project and
-    session); how many. Nothing reads them any more: a render writes its wrapper to wrapper_dir() and keeps its
-    cache, which is found by the same key."""
-    key = str(Path(os.path.abspath(ctx.root)))
-    with _PRUNED_LOCK:
-        if key in _LEGACY_SWEPT:
-            return 0
-        _LEGACY_SWEPT.add(key)
-    removed = 0
-    for wrapper in ctx.decks_dir.glob(WRAPPER_PREFIX + '*.tex'):
-        with cleanup_guard((wrapper,), ctx.root) as permitted:
-            if permitted:
-                wrapper.unlink(missing_ok=True)
-                removed += 1
-    return removed
 
 
 # latexmk settings of SlideMage's own, for preview builds only (passed with -r after the project's rc files; deck
@@ -382,8 +361,6 @@ def compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, canc
         ctx = dataclasses.replace(ctx, build_dir=workspace / 'build')
     root = workspace if workspace is not None else ctx.root
     maybe_prune_unused(root, ctx.build_dir, 2 if workspace is not None else UNUSED_DAYS)
-    if workspace is None:
-        remove_legacy_wrappers(ctx)
     folder = workspace / 'decks' if workspace is not None else wrapper_dir(ctx)
     with active_build(ctx.build_dir, folder, cancel, root=root):
         preamble, marker, body = wrapper_text.partition(r'\begin{document}')

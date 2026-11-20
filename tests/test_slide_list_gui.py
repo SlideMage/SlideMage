@@ -419,7 +419,6 @@ def test_arrow_keys_move_the_focus_and_enter_or_a_double_click_open_the_source(m
     assert [p.name for p in window.opened] == ["bbb-Two-current.tex", "aaa-One-current.tex"]
 
 
-
 def test_arrow_keys_step_over_section_headings_from_slide_to_slide(make_list):
     slide_list, window, _path = make_list(FRONT_AND_SECTIONS)
     focus(slide_list, "aaa")
@@ -538,17 +537,6 @@ def test_alt_arrows_move_a_section_with_all_its_slides(make_list, direction, new
     blocks = two + one + three if direction == "up" else one + three + two
     expected = (HEAD + "\\slide{zzz-Front}\n" + blocks + TAIL).replace("\n", newline)
     assert path.read_bytes() == expected.encode("utf-8")
-
-
-def test_a_section_moves_up_with_its_legacy_block(make_list):
-    body = ("\\section{Before}\n%% Block: legacy\n%%\n\\slide{aaa-First}\n\\slide{bbb-Second}\n"
-            "%% End block: legacy\n%%\n\\section{After}\n")
-    slide_list, _window, path = make_list(body)
-    choose_section(slide_list, "After")
-    menu = slide_list._section_menu()
-    assert _entry(menu, "section:section_up")[6] and not _entry(menu, "section:section_down")[6]
-    slide_list.run_section("section_up")
-    assert read(path) == HEAD + "\\section{After}\n" + body.replace("\\section{After}\n", "") + TAIL
 
 
 @pytest.mark.parametrize("undo_action", ["toast", "shortcut"])

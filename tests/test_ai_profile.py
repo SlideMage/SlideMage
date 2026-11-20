@@ -35,20 +35,6 @@ def test_the_policy_lives_in_project_json_next_to_the_other_keys(ctx):
     assert data["ai"] == {"policy": "cloud"} and data["compat"] == {"x": 1} and ai_profile.policy(ctx) == CLOUD
 
 
-@pytest.mark.parametrize("stored, expected", [({"local_only": True}, LOCAL), ({"local_only": False}, CLOUD),
-                                              ({}, LOCAL), ({"policy": "cloud", "local_only": True}, CLOUD),
-                                              ({"policy": "nonsense"}, LOCAL), ("garbage", LOCAL)])
-def test_an_older_local_only_override_reads_as_the_policy(ctx, stored, expected):
-    project.write_project_json(ctx.root, {"ai": stored})
-    assert ai_profile.policy(ctx) == expected
-
-
-def test_setting_the_policy_replaces_the_older_override(ctx):
-    project.write_project_json(ctx.root, {"ai": {"local_only": False}})
-    ai_profile.set_policy(ctx, LOCAL)
-    assert project.read_project_json(ctx.root)["ai"] == {"policy": "local"}
-
-
 def test_the_first_use_flag_replaces_cloud_consent(ctx):
     app_settings.set(ctx, "cloud_consent", True)                                # as the earlier version left it
     assert ai_profile.cloud_seen(ctx)
