@@ -132,11 +132,16 @@ def wait_idle(centre):
 
     deadline = time.monotonic() + 5
     recorded = False
+    idle_since = None                    # a render starts on a later turn of the event loop: idle must last a moment
     while time.monotonic() < deadline:
         pause(10)
         recorded = recorded or recording()
-        if not (preview._busy or bool(preview._lookups) or recording()):
-            break
+        if preview._busy or bool(preview._lookups) or recording():
+            idle_since = None
+        else:
+            idle_since = idle_since or time.monotonic()
+            if time.monotonic() - idle_since >= 0.06:
+                break
         QApplication.processEvents()
         time.sleep(0.01)
     if recorded:                         # the check runs on the next poll of _check_when_recorded (every 50 ms)
