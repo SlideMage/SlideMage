@@ -83,6 +83,8 @@ class HousekeepingSheet(ModalSheet):
         self._worker: background.Handle | None = None
         self._scan: background.Handle | None = None
         self._unused: tuple[list, list, list] = ([], [], [])     # media, slides, image descriptions
+        self._described: set[str] = set()      # unused media files (project-relative) whose description goes along
+        self._differ: set = set()              # listed files whose name archive/ holds with other content
         self.pages = QStackedWidget()
         self.pages.addWidget(self._build_list())
         self.pages.addWidget(self._build_archive())
@@ -159,9 +161,18 @@ class HousekeepingSheet(ModalSheet):
 
         def scan() -> tuple:
             pdfs = housekeeping.pdf_files(ctx)
+            media = unused_content.find_unused_media(ctx)
+            moving = [path.relative_to(ctx.root).as_posix() for path in media]
+            # A file's description goes with it: no row of its own, the file's row says so.
+            slides = unused_content.find_unused_slides(ctx)
+            # Files whose name archive/ holds already with other content: archiving would leave them where they are.
+            differ = {path for path in media if unused_content.archive_copy_state(
+                          path, ctx.media_dir / "archive") == unused_content.COPY_DIFFERS}
+            differ |= {path for path in slides if unused_content.archive_copy_state(
+                           path, ctx.slides_dir / "archive") == unused_content.COPY_DIFFERS}
             return (pdfs, sum(p.stat().st_size for p in pdfs), housekeeping.find_temp_files(ctx),
-                    unused_content.find_unused_media(ctx), unused_content.find_unused_slides(ctx),
-                    alt_archive.unused_descriptions(ctx))
+                    media, slides, alt_archive.unused_descriptions(ctx, moving),
+                    alt_archive.described_images(ctx, moving), differ)
 
         self._scan = background.run_in_background(
             scan, lambda found, error: self._show_counts(found, error, archive_note), parent=self)
@@ -173,7 +184,7 @@ class HousekeepingSheet(ModalSheet):
                 row.show_state(f"Couldn't count: {error}", enabled=False)
             return
         compiling = self.app.compiling
-        pdfs, size, temp, media, slides, descriptions = found
+        pdfs, size, temp, media, slides, descriptions, self._described, self._differ = found
         self._unused = (media, slides, descriptions)
         self.pdf.show_state(
             f"{plural(len(pdfs), 'file')} in pdf/ · {deck_snapshot.format_size(size)}"
@@ -227,9 +238,13 @@ class HousekeepingSheet(ModalSheet):
         self.files.clear()
         for kind, paths in (("slide", slides), ("media", media)):
             for path in paths:
-                item = QListWidgetItem(f"{kind}    {path.name}")
+                along = kind == "media" and path.relative_to(self.app.project.root).as_posix() in self._described
+                differs = path in self._differ
+                item = QListWidgetItem(f"{kind}    {path.name}" + ("    (its description goes along)" if along else "")
+                                       + (f"    (a different file of this name is in {path.parent.name}/archive/: "
+                                          "it would stay)" if differs else ""))
                 item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-                item.setCheckState(Qt.CheckState.Checked)
+                item.setCheckState(Qt.CheckState.Unchecked if differs else Qt.CheckState.Checked)
                 item.setData(Qt.ItemDataRole.UserRole, (kind, path))
                 self.files.addItem(item)
         for description in descriptions:
@@ -257,10 +272,11 @@ class HousekeepingSheet(ModalSheet):
         described = bool(self._unused[2])
         noun = "item" if described else "file"
         self.archive_intro.setText(
-            f"<b>{plural(self.files.count(), noun)}</b> would be moved into media/archive/ or "
-            "slides/archive/" + (", the descriptions into the alt-text archive (media/archive/alt-text-archive.json), "
-                                 "where they stay retrievable. A description whose file still exists may belong to "
-                                 "an image not yet placed on a slide: those are not ticked" if described else "")
+            f"<b>{plural(self.files.count(), noun)}</b> listed, <b>{count} ticked</b>. The ticked ones would be "
+            "moved into media/archive/ or slides/archive/"
+            + (", the descriptions into the alt-text archive (media/archive/alt-text-archive.json), "
+               "where they stay retrievable. A description whose file still exists may belong to "
+               "an image not yet placed on a slide: those are not ticked" if described else "")
             + ". Untick what should stay." if self.files.count()
             else "Counting…" if self._scan is not None else "No unused slides or media files.")
         self.archive_button.setText(f"Archive {plural(count, noun)}")

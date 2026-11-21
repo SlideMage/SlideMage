@@ -57,12 +57,13 @@ moved back by hand).
 """
 from __future__ import annotations
 
+import os
 import re
 import shutil
 from pathlib import Path
 from typing import Callable, Iterable
 
-from . import ai_review, alt_archive, alt_images, deck_language, languages, library_data
+from . import ai_review, alt_archive, alt_images, deck_language, languages, library_data, sm_rename
 from .progress import Progress
 from .project import ProjectContext
 from .slide_language import CURRENT_SUFFIX, bare_id, current_name, current_path_for_bare_id
@@ -203,10 +204,45 @@ def find_unused_media(ctx: ProjectContext) -> list[Path]:
     )
 
 
+COPY_SAME = "same"          # archive/ already holds a byte-identical file of that name
+COPY_OLDER = "older"        # the archived one differs only in the SM names (sm_rename) and in comments
+COPY_DIFFERS = "differs"    # archive/ holds a file of that name with other differences: never overwritten
+
+
+def _code_lines(text: str) -> list[str]:
+    """The lines of a .tex text without comments and without the lines that held nothing else."""
+    lines = (COMMENT_RE.sub("", line).rstrip() for line in text.splitlines())
+    return [line for line in lines if line.strip()]
+
+
+def archive_copy_state(path: Path, archive_dir: Path) -> str | None:
+    """How the file of the same name in `archive_dir` relates to `path`: None when there is none, else COPY_SAME,
+    COPY_OLDER (a .tex file whose archived text only lacks what the file has gained since: the SlideMage names
+    sm_rename would give it, and comments such as the generated list of the decks that include the slide; its
+    code is the same, so only comments of the archived copy are lost by replacing it) or COPY_DIFFERS."""
+    dest = archive_dir / path.name
+    if not dest.is_file():
+        return None
+    old, new = dest.read_bytes(), path.read_bytes()
+    if old == new:
+        return COPY_SAME
+    if path.suffix == ".tex":
+        try:
+            migrated = sm_rename.rename_identifiers(sm_rename.rename_text(old.decode("utf-8")))
+            if _code_lines(migrated) == _code_lines(new.decode("utf-8")):
+                return COPY_OLDER
+        except UnicodeDecodeError:
+            pass
+    return COPY_DIFFERS
+
+
 def _archive_files(
     files: list[Path], archive_dir: Path, kind: str, log: LogCallback, step: Callable[[], None]
 ) -> int:
-    """kind: singular noun for one file, e.g. "media file" or "slide". `step()` follows each file."""
+    """kind: singular noun for one file, e.g. "media file" or "slide". `step()` follows each file. A file whose
+    name is in archive/ already is not skipped without a word, as it used to be (it stayed in its folder and was
+    listed again and again): an identical one is removed from its folder, an older archived text is replaced by
+    this file, and one that differs otherwise is left where it is and said so."""
     if not files:
         log(f"No unused {kind}s found.")
         return 0
@@ -214,8 +250,18 @@ def _archive_files(
     moved = 0
     for path in files:
         dest = archive_dir / path.name
-        if dest.exists():
-            log(f"Skipped {path.name} -- already exists in {archive_dir.name}/")
+        state = archive_copy_state(path, archive_dir)
+        if state == COPY_SAME:
+            path.unlink()
+            log(f"Archived {kind}: {path.name} (an identical copy was in {archive_dir.name}/ already)")
+            moved += 1
+        elif state == COPY_OLDER:
+            os.replace(path, dest)
+            log(f"Archived {kind}: {path.name} (replaced the older copy in {archive_dir.name}/, which differed only "
+                "in SM names and comments)")
+            moved += 1
+        elif state == COPY_DIFFERS:
+            log(f"Left {path.name} where it is -- {archive_dir.name}/ holds a different file of that name")
         else:
             shutil.move(str(path), str(dest))
             log(f"Archived {kind}: {path.name}")

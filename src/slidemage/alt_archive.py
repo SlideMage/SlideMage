@@ -253,14 +253,25 @@ class UnusedDescription:
         return self.file_missing
 
 
-def unused_descriptions(ctx: ProjectContext) -> list[UnusedDescription]:
-    """The entries to offer for archiving in the review of unused content: the ones no slide references (so not the
-    ones the archiving in hand is about to orphan, which move on their own), sorted by image."""
+def unused_descriptions(ctx: ProjectContext, moving: Iterable[str] = ()) -> list[UnusedDescription]:
+    """The entries to offer for archiving in the review of unused content: the ones no slide references, sorted by
+    image. Not the images in `moving` (the files the review offers to archive): their description goes into the
+    alt-text archive with the file, so it is one item with it, not a second row to tick or not. Not an entry with
+    nothing written whose file is there either (the empty row the Images scan makes for every image file it finds,
+    the theme logos in schemes/ among them): archiving it would save nothing and the next scan would make it again."""
     entries = alt_images.load_store(ctx)
     live = referenced_images(ctx)
-    return [UnusedDescription(image, file_missing=image.startswith(alt_blocks.TIKZ_PREFIX)
-                              or not (ctx.root / image).is_file(), has_text=_worth_keeping(entries[image]))
-            for image in sorted(entries) if image not in live]
+    leaving = set(moving)
+    found = [UnusedDescription(image, file_missing=image.startswith(alt_blocks.TIKZ_PREFIX)
+                               or not (ctx.root / image).is_file(), has_text=_worth_keeping(entries[image]))
+             for image in sorted(entries) if image not in live and image not in leaving]
+    return [row for row in found if row.has_text or row.file_missing]
+
+
+def described_images(ctx: ProjectContext, images: Iterable[str]) -> set[str]:
+    """Of these images, those whose entry holds a description (or a hint): what archiving the file takes along."""
+    entries = alt_images.load_store(ctx)
+    return {image for image in images if image in entries and _worth_keeping(entries[image])}
 
 
 # --------------------------------------------------------------------------

@@ -228,7 +228,21 @@ def test_unused_descriptions_say_whether_the_file_is_gone_and_whether_there_is_t
                       "media/shown.png": entry("media/shown.png", {})})
     slide(ctx, "s1", "media/shown.png")
     found = {d.image: d for d in alt_archive.unused_descriptions(ctx)}
-    assert list(found) == [A, B, "tikz:t1"]                                    # sorted; the shown one is not offered
+    assert list(found) == [A, "tikz:t1"]       # sorted; the shown one is not offered, nor B: empty, and its file is there
     assert found[A].file_missing and found[A].has_text and found[A].suggested
-    assert not found[B].file_missing and not found[B].has_text and not found[B].suggested
     assert found["tikz:t1"].file_missing
+    (ctx.root / "media" / "b.png").unlink()                                     # an empty row whose file is gone is offered
+    gone = {d.image: d for d in alt_archive.unused_descriptions(ctx)}
+    assert list(gone) == [A, B, "tikz:t1"] and not gone[B].has_text and gone[B].suggested
+    alt_images.save_store(ctx, {**alt_images.load_store(ctx), B: entry(B, {})})     # with text and its file back
+    (ctx.root / "media" / "b.png").write_bytes(b"i")
+    kept = {d.image: d for d in alt_archive.unused_descriptions(ctx)}
+    assert B in kept and kept[B].has_text and not kept[B].suggested               # offered, but not ticked
+
+
+def test_a_file_that_is_about_to_move_has_no_description_row_of_its_own(ctx):
+    (ctx.root / "media").mkdir()
+    (ctx.root / "media" / "b.png").write_bytes(b"i")
+    write_store(ctx, {A: entry(A, {}), B: ImageEntry(image=B)})
+    assert [d.image for d in alt_archive.unused_descriptions(ctx, moving=[B])] == [A]   # b.png travels with its file
+    assert alt_archive.described_images(ctx, [A, B, "media/none.png"]) == {A}           # B has no text, none has no entry
