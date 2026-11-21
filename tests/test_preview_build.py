@@ -22,23 +22,9 @@ def _no_precompiled_preamble(monkeypatch):
     monkeypatch.setattr(preview_build, 'DIRECT_LUALATEX', False)
 
 
-def test_regions_and_elements_keep_preamble_and_validate():
-    pre = r'\documentclass{beamer}\begin{document}'
-    assert slide_preview._region_source(pre, 'Hello', 'region')[1] == '\\begin{frame}\nHello\n\\end{frame}'
-    frame = r'\begin{standardframe}{Title}Hello\end{standardframe}'
-    assert slide_preview._region_source(pre, frame, 'region')[1] == frame
-    with pytest.raises(ValueError, match='complete frames'):
-        slide_preview._region_source(pre, frame, 'element')
-    p, b = slide_preview._region_source(pre, '$x^2$', 'element')
-    assert p.index(r'\usepackage[active,tightpage]{preview}') < p.index(r'\begin{document}')
-    assert b == '\\begin{preview}\n$x^2$\n\\end{preview}'
-
-
 def test_overlay_does_not_change_action_defaults():
-    assert slide_preview._overlay_line(None) == ''
-    assert r'\gdef\beamer@whichframes{2}' in slide_preview._overlay_line(2)
-    with pytest.raises(ValueError):
-        slide_preview._overlay_line(0)
+    assert slide_preview._overlay_line() == ''
+    assert r'\gdef\beamer@whichframes{1-}' in slide_preview._overlay_line(True)
 
 
 def test_cached_build_retains_aux_and_rejects_stale_pdf(tmp_path, monkeypatch):
@@ -173,14 +159,6 @@ def test_rerun_limit_accepts_only_a_new_clean_pdf(tmp_path, monkeypatch):
     produce = False
     with pytest.raises(RuntimeError):
         preview_build.compile_cached(r'\begin{document}Changed', 'abc', print, **kwargs)
-
-
-def test_element_rejects_frame_only_options():
-    pre = r'\documentclass{beamer}\begin{document}'
-    for options in ({'overlay': 1}, {'presenter': True}):
-        with pytest.raises(ValueError):
-            slide_preview.render_slide_text_to_pdf(EXAMPLE_PROJECT, 
-                'abc-EN-Test', '$x$', preamble_text=pre, preview_mode='element', **options)
 
 
 def _fake_engine(monkeypatch, log='Success\nBeginning to dump on file preamble.fmt\n', make_fmt=True):

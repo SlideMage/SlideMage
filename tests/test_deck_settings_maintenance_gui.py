@@ -101,6 +101,6 @@ def test_the_window_runs_the_command_after_the_sheet_has_closed(make_sheet, monk
     monkeypatch.setattr(deck_actions, "DeckSettingsSheet", lambda *_args, **_kwargs: sheet)
     window = SimpleNamespace(
         centre=SimpleNamespace(unsaved=lambda _path: False), project=EXAMPLE_PROJECT,
-        commands=SimpleNamespace(run=lambda command_id, ctx: events.append((command_id, ctx))))
+        commands=SimpleNamespace(run=lambda command_id, ctx: events.append((command_id, ctx))), deck_groups=())
     deck_actions.on_deck_settings(window, sheet.deck)
     assert events == [("closed", QDialog.DialogCode.Accepted), ("rerender_deck_previews", window)]

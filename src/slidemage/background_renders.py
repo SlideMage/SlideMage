@@ -365,8 +365,7 @@ class BackgroundRenderer:
 
     def submit_other_views(self, spec: preview_requests.PreviewRequest) -> None:
         """Prepare the focused revision's other views through the idle queue, ahead of the sweep."""
-        if (not RENDER_OTHER_VIEWS or spec.options.presenter or spec.options.mode != 'slide'
-                or spec.options.overlay is not None):
+        if not RENDER_OTHER_VIEWS or spec.options.presenter:
             return
         target = spec.target
         views = self.versions_for(target.deck) if target.deck is not None else VIEWS

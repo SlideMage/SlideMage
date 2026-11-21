@@ -389,15 +389,15 @@ def test_the_syntax_check_can_stop_a_render_whichever_button_starts_it(centre, r
     assert asked == ["aaa-EN-One-current.tex (saved file)"] and renders == [] and not preview._busy
 
 
-def test_the_render_menu_offers_scope_reveal_step_presenter_transcript_and_the_last_pdf(centre, renders):
+def test_the_render_menu_offers_open_and_render_entries_and_the_last_pdf(centre, renders):
     centre.state.set_focused_slide("aaa")
     entries = {e[1]: e for e in centre.preview._menu._entries if e[0] == "item"}
-    assert entries["scope:slide"][4] == "check" and entries["scope:region"][4] == ""
+    assert list(entries) == ["open_pdf", "presenter", "buffer", "all_buffer", "all_saved", "transcript", "force"]
+    assert [e[1] for e in centre.preview._menu._entries if e[0] == "header"] == ["Open", "Render"]
+    assert [entries[k][2] for k in entries] == [
+        "PDF for this view", "Presenter PDF", "Slide with unsaved changes", "All views with unsaved changes",
+        "All views latest saved version", "Transcript", "Rerender preview, ignore cache"]
     assert not entries["open_pdf"][6]                        # nothing rendered yet
-    centre.preview._on_menu("scope:element")
-    entries = {e[1]: e for e in centre.preview._menu._entries if e[0] == "item"}
-    assert entries["scope:element"][4] == "check" and not entries["overlay"][6]
-    centre.preview._on_menu("scope:slide")
     centre.preview.render_now()
     wait_idle(centre)
     assert [e for e in centre.preview._menu._entries if e[0] == "item" and e[1] == "open_pdf"][0][6]
@@ -406,38 +406,18 @@ def test_the_render_menu_offers_scope_reveal_step_presenter_transcript_and_the_l
     assert renders[-1][0] == "open"
 
 
-def test_rendering_the_buffer_uses_the_unsaved_text_the_scope_and_the_reveal_step(held_autosave, centre, renders,
-                                                                                  monkeypatch):
+def test_rendering_the_buffer_uses_the_unsaved_text(held_autosave, centre, renders):
     state = centre.state
     state.set_focused_slide("aaa")
     state.set_mode("split")
     editor = centre.source.current.editor
     editor.insertPlainText("% unsaved\n")
     preview = centre.preview
-    preview._on_menu("scope:region")
-    informed = []
-    monkeypatch.setattr(QMessageBox, "information", lambda *args: informed.append(args[2]))
-    preview.render_buffer()                                   # nothing selected
-    assert informed and renders == []
-    cursor = editor.textCursor()
-    cursor.setPosition(2)
-    cursor.setPosition(9, QTextCursor.MoveMode.KeepAnchor)
-    editor.setTextCursor(cursor)
-    monkeypatch.setattr(preview_view.QInputDialog, "getInt", lambda *a, **k: (3, True))
-    preview._on_menu("overlay")
     preview.render_buffer()
     wait_idle(centre)
     kind, id_slug, args, kwargs = renders[0]
-    assert kind == "buffer" and args[0] == editor.selected_text() == "unsaved"
-    assert (kwargs["mode"], kwargs["overlay"], args[1]) == ("region", 3, "instructor")
+    assert kind == "buffer" and args[0] == editor.text() and args[0].startswith("% unsaved") and args[1] == "instructor"
     assert page(centre).pixmap is not None
-    assert preview._status_chip.text() == "Rendered from the editor buffer, not the saved file"
-    preview._on_menu("scope:element")                         # a cropped element has no reveal steps
-    preview.render_buffer()
-    wait_idle(centre)
-    assert renders[1][3]["overlay"] is None
-    state.set_view("after-course")
-    assert preview._status_chip.text() != "Rendered from the editor buffer, not the saved file"
 
 
 def test_a_presenter_render_opens_the_viewer_instead_of_the_page(centre, renders):

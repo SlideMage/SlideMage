@@ -45,8 +45,6 @@ class SourceRevision:
 class RenderOptions:
     saved: bool = False
     presenter: bool = False
-    mode: str = "slide"
-    overlay: int | None = None
     force: bool = False
     all_steps: bool = False      # every reveal step, whatever the call restricts (the reveal-step bar)
 
@@ -73,8 +71,7 @@ class PreviewRequest:
     @property
     def complete(self):
         options = self.options
-        if (self.capture_error or self.target.hidden or options.presenter or options.mode != 'slide'
-                or options.overlay is not None):
+        if self.capture_error or self.target.hidden or options.presenter:
             return False
         if options.all_steps:
             return True
@@ -277,15 +274,15 @@ class RenderService:
             return self._background
 
     def request(self, target, text, view, language, log, *, saved=False,
-                presenter=False, mode='slide', overlay=None, spec=None, force=False,
+                presenter=False, spec=None, force=False,
                 all_steps=False, prebuilt=None):
         """`prebuilt` (PrebuiltRender): the slide's PDF is made already, by a document of several slides: record it
         instead of looking it up and rendering."""
         spec = spec or PreviewRequest(target, SourceRevision.capture(target.source_path, text), view, language,
-                                      RenderOptions(saved, presenter, mode, overlay, force, all_steps))
+                                      RenderOptions(saved, presenter, force, all_steps))
         target, text, view, language = spec.target, spec.revision.text, spec.view, spec.language
         options = spec.options
-        presenter, mode, overlay = options.presenter, options.mode, options.overlay
+        presenter = options.presenter
         if target.hidden and not presenter:
             raise ValueError(f'Slide {target.id_slug} is hidden in {view}')
         renderer = self.renderer(target.context)
@@ -339,7 +336,7 @@ class RenderService:
                 else:
                     pdf = preview_target.render_text(
                         target, text, view, language, log=log,
-                        presenter=presenter, mode=mode, overlay=overlay, cancel=cancel,
+                        presenter=presenter, cancel=cancel,
                         all_steps=options.all_steps, force_build=True,
                         **({'workspace': renderer.store.work_dir} if background else {}))
                 if pdf.parent.name.startswith(preview_build.RENDER_FOLDER_PREFIX):

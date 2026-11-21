@@ -29,7 +29,6 @@ from .compiler import build_env
 from .deck_editor import format_call
 from .deck_language import language_lines
 from .preview_metrics import measure
-from .tex_source import COMMENT_RE
 
 
 LogCallback = Callable[[str], None]
@@ -317,46 +316,42 @@ def _slide_call(macro: str, id_slug: str, version: Optional[str], conditions: Op
 
 def _wrapper_text(ctx: project.ProjectContext, preamble: str, deck_version: Optional[str],
                   deck_language: Optional[str], slides: list[tuple],
-                  overlay: Optional[int] = None, all_steps: bool = False, context_before: str = "",
+                  all_steps: bool = False, context_before: str = "",
                   context_after: str = "") -> str:
     """The wrapper of `slides`, [(frame_number, call)] in order: the preamble, the deck's version and language, the
-    overlay selection (once: it patches beamer for the rest of the document), then each call after its page number."""
+    all-steps selection (once: it patches beamer for the rest of the document), then each call after its page number."""
     calls = "".join(f"{_frame_number_line(frame_number)}\t{call}\n" for frame_number, call in slides)
     return (f"{preamble}{_deck_version_line(deck_version)}{language_lines(ctx, deck_language)}"
-            f"{context_before}{_overlay_line(overlay, all_steps)}{calls}{context_after}\\end{{document}}\n")
+            f"{context_before}{_overlay_line(all_steps)}{calls}{context_after}\\end{{document}}\n")
 
 
 def _text_slide(id_slug: str, slide_body: str, frame_number: Optional[int], steps: Optional[str] = None,
-                slide_version: Optional[str] = None, omitted: bool = False, final: bool = False,
-                whole_slide: bool = True) -> str:
+                slide_version: Optional[str] = None, omitted: bool = False, final: bool = False) -> str:
     """One slide of an editor-style wrapper (render_slide_text_to_pdf): its page number, \\setSlideID{} and
     \\setSlideLanguageFromSlug{} (what \\slide{} does before it loads the file), the state its call sets, and
-    `slide_body` pasted in verbatim where \\input{} would splice the file in. A region or element preview
-    (`whole_slide` False) sets no call state."""
-    if final and whole_slide:
+    `slide_body` pasted in verbatim where \\input{} would splice the file in."""
+    if final:
         slide_body = ("\\begingroup\n\\renewcommand{\\conditionalpause}[1][instructor]{}\n"
                       + slide_body + "\n\\endgroup\n")
-    call_state = ""
-    if whole_slide:
-        call_state = (f"\\setSlideVersion{{{slide_version}}}\n" if slide_version is not None
-                      else "\\global\\SMSlideVersionSetfalse\n")
-        if steps is not None:
-            call_state += f"\\gdef\\SMSlideSteps{{{steps}}}\n"
-        if omitted:
-            call_state += "\\global\\SMOmittedSlidetrue\n"
-            slide_body += "\n\\global\\SMOmittedSlidefalse\n"
+    call_state = (f"\\setSlideVersion{{{slide_version}}}\n" if slide_version is not None
+                  else "\\global\\SMSlideVersionSetfalse\n")
+    if steps is not None:
+        call_state += f"\\gdef\\SMSlideSteps{{{steps}}}\n"
+    if omitted:
+        call_state += "\\global\\SMOmittedSlidetrue\n"
+        slide_body += "\n\\global\\SMOmittedSlidefalse\n"
     return (f"{_frame_number_line(frame_number)}"
             f"\\setSlideID{{{id_slug}}}\\setSlideLanguageFromSlug{{{id_slug}}}\n{call_state}{slide_body}\n")
 
 
 def _text_wrapper(ctx: project.ProjectContext, preamble: str, deck_version: Optional[str],
                   deck_language: Optional[str], slides: str,
-                  overlay: Optional[int] = None, all_steps: bool = False, context_before: str = "",
+                  all_steps: bool = False, context_before: str = "",
                   context_after: str = "") -> str:
     """The editor-style wrapper of `slides`, one or several `_text_slide`s: the preamble, the deck's sections before
-    them, the overlay selection (once: it patches beamer for the rest of the document), the deck's version and
+    them, the all-steps selection (once: it patches beamer for the rest of the document), the deck's version and
     language, then the slides."""
-    return (f"{preamble}{context_before}{_overlay_line(overlay, all_steps)}"
+    return (f"{preamble}{context_before}{_overlay_line(all_steps)}"
             f"{_deck_version_line(deck_version)}{language_lines(ctx, deck_language)}"
             f"{slides}{context_after}\\end{{document}}\n")
 
@@ -457,7 +452,6 @@ def render_slide_to_pdf(
     log: Optional[LogCallback] = None,
     steps: Optional[str] = None,
     reuse_build: bool = True,
-    overlay: Optional[int] = None,
     cancel=None,
     all_steps: bool = False,
     context_before: str = "",
@@ -483,13 +477,12 @@ def render_slide_to_pdf(
     instead of always "1" (see _frame_number_line).
 
     reuse_build retains dependency-checked auxiliary state between requests.
-    overlay selects a positive reveal number per frame; None keeps all pages.
     """
     log = log or (lambda line: None)
     preamble = default_preamble(ctx) if preamble_text is None else preamble_text
     wrapper_text = _wrapper_text(
         ctx, preamble, deck_version, deck_language, [(frame_number, _slide_call(macro, id_slug, version, conditions, steps))],
-        overlay=overlay, all_steps=all_steps, context_before=context_before, context_after=context_after)
+        all_steps=all_steps, context_before=context_before, context_after=context_after)
     return _with_context(compile_and_extract(
         ctx, wrapper_text, id_slug, log,
         reuse_build=reuse_build, cancel=cancel, workspace=workspace, **({'force_build': True} if force_build else {}),
@@ -533,8 +526,6 @@ def render_slide_text_to_pdf(
     preamble_text: Optional[str] = None,
     log: Optional[LogCallback] = None,
     reuse_build: bool = True,
-    preview_mode: str = "slide",
-    overlay: Optional[int] = None,
     frame_number: Optional[int] = None,
     cancel=None,
     all_steps: bool = False,
@@ -582,15 +573,10 @@ def render_slide_text_to_pdf(
     """
     log = log or (lambda line: None)
     preamble = default_preamble(ctx) if preamble_text is None else preamble_text
-    if overlay is not None and preview_mode == "element":
-        raise ValueError("Element previews do not have frame overlays")
-    if presenter and preview_mode == "element":
-        raise ValueError("Use Instructor instead of Presenter for an element preview")
-    preamble, slide_body = _region_source(preamble, slide_body, preview_mode)
     wrapper_text = _text_wrapper(
         ctx, f"{_presenter_mode_line(presenter)}{preamble}", deck_version, deck_language,
-        _text_slide(id_slug, slide_body, frame_number, steps, slide_version, omitted, final, preview_mode == "slide"),
-        overlay=overlay, all_steps=all_steps, context_before=context_before, context_after=context_after)
+        _text_slide(id_slug, slide_body, frame_number, steps, slide_version, omitted, final),
+        all_steps=all_steps, context_before=context_before, context_after=context_after)
     return _with_context(compile_and_extract(
         ctx, wrapper_text, id_slug, log,
         reuse_build=reuse_build, cancel=cancel, workspace=workspace, **({'force_build': True} if force_build else {}),
@@ -613,16 +599,16 @@ def open_pdf(pdf_path: Path) -> None:
 
 
 
-def _overlay_line(overlay: Optional[int], all_steps: bool = False) -> str:
+def _overlay_line(all_steps: bool = False) -> str:
     """Apply a frame-level restriction, including to raw Beamer frames.
 
     Default action specifications affect item visibility, not which PDF pages
     are produced. Patch the frame loop instead and fail explicitly on changes
-    to Beamer's interface. An explicit selection overrides a slidestep filter.
+    to Beamer's interface.
     `all_steps` selects every overlay (`1-`), so it overrides a \\slidestep's steps, the final-state
     flag and a spec written on the slide's own raw frame: page k is then overlay k.
     """
-    if all_steps and overlay is None:
+    if all_steps:
         return (
             "\\makeatletter\n"
             "\\pretocmd{\\beamer@doseveralframes}"
@@ -630,47 +616,4 @@ def _overlay_line(overlay: Optional[int], all_steps: bool = False) -> str:
             "{}{\\PackageError{SlideMage}{Cannot select all preview overlays}{}}\n"
             "\\makeatother\n"
         )
-    if overlay is None:
-        return ""
-    if isinstance(overlay, bool) or not isinstance(overlay, int) or overlay < 1:
-        raise ValueError("Overlay must be a positive integer")
-    return (
-        "\\makeatletter\n"
-        "\\pretocmd{\\beamer@doseveralframes}"
-        f"{{\\gdef\\beamer@whichframes{{{overlay}}}}}"
-        "{}{\\PackageError{SlideMage}{Cannot select preview overlay}{}}\n"
-        "\\pretocmd{\\beamer@autobreakframe}"
-        "{\\PackageError{SlideMage}{Overlay preview does not support allowframebreaks}{Use all overlays}}"
-        "{}{\\PackageError{SlideMage}{Cannot validate preview overlay}{}}\n"
-        "\\makeatother\n"
-    )
-
-
-def _region_source(preamble: str, body: str, mode: str) -> tuple[str, str]:
-    """Build AUCTeX-style region or preview-latex element wrappers.
-
-    A region must be a complete frame or a self-contained fragment; arbitrary
-    unbalanced selections are deliberately left to TeX's normal diagnostics.
-    Element previews have their own crop.
-    """
-    if mode == "slide":
-        return preamble, body
-    if mode not in ("region", "element"):
-        raise ValueError(f"Unknown preview mode: {mode}")
-    if not body.strip():
-        raise ValueError("Select some LaTeX to preview first")
-    has_frame = re.search(r"\\begin\{\w*frame\}|\\(?:title|section|quote|figure|fullbleed|standout)frame\b", COMMENT_RE.sub("", body))
-    if mode == "region":
-        return preamble, body if has_frame else "\\begin{frame}\n" + body + "\n\\end{frame}"
-    if has_frame:
-        raise ValueError("Element preview needs a formula, graphic or text fragment; use Region for complete frames")
-    marker = r"\begin{document}"
-    if marker not in preamble:
-        raise ValueError("The preview preamble must include \\begin{document}")
-    # Beamer normally initializes this list-spacing hook when opening a
-    # frame. Isolated preview elements never open one; use its normal default.
-    setup = ("\\usepackage[active,tightpage]{preview}\n"
-             "\\setlength{\\PreviewBorder}{6pt}\n"
-             "\\makeatletter\\providecommand{\\beamer@cramped}{}\\makeatother\n")
-    preamble = preamble.replace(marker, setup + marker, 1)
-    return preamble, "\\begin{preview}\n" + body + "\n\\end{preview}"
+    return ""

@@ -14,6 +14,7 @@ through the command registry, which also says whether its button is enabled.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import replace
 from pathlib import Path
 
@@ -22,6 +23,7 @@ from PySide6.QtWidgets import (
 
 from ... import deck_settings, languages, project
 from ...deck_editor import VIEWS
+from ...deck_groups import DEFAULT_GROUPS, DeckGroup
 from ...deck_scan import OPEN_PDF_CHOICES, Deck
 from ...deck_settings import DeckSettings
 from ...plugins import session
@@ -30,9 +32,10 @@ from ..plugin_ui import DIRTY_SHEET_MESSAGE, HOST_UI
 from ..ai_models import add_route_badge
 from ..kit.tokens import SPACE
 from ..kit.widgets import Button, Field, ModalSheet, Page, Surface, action_row, caption, columns, set_property
+from .deck_group import GroupPicker
 
-GENERAL, OUTPUT = range(2)
-SAVE, COMMAND = "save", "command:"
+GENERAL, OUTPUT, TAGS = range(3)
+SAVE, COMMAND, EDIT_GROUPS = "save", "command:", "edit_groups"
 MAINTENANCE = (       # (command id, name, what it does, button)
     ("create_snapshot", "Deck snapshot", "A dated, self-contained copy of the deck that compiles as it does today.",
      "Create snapshot…"),
@@ -52,11 +55,13 @@ OUTPUT_LABELS = {
 
 
 class DeckSettingsSheet(ModalSheet):
-    def __init__(self, parent, deck: Deck, templates: list[tuple[str, str]], *, tab: int | str = GENERAL) -> None:
+    def __init__(self, parent, deck: Deck, templates: list[tuple[str, str]], *, tab: int | str = GENERAL,
+                 groups: Sequence[DeckGroup] = DEFAULT_GROUPS) -> None:
         """Edits a copy of the deck's settings. `templates` is [(key, label)] of the templates the
         project can find; the deck's current one is added if it is not there. `tab` is the one to
         open on: its index, or the title of a tab (a plugin's; an unknown title opens General). The tabs of the
-        loaded plugins follow SlideMage's own."""
+        loaded plugins follow SlideMage's own. The Tags tab lists the project's deck groups `groups`; the checked ones
+        are `chosen_groups` after exec (the caller writes them as \\decktags, with the settings)."""
         super().__init__(f"Deck settings — {deck.name}", parent, width=700)
         add_route_badge(self, parent)
         self.deck = deck
@@ -66,8 +71,10 @@ class DeckSettingsSheet(ModalSheet):
         self.action = ""
         self.add_tab("General", self._build_general(templates))
         self.add_tab("PDF output", self._build_output())
+        self.group_picker = GroupPicker(deck.groups, groups)
+        self.add_tab("Tags", self._build_tags())
         self.plugin_tabs: dict[int, tuple] = {}      # tab index -> (the plugin's DeckSettingsTab, its page)
-        self.tab_titles = ["General", "PDF output"]
+        self.tab_titles = ["General", "PDF output", "Tags"]
         for plugin in session.active():
             for plugin_tab in plugin.contributions.deck_settings_tabs:
                 self._add_plugin_tab(plugin, plugin_tab)
@@ -82,6 +89,8 @@ class DeckSettingsSheet(ModalSheet):
         self.plugin_button.clicked.connect(self._on_plugin_action)
 
         self._initial = self._values()
+        for check in self.group_picker.checks.values():
+            check.toggled.connect(self._sync_footer)
         self.template_combo.currentIndexChanged.connect(self._sync_mode_combo)
         for widget in (self.template_combo, self.language_combo, self.open_pdf_combo):
             widget.currentIndexChanged.connect(self._sync_footer)
@@ -257,6 +266,23 @@ class DeckSettingsSheet(ModalSheet):
         layout.addStretch(1)
         return page
 
+    def _build_tags(self) -> Page:
+        """The groups (sections of the deck switcher) the deck is listed in, stored as \\decktags{...} in its file."""
+        page = Page()
+        layout = page.body
+        layout.addWidget(self.group_picker)
+        layout.addWidget(caption("Stored in the deck's own file as \\decktags{...}, so they stay with the deck."))
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        edit = Button("Edit groups…", kind="ghost", compact=True)
+        edit.setToolTip("Add, rename, reorder or remove the project's groups (Settings → Project)")
+        edit.clicked.connect(self._on_edit_groups)
+        row.addWidget(edit)
+        row.addStretch(1)
+        layout.addLayout(row)
+        layout.addStretch(1)
+        return page
+
     # -- the form --------------------------------------------------------------------------
 
     def _values(self) -> tuple:
@@ -264,7 +290,18 @@ class DeckSettingsSheet(ModalSheet):
                 tuple(edit.text() for edit in self.output_edits.values()),
                 self.appendix_check.isChecked(), self.open_pdf_combo.currentData(), self._footer_hide(),
                 self._mode_settings(),
-                tuple(sorted(self._view_theme_entries().items())))
+                tuple(sorted(self._view_theme_entries().items())),
+                self.group_picker.chosen_groups())
+
+    @property
+    def chosen_groups(self) -> tuple[str, ...]:
+        return self.group_picker.chosen_groups()
+
+    @property
+    def groups_changed(self) -> bool:
+        """Whether the Tags tab's choice differs from what it showed: only then the caller writes \\decktags (a deck
+        with none is shown in its fallback group, which saving the settings must not turn into a tag)."""
+        return self.chosen_groups != self.group_picker.initial
 
     def dirty(self) -> bool:
         return self._values() != self._initial
@@ -415,6 +452,15 @@ class DeckSettingsSheet(ModalSheet):
             self._say(str(exc), "error")
             return
         self.action = SAVE
+        self.accept()
+
+    def _on_edit_groups(self) -> None:
+        if self.dirty() and QMessageBox.question(
+                self, "Unsaved changes", "You have unsaved changes to the deck settings. Discard them and continue?",
+                QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel) != QMessageBox.StandardButton.Discard:
+            return
+        self.action = EDIT_GROUPS
         self.accept()
 
     def _on_command(self, command_id: str) -> None:

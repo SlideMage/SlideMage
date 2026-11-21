@@ -23,7 +23,7 @@ from test_workspace_window import COURSE as COURSE_DECK
 
 COURSE = SimpleNamespace(name="course", path="course.tex", archived=False, group="course", groups=("course",),
                          supports_version=True)
-TITLES = ["File", "Edit", "Deck", "Slide", "View", "Build", "AI", "Housekeeping", "Help"]
+TITLES = ["File", "Edit", "View", "Project", "Deck", "Slide", "Present", "Build", "AI", "Help"]
 
 
 def native(key: str) -> str:
@@ -55,7 +55,7 @@ def window(qapp, monkeypatch):
 
 # -- the layout ----------------------------------------------------------------------
 
-def test_nine_menus_with_one_alt_key_each(qapp):
+def test_ten_menus_with_one_alt_key_each(qapp):
     assert [t.replace("&", "") for t, _s in MENU_BAR] == TITLES
     keys = [t[t.index("&") + 1].lower() for t, _s in MENU_BAR]
     assert len(set(keys)) == len(keys)
@@ -65,29 +65,34 @@ def test_every_command_is_in_the_menu_bar_once_per_place_and_every_listed_id_exi
     registry = build_registry()
     ids = menu_bar_ids()
     assert [i for i in ids if i not in registry] == []
-    assert {c.id for c in registry} - set(ids) == {"switch_deck"}      # Deck → Switch deck is the submenu of the decks
-    assert [i for i in ids if ids.count(i) > 1] == ["palette", "palette"]   # Find anything… is in Edit and in Help
+    # Deck → Switch deck is the submenu of the decks; the rest is left to the palette and the right-click menus.
+    assert {c.id for c in registry} - set(ids) == {"switch_deck", "compile:mode", "compile:slides", "compile:everything",
+                                                   "add_slide", "deck_tags", "slide:open_tab"}
+    assert [i for i in ids if ids.count(i) > 1] == []
 
 
 def test_the_deck_menu_in_order_with_its_separators(qapp):
     ctx = command_context(COURSE, decks=[COURSE])
     assert names(filled_menu(ctx, "Deck")) == [
-        "submenu:switch deck", "refresh_decks", "|", "present", "present_here", "open_pdf", "|",
-        "deck_settings", "deck_tags", "deck_source", "|",
-        "add_slide", "duplicate_deck", "submenu:export", "create_snapshot", "|",
-        "update_deck_versions", "rerender_deck_previews", "deck:readability", "deck:spelling", "|", "archive_deck"]
+        "#Open", "open_pdf", "deck_source", "|",
+        "#Switch decks", "submenu:switch deck", "|",   # Archived decks… only with an archived deck
+        "#Deck operations", "update_deck_versions", "duplicate_deck", "submenu:export", "create_snapshot", "archive_deck", "|",
+        "#Maintenance", "rerender_deck_previews", "deck:readability", "deck:spelling", "refresh_decks", "|",
+        "deck_settings"]
 
 
-def test_the_file_edit_housekeeping_and_help_menus(qapp):
+def test_the_file_project_present_and_help_menus(qapp):
     ctx = command_context(COURSE)
     assert names(filled_menu(ctx, "File")) == [
-        "open_project", "new_deck", "import_presentation", "|", "save", "autosave", "|", "edit_bib", "edit_test_slides", "|",
-        "settings", "|", "exit"]
-    assert names(filled_menu(ctx, "Housekeeping")) == [
-        "housekeeping", "|", "#Cleanup", "empty_pdf", "remove_temp", "archive_unused", "|", "#Updating",
-        "update_previews", "sync_links"]
+        "open_project", "new_deck", "import_presentation", "|", "save", "autosave", "|", "settings", "|", "exit"]
+    assert names(filled_menu(ctx, "Project")) == [
+        "images", "library", "log", "|", "edit_bib", "edit_test_slides", "|", "housekeeping", "|", "#Cleanup",
+        "empty_pdf", "remove_temp", "archive_unused", "|", "#Updating", "update_previews", "sync_links"]
+    assert names(filled_menu(ctx, "Present")) == ["present", "present_here"]
     assert names(filled_menu(ctx, "Help")) == [
-        "open_manual", "shortcuts", "palette", "|", "version_history", "check_updates", "plugins", "project_compat", "|",
+        "open_manual", "shortcuts", "|", "version_history", "check_updates", "plugins", "project_compat", "|",
+        "submenu:debug"]
+    assert [a.objectName() for a in menu_actions(filled_menu(ctx, "Help"))["submenu:debug"].menu().actions()] == [
         "debug_log", "debug_report", "open_logs"]
 
 

@@ -20,11 +20,6 @@ from slidemage.project import ProjectContext
 from slidemage.render_key import Unit
 
 DECK = ("\\documentclass{beamer}\n\\begin{document}\n\\section{One}\n\\slide{1aa-EN-A}\n\\end{document}\n")
-OVERLAY = ("\\makeatletter\n\\pretocmd{\\beamer@doseveralframes}{\\gdef\\beamer@whichframes{2}}{}"
-           "{\\PackageError{SlideMage}{Cannot select preview overlay}{}}\n"
-           "\\pretocmd{\\beamer@autobreakframe}{\\PackageError{SlideMage}{Overlay preview does not support "
-           "allowframebreaks}{Use all overlays}}{}{\\PackageError{SlideMage}{Cannot validate preview overlay}{}}\n"
-           "\\makeatother\n")
 ALL_STEPS = ("\\makeatletter\n\\pretocmd{\\beamer@doseveralframes}{\\gdef\\beamer@whichframes{1-}}{}"
              "{\\PackageError{SlideMage}{Cannot select all preview overlays}{}}\n\\makeatother\n")
 HEAD = "\\def\\deckversionoverride{instructor}\n"
@@ -40,9 +35,9 @@ GOLDEN = {
                    "\\section{One}\n\\slide{1aa-EN-A}\n\\end{document}\n\n"),
     "partial fr": (HEAD + "\\def\\decklanguageoverride{fr}\n\\documentclass{beamer}\n\\begin{document}\n\\decklanguage[fr]\n\n"
                    "\\section{One}\n\\end{document}\n"),
-    "calls None": "PRE\n\\deckversion[instructor]\n" + OVERLAY + "\\setcounter{framenumber}{2}\n\t\\slide{1aa-EN-A}\n\\end{document}\n",
-    "calls de": ("PRE\n\\deckversion[instructor]\n\\decklanguage[de]\n" + OVERLAY
-                 + "\\setcounter{framenumber}{2}\n\t\\slide{1aa-EN-A}\n\\end{document}\n"),
+    "calls None": "PRE\n\\deckversion[instructor]\n\\setcounter{framenumber}{2}\n\t\\slide{1aa-EN-A}\n\\end{document}\n",
+    "calls de": ("PRE\n\\deckversion[instructor]\n\\decklanguage[de]\n"
+                 "\\setcounter{framenumber}{2}\n\t\\slide{1aa-EN-A}\n\\end{document}\n"),
     "text None": "PRE\n" + ALL_STEPS + "\\deckversion[instructor]\nBODY\n\\end{document}\n",
     "text de": "PRE\n" + ALL_STEPS + "\\deckversion[instructor]\n\\decklanguage[de]\nBODY\n\\end{document}\n",
 }
@@ -69,7 +64,7 @@ def wrappers(ctx) -> dict[str, str]:
         out[f"partial {language}"] = partial_compile.wrapper_text(plan)
     for language in (None, "de"):
         out[f"calls {language}"] = slide_preview._wrapper_text(
-            ctx, "PRE\n", "instructor", language, [(3, "\\slide{1aa-EN-A}")], overlay=2)
+            ctx, "PRE\n", "instructor", language, [(3, "\\slide{1aa-EN-A}")])
         out[f"text {language}"] = slide_preview._text_wrapper(ctx, "PRE\n", "instructor", language, "BODY\n", all_steps=True)
     return out
 

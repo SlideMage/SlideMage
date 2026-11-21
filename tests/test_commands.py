@@ -87,12 +87,17 @@ def test_every_action_of_the_former_menu_bar_and_deck_row_is_in_the_registry():
             assert command.title(context)
 
 
+PALETTE_ONLY = {"switch_deck", "compile:mode", "compile:slides", "compile:everything", "add_slide", "deck_tags",
+                "slide:open_tab"}
+
+
 def test_every_command_a_menu_lists_exists_and_every_command_is_in_a_menu_or_the_palette(qapp):
     registry = build_registry()
     listed = set(menu_bar_ids())
     assert [i for i in listed if i not in registry] == []
-    # Every command is in the menu bar; Switch deck… is its Deck → Switch deck submenu there.
-    assert {c.id for c in registry} - listed == {"switch_deck"}
+    # Every command is in the menu bar but the ones left to the palette and the right-click menus (Switch deck… is
+    # the Deck → Switch deck submenu there).
+    assert {c.id for c in registry} - listed == PALETTE_ONLY
     context = command_context()
     assert {k for k in (e[1] for e in build_compile_menu(None, context)._entries if e[0] == "item")
             if not k.startswith("submenu:")} <= {c.id for c in registry}
@@ -104,8 +109,9 @@ def test_a_menu_entry_shows_the_commands_label_tone_shortcut_and_availability(qa
     context = command_context()   # no deck
     deck = menu_actions(filled_menu(context, "Deck"))
     assert (deck["archive_deck"].text(), deck["archive_deck"].isEnabled()) == ("Archive deck…", False)
-    assert deck["present"].text() == "Present deck\tF5" and "deck_settings" in deck and "log" not in deck
-    assert menu_actions(filled_menu(context, "Housekeeping"))["housekeeping"].isEnabled()
+    assert "deck_settings" in deck and "log" not in deck
+    assert menu_actions(filled_menu(context, "Present"))["present"].text() == "Present deck\tF5"
+    assert menu_actions(filled_menu(context, "Project"))["housekeeping"].isEnabled()
 
 
 def test_deck_settings_has_the_preferences_shortcut_and_no_other_command_uses_it(qapp):

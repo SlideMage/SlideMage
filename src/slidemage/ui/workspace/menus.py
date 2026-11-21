@@ -6,8 +6,8 @@ helper the slide list's context menus use too.
 A menu here is only a layout, which commands in which sections; the labels, the
 shortcuts and when an entry is available come from the command registry
 (actions.py). The item keys are command ids, which `WorkspaceWindow.run_command`
-runs. The menu bar (MENU_BAR) lists every command of the registry; the Compile menu
-and the ⌘K palette stay as quick ways to the same commands.
+runs. The menu bar (MENU_BAR) lists the commands people reach for; the rest (the other PDF variants,
+Pages of the selected slides, ...) stay in the ⌘K palette and the right-click menus.
 """
 from __future__ import annotations
 
@@ -18,13 +18,12 @@ from PySide6.QtGui import QAction, QActionGroup
 from PySide6.QtWidgets import QLabel, QMenu, QMenuBar, QWidget, QWidgetAction
 
 from ...ai import routes
-from ...deck_groups import DEFAULT_GROUPS, TAG_MANUAL, DeckGroup, headings, switcher_order
+from ...deck_groups import DEFAULT_GROUPS, ROLE_PINNED, TAG_MANUAL, DeckGroup, headings, switcher_order
 from ...deck_scan import Deck
 from ...transcript import STUDENT_VERSIONS
 from ..commands import Context
 from ..kit import kit_qss as q
 from ..kit.widgets import PopoverMenu
-from .state import VIEWS
 
 VIEW_LABELS = {
     "instructor": "Instructor",
@@ -34,15 +33,20 @@ VIEW_LABELS = {
 
 # The section of the decks whose tags name no group of the project's list (and that has no fallback group).
 OTHER_DECKS = "Other decks"
+# The heading of a pinned group (the Workdeck group by default) whose own heading is empty.
+PINNED_DECKS = "Pinned"
 
 
 def deck_sections(decks: Iterable[Deck], groups: Sequence[DeckGroup] = DEFAULT_GROUPS) -> list[tuple[str, list[Deck]]]:
     """The deck switcher's sections top to bottom, (heading, decks) per group of the project's list and the
-    manual's, empty ones included; a pinned group has no heading (""). A deck in several groups is listed under
+    manual's, empty ones included; a pinned group without a heading of its own is headed "Pinned". A deck in several groups is listed under
     each of them, the same way (2026-10-23). Decks in no group follow in OTHER_DECKS, before the manual and the
     test decks, a section only when there is one."""
     decks = list(decks)
     titles = headings(groups)
+    for group in groups:
+        if ROLE_PINNED in group.roles and not titles[group.tag]:
+            titles[group.tag] = PINNED_DECKS
     sections = [(titles[tag], [d for d in decks if tag in d.groups]) for tag in switcher_order(groups)]
     ungrouped = [d for d in decks if not d.groups]
     if ungrouped:
@@ -88,13 +92,26 @@ class Submenu(NamedTuple):
     ids: tuple[str, ...]
 
 
-def add_commands(menu: PopoverMenu, ctx: Context, ids: Iterable[str | Submenu], header: str = "", *,
+class Item(NamedTuple):
+    """A command shown under a shorter title than the registry's (the palette needs the long one, a menu under a
+    heading does not repeat it): "Compile PDF · Instructor" is just "Instructor" below the heading "Compile PDF"."""
+
+    id: str
+    title: str
+
+
+def _command_id(entry) -> str:
+    return entry.id if isinstance(entry, Item) else entry
+
+
+def add_commands(menu: PopoverMenu, ctx: Context, ids: Iterable[str | Submenu | Item], header: str = "", *,
                  hints: bool = True) -> None:
     """The visible commands `ids` as items (disabled where they are not available now), under
     `header` if any of them is shown; `hints` False leaves the commands' meta texts out, so only
     the shortcuts show. A Submenu is a flyout row, shown if any of its commands is visible and
     disabled if none is available."""
-    entries = [e for e in ids if (_visible(ctx, e.ids) if isinstance(e, Submenu) else ctx.commands[e].visible(ctx))]
+    entries = [e for e in ids if (_visible(ctx, e.ids) if isinstance(e, Submenu)
+                                  else ctx.commands[_command_id(e)].visible(ctx))]
     if entries and header:
         menu.add_header(header)
     for entry in entries:
@@ -103,8 +120,9 @@ def add_commands(menu: PopoverMenu, ctx: Context, ids: Iterable[str | Submenu], 
                              lambda parent, sub=entry: _flyout(parent, ctx, sub.ids),
                              enabled=any(c.enabled(ctx) for c in _visible(ctx, entry.ids)))
         else:
-            command = ctx.commands[entry]
-            menu.add_item(command.id, command.title(ctx), meta=command.info(ctx) if hints else command.key_text(),
+            command = ctx.commands[_command_id(entry)]
+            title = entry.title if isinstance(entry, Item) else command.title(ctx)
+            menu.add_item(command.id, title, meta=command.info(ctx) if hints else command.key_text(),
                           tone=command.tone, enabled=command.enabled(ctx))
 
 
@@ -119,16 +137,11 @@ def _flyout(parent: PopoverMenu, ctx: Context, ids: Iterable[str]) -> PopoverMen
 
 
 def build_compile_menu(parent: QWidget, ctx: Context) -> PopoverMenu:
-    """Every PDF the old deck table could ask for (its version, per-chapter and Presenter
-    checkboxes), the transcripts of its Create Transcript button, the Pages field, Stop creation
-    and the options row of the old toolbar; the pages of the selected slides; and every active
-    deck at once. Entries a deck cannot use are disabled instead of hidden."""
+    """The Compile caret menu: the same PDF and transcript entries as the Build menu (COMPILE_PDF,
+    TRANSCRIPTS), Present and Stop. Entries a deck cannot use are disabled instead of hidden."""
     menu = PopoverMenu(parent, min_width=300)
-    add_commands(menu, ctx, [f"compile:{view}" for view in VIEWS] + [
-        "compile:all", "compile:mode", "compile:chapters", "compile:presenter", "compile:slides", "compile:pages",
-        "compile:several", "compile:everything"], "PDF")
-    add_commands(menu, ctx, [f"transcript:{version}" for version in STUDENT_VERSIONS],
-                 "Accessible transcript")
+    add_commands(menu, ctx, COMPILE_PDF, "Compile PDF")
+    add_commands(menu, ctx, TRANSCRIPTS, "Accessible transcript")
     add_commands(menu, ctx, ["present", "present_here"], "Present")
     menu.add_separator()
     add_commands(menu, ctx, ["stop", "build_options"])
@@ -140,40 +153,50 @@ def build_compile_menu(parent: QWidget, ctx: Context) -> PopoverMenu:
 # registered under it, in the registry's order), a Submenu, or DECKS, the decks as the deck switcher groups them.
 # Each menu is filled from the registry whenever it opens: labels, keys, enabled and checked states are those of now.
 DECKS = "decks"
+# The PDF entries of the Build menu and the Compile caret menu, under the heading "Compile PDF".
+COMPILE_PDF = (Item("compile:current", "Current view"), Item("compile:instructor", "Instructor"),
+               Item("compile:during-course", "During course"), Item("compile:after-course", "After course"),
+               "compile:presenter", Item("compile:all", "All views"), "compile:chapters", "compile:pages",
+               "compile:several")
+TRANSCRIPTS = (*(f"transcript:{version}" for version in STUDENT_VERSIONS), "transcript:both")
 MENU_BAR = (
     ("&File", (("", ("open_project", "new_deck", "import_presentation")), ("", ("save", "autosave")),
-               ("", ("edit_bib", "edit_test_slides")), ("", ("settings",)), ("", ("exit",)))),
+               ("", ("settings",)), ("", ("exit",)))),
     ("&Edit", (("", ("palette", "find", "replace")),
                ("", ("selection:rewrite", Submenu("Rewrite selection as", ("selection:rewrite:*",)),
                      "selection:proofread")),
                ("", ("slide:clear",)))),
-    ("&Deck", (("", (DECKS, "archived_decks", "refresh_decks")), ("", ("present", "present_here", "open_pdf")),
-               ("", ("deck_settings", "deck_tags", "deck_source")),
-               ("", ("add_slide", "duplicate_deck", Submenu("Export", ("export_pptx", "export_latex")),
-                     "create_snapshot")),
-               ("", ("update_deck_versions", "rerender_deck_previews", "deck:readability", "deck:spelling")),
-               ("", ("archive_deck",)))),
-    ("&Slide", (("", ("slide:open", "slide:preview", "slide:open_tab", "slide:images")),
-                ("", ("slide:before", "slide:after", "slide:section_before", "slide:duplicate", "slide:translate")),
-                ("", (Submenu("Visibility", ("slide:visible:*",)), "slide:update_versions")),
-                ("", ("slide:reviewed", "slides:unreviewed", "slide:compare", "slide:readability")),
+    ("&View", (("View as", ("view:*",)), ("Language", ("language:*",)), ("Center", ("mode:*",)),
+               ("SlideMage layout", ("column:left", "column:right", Submenu("Side panel", ("panel:*",)))),
+               ("Tabs", ("tab:*",)))),
+    ("&Project", (("", ("images", "library", "log")), ("", ("edit_bib", "edit_test_slides")),
+                  ("", ("housekeeping",)), ("Cleanup", ("empty_pdf", "remove_temp", "archive_unused")),
+                  ("Updating", ("update_previews", "sync_links")))),
+    ("&Deck", (("Open", (Item("open_pdf", "Latest PDF"), "deck_source")),
+               ("Switch decks", (DECKS, "archived_decks")),
+               ("Deck operations", ("update_deck_versions", "duplicate_deck",
+                                    Submenu("Export", ("export_pptx", "export_latex")), "create_snapshot",
+                                    "archive_deck")),
+               ("Maintenance", ("rerender_deck_previews", "deck:readability", "deck:spelling", "refresh_decks")),
+               ("", ("deck_settings",)))),
+    ("&Slide", (("Views", ("slide:open", "slide:preview", "slide:images")),
+                ("Add", ("slide:before", "slide:after", "slide:section_before", "slide:section_after",
+                         "slide:duplicate", "slide:translate")),
+                ("Visibility", ("slide:visible:*", "slide:update_versions")),
+                ("Review", ("slide:reviewed", "slides:unreviewed", "slide:compare")),
+                ("", ("slide:readability",)),
                 ("", (Submenu("Section", ("section:*",)),)),
                 ("", ("slide:remove",)))),
-    ("&View", (("View as", ("view:*",)), ("Language", ("language:*",)), ("Center", ("mode:*",)),
-               ("", ("column:left", "column:right", Submenu("Side panel", ("panel:*",)), "images", "library", "log")),
-               ("Tabs", ("tab:*",)), ("", ("render_buffer", "preview:*")))),
-    ("&Build", (("", ("compile:current",)),
-                ("PDF", (*(f"compile:{view}" for view in VIEWS), "compile:all", "compile:mode", "compile:chapters", "compile:presenter",
-                         "compile:slides", "compile:pages", "compile:several", "compile:everything")),
-                ("Accessible transcript", ("transcript:*",)),
+    ("Prese&nt", (("", ("present", "present_here")),)),
+    ("&Build", (("Compile PDF", COMPILE_PDF),
+                ("Accessible transcript", TRANSCRIPTS),
+                ("Render", ("render_buffer", "preview:all-buffer", "preview:all-saved", "preview:force")),
                 ("", ("stop", "build_options")))),
-    ("&AI", (("", ("ai:local", "ai:cloud", "ai:setup")), ("This slide", ("slide:readable", "task:slide:*")),
-             ("This deck", ("task:deck:*",)))),
-    ("H&ousekeeping", (("", ("housekeeping",)), ("Cleanup", ("empty_pdf", "remove_temp", "archive_unused")),
-                       ("Updating", ("update_previews", "sync_links")))),
-    ("&Help", (("", ("open_manual", "shortcuts", "palette")),
+    ("&AI", (("", ("ai:local", "ai:cloud", "ai:setup")),
+             ("", (Submenu("This slide", ("slide:readable", "task:slide:*")), Submenu("This deck", ("task:deck:*",)))))),
+    ("&Help", (("", ("open_manual", "shortcuts")),
                ("", ("version_history", "check_updates", "plugins", "project_compat")),
-               ("", ("debug_log", "debug_report", "open_logs")))),
+               ("", (Submenu("Debug", ("debug_log", "debug_report", "open_logs")),)))),
 )
 # The commands that are one of a set of states: a radio item, checked where the command's meta says "current".
 RADIO_PREFIXES = ("view:", "language:", "mode:", "ai:local", "ai:cloud")
@@ -247,7 +270,8 @@ def fill_menu(menu: QMenu, ctx: Context, sections) -> None:
                     _add_command(sub, ctx, command)
                 sub.menuAction().setEnabled(any(c.enabled(ctx) for c in commands))
             else:
-                action = _add_command(menu, ctx, ctx.commands[entry])
+                action = _add_command(menu, ctx, ctx.commands[_command_id(entry)],
+                                      entry.title if isinstance(entry, Item) else None)
                 if action.isCheckable():
                     group = group or QActionGroup(menu)
                     group.addAction(action)
@@ -258,7 +282,7 @@ def _shown(ctx: Context, entry) -> bool:
         return bool(getattr(ctx, "decks", None))
     if isinstance(entry, Submenu):
         return bool(_visible(ctx, expand(ctx, entry.ids)))
-    return ctx.commands[entry].visible(ctx)
+    return ctx.commands[_command_id(entry)].visible(ctx)
 
 
 def _add_header(menu: QMenu, text: str) -> None:
@@ -270,10 +294,10 @@ def _add_header(menu: QMenu, text: str) -> None:
     menu.addAction(header)
 
 
-def _add_command(menu: QMenu, ctx: Context, command) -> QAction:
+def _add_command(menu: QMenu, ctx: Context, command, title: Optional[str] = None) -> QAction:
     """A command as an item: its title, its key after a tab (shown only; the window binds the shortcuts, a second
     binding on the action would make the key ambiguous), enabled and, for a radio item, checked as now."""
-    title = command.title(ctx).replace("&", "&&")
+    title = (title if title is not None else command.title(ctx)).replace("&", "&&")
     key = command.key_text()
     action = menu.addAction(f"{title}\t{key}" if key else title)
     action.setObjectName(command.id)

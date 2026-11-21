@@ -273,9 +273,7 @@ def test_the_caret_compiles_the_selected_slides_and_every_active_deck(env, monke
     seen = []
     monkeypatch.setattr(compile_actions, "compile_slides", lambda window, ids: seen.append(ids))
     window.topbar.command.emit("compile:slides")                          # nothing selected, nothing focused: disabled
-    window.state.set_selection(("aaa", "bbb"))
-    assert window.topbar._compile_menu._entries and any(
-        e[0] == "item" and e[1] == "compile:slides" and e[6] for e in window.topbar._compile_menu._entries)
+    window.state.set_selection(("aaa", "bbb"))                            # not in the caret menu, but still a command
     window.topbar.command.emit("compile:slides")
     assert seen == [["aaa", "bbb"]]
     window.decks = [WORK, COURSE, MANUAL, OLD]

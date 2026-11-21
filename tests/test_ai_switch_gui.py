@@ -434,4 +434,4 @@ def test_images_is_not_a_top_bar_button_any_more_but_a_close_button_while_it_is_
     bar._images.click()
     assert bar._images.isHidden()
     from conftest import filled_menu, menu_actions
-    assert "images" in menu_actions(filled_menu(window, "View"))
+    assert "images" in menu_actions(filled_menu(window, "Project"))

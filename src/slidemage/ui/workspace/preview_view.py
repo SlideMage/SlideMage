@@ -6,8 +6,7 @@ During course / After course) and language the top bar says.
 Without compiling anything it shows the render store's current page, previous
 render or Instructor reference.
 "Render" compiles the saved slide in the view and language, and the Render
-menu renders the editor's buffer instead (Ctrl+Enter: the whole slide, or the
-selection as a frame or as a cropped element, optionally one reveal step), a
+menu renders the editor's buffer instead (Ctrl+Enter), a
 presenter PDF, or a transcript. Rendering runs on a worker thread; what a
 render depends on is in preview_target.py. Every render is preceded by the
 quick static syntax check (latex_lint through render_check), which asks
@@ -38,7 +37,7 @@ from typing import Callable, Optional
 
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt, Signal, QTimer
 from PySide6.QtGui import QColor, QImage, QKeySequence, QPainter, QPixmap, QShortcut
-from PySide6.QtWidgets import QHBoxLayout, QInputDialog, QLabel, QMessageBox, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from ... import (deck_context, deck_editor, deck_language, languages, latex_lint, render_lookup, reveal_steps, slide_preview, slide_snapshot, slide_source,
                  slide_versioning, timing)
@@ -82,9 +81,8 @@ PRELOAD_RETRY = 120.0    # seconds before a slide whose store had no page is ask
 SCROLLING_MS = 300       # slide changes closer than this are scrolling: no checks until the selection rests
 LOADING = "Loading…"
 SOURCE_CHANGED = "Source changed"   # the page shows an older text: said on the page and in the status
-SCOPES = (("slide", "Whole slide"), ("region", "Selection as frame"), ("element", "Selection as element"))
 # Menu keys.
-BUFFER, OVERLAY, PRESENTER, TRANSCRIPT, OPEN_PDF = "buffer", "overlay", "presenter", "transcript", "open_pdf"
+BUFFER, PRESENTER, TRANSCRIPT, OPEN_PDF = "buffer", "presenter", "transcript", "open_pdf"
 ALL_SAVED, ALL_BUFFER, FORCE, STOP = "all_saved", "all_buffer", "force", "stop"
 
 
@@ -504,8 +502,6 @@ class PreviewPane(Surface):
         self._record = None
         self._pdf_copies = ExitStack()
         self._last_request = None      # observes publication after the pixels arrive
-        self._scope = "slide"
-        self._overlay = 0
         # Decoded pages of this session's saved renders, shown while a return visit is validated.
         self._pixmaps = DisplayCache()
         # The latest render of the editor buffer: (target.key, view, language) -> (pixmap, note).
@@ -883,7 +879,7 @@ class PreviewPane(Surface):
         what the background renders stored: nothing is compiled. Called once the selection rests; reads queued for
         the order of before are dropped and queued again in the new one."""
         background = getattr(self.app, "background", None)
-        if background is None or self._closed or self._overlay or self._scope != "slide":
+        if background is None or self._closed:
             return
         view, language, deck = self.state.view, self.language, self._deck_name()
         context = (deck, view, language)
@@ -1496,7 +1492,7 @@ class PreviewPane(Surface):
         all_enabled = self.can_render_all
         pdf_available = self._record is not None or self._adhoc_spec is not None
         built = (self._target is not None and not self._target.hidden, self._batch_cancel is not None, all_enabled,
-                 self._busy, self._scope, self._overlay, pdf_available)
+                 self._busy, pdf_available)
         if built == self._menu_built and self._menu is not None:
             self._menu_stale = False     # a refresh that changed nothing the menu shows
             return
@@ -1510,26 +1506,21 @@ class PreviewPane(Surface):
             self._menu.deleteLater()
         menu = PopoverMenu(self, min_width=260)
         has_buffer = self._target is not None and self._batch_cancel is None
-        reason = ("Wait for the current preview render to finish." if self._busy or self._batch_cancel is not None
-                  else "All views requires Whole slide and all reveal steps.")
+        reason = "Wait for the current preview render to finish."
         menu.setToolTip(reason if not all_enabled and self._target is not None else "")
-        menu.add_header("Saved file")
-        menu.add_item(ALL_SAVED, "Render all views · saved file", enabled=all_enabled,
-                      meta="" if all_enabled else reason)
-        menu.add_item(FORCE, "Force rerender current view", enabled=has_buffer and not self._target.hidden,
-                      meta="bypass completed cache")
-        menu.add_separator()
-        menu.add_header("Editor buffer, as it is now")
-        menu.add_item(BUFFER, "Render the buffer", meta="Ctrl+Enter", enabled=has_buffer)
-        menu.add_item(ALL_BUFFER, "Render all views · editor buffer", enabled=all_enabled,
-                      meta="" if all_enabled else reason)
-        for scope, label in SCOPES:
-            menu.add_item(f"scope:{scope}", label, icon="check" if scope == self._scope else "")
-        menu.add_item(OVERLAY, f"Reveal step: {self._overlay or 'all'}…", enabled=self._scope != "element")
-        menu.add_separator()
+        menu.add_header("Open")
+        menu.add_item(OPEN_PDF, "PDF for this view", enabled=pdf_available and not self._busy)
         menu.add_item(PRESENTER, "Presenter PDF", meta="opens in the viewer", enabled=has_buffer)
-        menu.add_item(TRANSCRIPT, "Render transcript", enabled=has_buffer)
-        menu.add_item(OPEN_PDF, "Open PDF for this view", enabled=pdf_available and not self._busy)
+        menu.add_separator()
+        menu.add_header("Render")
+        menu.add_item(BUFFER, "Slide with unsaved changes", meta="Ctrl+Enter", enabled=has_buffer)
+        menu.add_item(ALL_BUFFER, "All views with unsaved changes", enabled=all_enabled,
+                      meta="" if all_enabled else reason)
+        menu.add_item(ALL_SAVED, "All views latest saved version", enabled=all_enabled,
+                      meta="" if all_enabled else reason)
+        menu.add_item(TRANSCRIPT, "Transcript", enabled=has_buffer)
+        menu.add_item(FORCE, "Rerender preview, ignore cache", enabled=has_buffer and not self._target.hidden,
+                      meta="of this view")
         if self._batch_cancel is not None:
             menu.add_separator()
             menu.add_item(STOP, "Stop rendering all views")
@@ -1549,15 +1540,6 @@ class PreviewPane(Surface):
             self.cancel_batch()
         elif key == BUFFER:
             self.render_buffer()
-        elif key.startswith("scope:"):
-            self._scope = key.removeprefix("scope:")
-            self._rebuild_menu()
-        elif key == OVERLAY:
-            number, ok = QInputDialog.getInt(
-                self, "Reveal step", "Show only this step of each frame (0: all steps):", self._overlay, 0, 9999)
-            if ok:
-                self._overlay = number
-                self._rebuild_menu()
         elif key == PRESENTER:
             self.render_buffer(presenter=True)
         elif key == TRANSCRIPT:
@@ -1883,28 +1865,20 @@ class PreviewPane(Surface):
         self._start(lambda: None, job, debounce=True)
 
     def render_buffer(self, presenter: bool = False) -> None:
-        """Compile the editor's buffer, saved or not, per the scope and reveal step chosen."""
+        """Compile the editor's buffer, saved or not."""
         target = self._target
         if target is None or self._batch_cancel is not None or (target.hidden and not presenter):
             return
-        text, selection = self._buffer() or (slide_source.read_slide_source(target.source_path)[0], "")
-        scope = "slide" if presenter else self._scope
-        body = text if scope == "slide" else selection
-        if not body.strip():
-            QMessageBox.information(self, "Render the buffer", "Select some LaTeX to render first.")
-            return
+        text = (self._buffer() or (slide_source.read_slide_source(target.source_path)[0], ""))[0]
         path = target.source_path
         if not render_check.confirm_render(
-                self, self.app, latex_lint.check_buffer(self.app.project, body, path.name, path), f"{path.name} (editor buffer)",
+                self, self.app, latex_lint.check_buffer(self.app.project, text, path.name, path), f"{path.name} (editor buffer)",
                 show_in_editor=lambda issue: self.app.open_slide_editor(path, line=issue.line)):
             return
         view, language = self.state.view, self.language
-        overlay = None if scope == "element" else (self._overlay or None)
         job = self._job(target, external=presenter, buffer_text=text, revision_text=text,
-                        note="Rendered from the editor buffer, not the saved file",
-                        steps_ok=scope == "slide" and overlay is None and not presenter)
-        job.request = self._renders.request(target, body, view, language, self.app.log,
-                                            presenter=presenter, mode=scope, overlay=overlay)
+                        note="Rendered from the editor buffer, not the saved file", steps_ok=not presenter)
+        job.request = self._renders.request(target, text, view, language, self.app.log, presenter=presenter)
         self._batch_status = ''
         self._start(lambda: None, job)
 
@@ -1934,7 +1908,7 @@ class PreviewPane(Surface):
 
     @property
     def can_render_all(self) -> bool:
-        return (self._current_render_context()[0] is not None and self._scope == 'slide' and not self._overlay
+        return (self._current_render_context()[0] is not None
                 and self._batch_cancel is None and not self._busy and not self._closed)
 
     def render_all_views(self, *, saved: bool = True) -> None:

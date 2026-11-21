@@ -52,13 +52,12 @@ def test_a_call_renders_with_its_decks_preamble_frame_number_view_and_language(r
 
 def test_a_buffer_renders_in_the_same_context_and_a_presenter_render_is_instructor(renders):
     _, target = target_of("\\slide{aaa-EN-One}\n")
-    preview_target.render_text(target, "BODY", "after-course", "EN", log=print,
-                               mode="region", overlay=2)
+    preview_target.render_text(target, "BODY", "after-course", "EN", log=print)
     preview_target.render_text(target, "BODY", "after-course", "EN", log=print,
                                presenter=True)
     (_, args, kwargs), (_, _, presenter) = renders
     assert args[1:] == ("aaa-EN-One", "BODY")
-    assert (kwargs["deck_version"], kwargs["preview_mode"], kwargs["overlay"]) == ("after-course", "region", 2)
+    assert kwargs["deck_version"] == "after-course"
     assert kwargs["frame_number"] == 1 and kwargs["deck_language"] == "en"
     assert presenter["deck_version"] == "instructor" and presenter["presenter"]
 

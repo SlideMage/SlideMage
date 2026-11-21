@@ -594,7 +594,7 @@ class PersonalThemeRow(_ListRow):
         title.setObjectName(q.ROW_NAME)
         self.edit_button = Button("Edit", compact=True)
         self.edit_button.clicked.connect(partial(tab.edit_personal_theme, theme.path))
-        self.reveal_button = Button("Reveal in Explorer", compact=True)
+        self.reveal_button = Button(open_path.REVEAL_TEXT, compact=True)
         self.reveal_button.clicked.connect(partial(tab.reveal_personal_theme, theme.path))
         self.export_button = Button("Export…", compact=True)
         self.export_button.setToolTip("Save this theme as a .smtheme package, which others install with "

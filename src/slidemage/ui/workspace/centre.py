@@ -242,6 +242,7 @@ class CentreColumn(QFrame):
         self.tab_strip.close_right_requested.connect(self.close_tabs_to_the_right)
         self.tab_strip.reveal_requested.connect(self.reveal_tab)
         self.tab_strip.show_in_deck_requested.connect(self.show_deck_of)
+        self.tab_strip.duplicate_requested.connect(self.duplicate_tab)
         self.tabs.tabs_changed.connect(self._update_strip)
         self.tabs.active_changed.connect(self._on_tab_active)
         self._update_strip()
@@ -1166,6 +1167,12 @@ class CentreColumn(QFrame):
         """Close all to the right: the closable tabs after `tab` in strip order."""
         for other in self.tabs.close_right(tab):
             self.close_tab(other)
+
+    def duplicate_tab(self, tab: CentreTab) -> None:
+        """Duplicate tab: the slide the slide tab shows, in a tab of its own (what Slide > Open in new tab was)."""
+        if tab.kind != DECK or tab is not self._working_tab() or self._slide_path is None:
+            return
+        self.app.open_slide_editor(self._slide_path, tab=True)
 
     def reveal_tab(self, tab: CentreTab) -> None:
         """Reveal in Explorer: open the folder of the tab's file (the focused slide's for the slide tab) in the

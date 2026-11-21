@@ -260,7 +260,7 @@ def build_registry(mac: bool = sys.platform == "darwin") -> CommandRegistry:
         enabled=lambda w: _has_deck(w) and w.state.deck.has_chapters)
     add("compile:presenter", "Presenter", VIEW_AND_BUILD, lambda w: compile_actions.compile_current(w, "presenter"),
         meta="speaker notes", enabled=_has_deck)
-    add("compile:slides", "Pages of the selected slides", VIEW_AND_BUILD,
+    add("compile:slides", "Compile PDF of selected slides", VIEW_AND_BUILD,
         lambda w: compile_actions.compile_slides(w, list(w.state.selected_or_focused())),
         meta=lambda w: plural(len(w.state.selected_or_focused()), "slide"),
         enabled=lambda w: _has_deck(w) and bool(w.state.selected_or_focused()))
@@ -273,6 +273,9 @@ def build_registry(mac: bool = sys.platform == "darwin") -> CommandRegistry:
         add(f"transcript:{version}", f"Write transcript · {VIEW_LABELS[version]}", VIEW_AND_BUILD,
             lambda w, v=version: deck_actions.generate_deck_transcript(w, w.state.deck, v),
             icon="article", meta="Markdown + HTML", enabled=_has_deck, visible=_versioned)
+    add("transcript:both", "Write transcript · both", VIEW_AND_BUILD,
+        lambda w: deck_actions.generate_both_transcripts(w, w.state.deck), icon="article",
+        meta="Markdown + HTML, both versions", enabled=_has_deck, visible=_versioned)
     add("stop", "Stop compilation", VIEW_AND_BUILD, compile_actions.ask_to_stop, tone="danger", icon="stop",
         enabled=lambda w: w.compiling)
     add("build_options", "Build options…", VIEW_AND_BUILD, lambda w: w.build_options.exec())
@@ -324,11 +327,15 @@ def build_registry(mac: bool = sys.platform == "darwin") -> CommandRegistry:
     for view in VIEWS:
         add(f"slide:visible:{view}", _visibility_label(view), SLIDE, _run_slide(f"visible:{view}"),
             visible=lambda w: bool(_slide_targets(w)), enabled=_editable_slides)
-    add("slide:duplicate", "Duplicate slide…", SLIDE, _run_slide("duplicate"), visible=_one_slide)
-    add("slide:translate", "Translate slide…", SLIDE, _run_slide("translate"), visible=_one_slide)
-    add("slide:before", "Add slide before", SLIDE, _run_slide("before"), visible=_one_slide)
-    add("slide:after", "Add slide after", SLIDE, _run_slide("after"), visible=_one_slide)
-    add("slide:section_before", "Add section before", SLIDE, _run_slide("section_before"), visible=_one_slide)
+    add("slide:duplicate", "Duplicate slide…", SLIDE, _run_slide("duplicate"), visible=_one_slide, keywords="add copy")
+    add("slide:translate", "Translated slide…", SLIDE, _run_slide("translate"), visible=_one_slide,
+        keywords="translate translation")
+    add("slide:before", "Slide before", SLIDE, _run_slide("before"), visible=_one_slide, keywords="add new")
+    add("slide:after", "Slide after", SLIDE, _run_slide("after"), visible=_one_slide, keywords="add new")
+    add("slide:section_before", "Section before", SLIDE, _run_slide("section_before"), visible=_one_slide,
+        keywords="add new")
+    add("slide:section_after", "Section after", SLIDE, _run_slide("section_after"), visible=_one_slide,
+        keywords="add new")
     add("slide:remove", _remove_label, SLIDE, _run_slide("remove"), tone="danger",
         visible=lambda w: bool(_slide_targets(w)), enabled=_editable_slides)
     add("slide:update_versions", "Update versions…", SLIDE,
@@ -342,9 +349,10 @@ def build_registry(mac: bool = sys.platform == "darwin") -> CommandRegistry:
     # Section: the section chosen in the slide list -------------------------------------
     section_chosen = lambda w: w.slide_list.current_section() is not None   # noqa: E731
     for name, label, tone, meta in (
-            ("rename", "Rename", "", ""), ("add_slide", "Add slide here", "", ""),
-            ("section_before", "Add section before", "", ""), ("section_up", "Move section up", "", ""),
-            ("section_down", "Move section down", "", ""),
+            ("rename", "Rename", "", ""), ("slide_start", "Slide at the start of this section", "", ""),
+            ("add_slide", "Slide at the end of this section", "", ""),
+            ("section_before", "Section before", "", ""), ("section_after", "Section after", "", ""),
+            ("section_up", "Move section up", "", ""), ("section_down", "Move section down", "", ""),
             ("remove_section", "Remove section…", "danger", "")):
         add(f"section:{name}", label, SECTION, _run_section(name), tone=tone, meta=meta,
             visible=section_chosen, enabled=_section_enabled(name))
@@ -358,7 +366,7 @@ def build_registry(mac: bool = sys.platform == "darwin") -> CommandRegistry:
     add("deck_settings", "Deck settings…", DECK, lambda w: deck_actions.on_deck_settings(w, w.state.deck),
         shortcut="Ctrl+,", enabled=lambda w: _has_deck(w) and not _keeps_group(w))
     add("deck_source", "Source", DECK, _deck("open_deck_source_editor"), enabled=_active_deck)
-    add("deck_tags", "Tags…", DECK, lambda w: deck_actions.on_edit_deck_tags(w, w.state.deck),
+    add("deck_tags", "Tags…", DECK, lambda w: deck_actions.on_deck_settings(w, w.state.deck, "Tags"),
         enabled=lambda w: _active_deck(w) and not _keeps_group(w))
     add("new_deck", "New deck…", DECK, deck_actions.on_new_deck)
     add("duplicate_deck", "Duplicate deck…", DECK, lambda w: deck_actions.on_duplicate_deck(w, w.state.deck), enabled=_active_deck)

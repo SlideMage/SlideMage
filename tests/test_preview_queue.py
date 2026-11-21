@@ -810,7 +810,7 @@ def test_ui_all_views_captures_context_and_source_before_worker(pane, monkeypatc
     workspace.close()
 
 
-def test_all_view_scope_disabled_and_hidden_current_render_is_safe(pane, monkeypatch):
+def test_hidden_current_render_is_safe(pane, monkeypatch):
     from dataclasses import replace
 
     view, target, _ = pane
@@ -820,14 +820,6 @@ def test_all_view_scope_disabled_and_hidden_current_render_is_safe(pane, monkeyp
     assert view._render.buttons()[1].isEnabled()
     view.render_now()
     assert view.can_render_all
-    for scope, overlay in [('region', 0), ('element', 0), ('slide', 2)]:
-        view._scope, view._overlay = scope, overlay
-        view._rebuild_menu()
-        assert not view.can_render_all
-        entries = [e for e in view._menu._entries if e[0] == 'item' and e[1] in (
-            preview_view.ALL_SAVED, preview_view.ALL_BUFFER)]
-        assert len(entries) == 2 and all(not entry[6] for entry in entries)
-        assert 'Whole slide' in view._menu.toolTip()
 
 
 def test_ui_batch_progress_partial_failure_and_close_cancellation(pane):
@@ -984,36 +976,11 @@ def test_a_refresh_that_changes_nothing_rebuilds_neither_the_chips_nor_the_menu(
     shown.append(("warning", "Two", "warning", "other"))          # a real change of the chips
     view._refresh()
     assert built == {"chips": 3, "menus": 0}
-    view._scope = "region"                                        # a real change of the menu
+    view._busy = True                                             # a real change of the menu
     view._refresh()
     assert built == {"chips": 3, "menus": 1}
     view._refresh()
     assert built == {"chips": 3, "menus": 1}
-
-
-def test_a_scoped_render_stays_temporary(pane, tmp_path, monkeypatch, qapp):
-    from slidemage import render_lookup
-
-    view, target, _ = pane
-    folder = tmp_path / '.temp'
-    folder.mkdir()
-    pdf = pdf_at(folder / 'region.pdf')
-    view._scope = 'region'
-    view._buffer = lambda: ('BODY', 'selected region')
-    monkeypatch.setattr(preview_view.render_check, 'confirm_render', lambda *a, **kw: True)
-    monkeypatch.setattr(preview_target, 'render_text', lambda *a, **kw: pdf)
-    view.render_buffer()
-    job = view._active
-    view._run(*view.launched[0])
-    assert job.request.done.wait(10)
-    qapp.processEvents()
-    view._refresh()
-    renderer = view._renders.renderer(target.context)
-    assert render_lookup.select(dict(resolver=renderer.resolver, unit=job.request.spec.unit,
-                                     spec=job.request.spec), strict=True) == ('missing', None)
-    assert renderer.store.count() == 0 and view._record is None
-    assert view._page.pixmap is not None and view._adhoc_spec.options.mode == 'region'
-    assert job.pdf is None
 
 
 def test_the_poll_recheck_of_an_unchanged_slide_keeps_its_page_and_note(pane, qapp):

@@ -9,6 +9,7 @@ provides `project`, `state`, `compiling`, `log` and `reload_decks()`.
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
+from typing import Optional
 from datetime import datetime
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QDialog, QInputDialog, QMessageBox
@@ -23,7 +24,7 @@ from ...deck_scan import TAG_MANUAL, Deck
 from ...deck_settings import DeckSettings
 from ...fileio import read_text_exact
 from ..dialogs.deck_group import DeckGroupSheet
-from ..dialogs.deck_settings import COMMAND, GENERAL, DeckSettingsSheet
+from ..dialogs.deck_settings import COMMAND, EDIT_GROUPS, GENERAL, TAGS, DeckSettingsSheet
 from ..dialogs.snapshot import SnapshotSheet
 from . import compile_actions
 
@@ -151,21 +152,48 @@ def on_deck_settings(window, deck: Deck, tab: int | str = GENERAL) -> None:
             "that first, so this change and that editor can't overwrite each other.",
         )
         return
-    sheet = DeckSettingsSheet(window, deck, deck_settings.template_choices(window.project.root), tab=tab)
+    sheet = DeckSettingsSheet(window, deck, deck_settings.template_choices(window.project.root), tab=tab,
+                              groups=window.deck_groups)
     if not sheet.exec():
         return
     deck = sheet.deck       # the rescanned deck when a plugin edited the file while the sheet was open
-    if sheet.action.startswith(COMMAND):
+    if sheet.action == EDIT_GROUPS:
+        window.open_deck_groups()
+        # Settings may have rescanned the decks or rewritten this one's tags: open again on a fresh scan.
+        fresh = next((d for d in window.decks if d.path == deck.path), None)
+        if fresh is not None:
+            on_deck_settings(window, fresh, TAGS)
+    elif sheet.action.startswith(COMMAND):
         window.commands.run(sheet.action.removeprefix(COMMAND), window)
     else:
-        save_deck_settings(window, deck, sheet.original, sheet.result_settings())
+        text = _save_tags(window, deck, sheet.chosen_groups) if sheet.groups_changed else deck.text
+        if text is not None:
+            save_deck_settings(window, deck, sheet.original, sheet.result_settings(), text)
 
 
-def save_deck_settings(window, deck: Deck, old: DeckSettings, new: DeckSettings) -> None:
+def _save_tags(window, deck: Deck, chosen: Sequence[str]) -> Optional[str]:
+    """Write the groups `chosen` as the deck's \\decktags when they differ; returns the deck's text after, or None
+    when writing failed (the sheet's other changes are then not saved either)."""
+    tags = tags_with_groups(deck.tags, chosen, window.deck_groups)
+    if tags == list(deck.tags):
+        return deck.text
+    try:
+        text = deck_editor.set_deck_tags(deck.path, deck.text, tags)
+    except (deck_editor.StaleFileError, ValueError, OSError) as exc:
+        QMessageBox.critical(window, "Tags failed", str(exc))
+        return None
+    window.log(f"Tagged {deck.name} {_describe_groups(chosen)}")
+    window.refresh_open_deck_editors()
+    window.reload_decks()
+    return text
+
+
+def save_deck_settings(window, deck: Deck, old: DeckSettings, new: DeckSettings, text: Optional[str] = None) -> None:
+    """Write the changed settings; `text` is the deck's text when something else (its tags) was written first."""
     if new == old:
         return
     try:
-        deck_settings.save_settings(deck.path, deck.text, old, new)
+        deck_settings.save_settings(deck.path, deck.text if text is None else text, old, new)
     except (deck_editor.StaleFileError, ValueError, OSError) as exc:
         QMessageBox.critical(window, "Deck settings failed", str(exc))
         return
@@ -328,3 +356,16 @@ def generate_deck_transcript(window, deck: Deck, version: str, *, quiet: bool = 
                f"image; those are flagged in place." if result.undescribed else ""),
         )
     return True
+
+
+def generate_both_transcripts(window, deck: Deck) -> bool:
+    """The transcripts of every student version of `deck` in one go, one summary at the end; stops at the first failure."""
+    from ...transcript import STUDENT_VERSIONS
+
+    for version in STUDENT_VERSIONS:
+        if not generate_deck_transcript(window, deck, version, quiet=True):
+            return False
+    QMessageBox.information(window, "Transcripts generated",
+                            f"The transcripts of {deck.name} for {', '.join(STUDENT_VERSIONS)} are written; see the log for the files.")
+    return True
+

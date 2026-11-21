@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Render a slide/region/element, optionally watching its source for changes.
+"""Render a slide, optionally watching its source for changes.
 
 Example: python -m slidemage.preview_cli slides/foo-current.tex --watch
 Use SLIDEMAGE_PROJECT to select the project, as with the desktop app.
@@ -30,9 +30,6 @@ def main():
     parser = argparse.ArgumentParser(__doc__)
     parser.add_argument('source', type=Path)
     parser.add_argument('--deck', help='Deck name supplying the preview preamble')
-    parser.add_argument('--mode', choices=('slide', 'region', 'element'), default='slide')
-    parser.add_argument('--lines', help='Inclusive 1-based region, e.g. 12:30')
-    parser.add_argument('--overlay', type=int, help='Positive overlay number; omit for all')
     parser.add_argument('--watch', action='store_true')
     parser.add_argument('--no-cache', action='store_true')
     parser.add_argument('--open', action='store_true')
@@ -55,19 +52,14 @@ def main():
             start = time.perf_counter()
             try:
                 body = source.read_text(encoding='utf-8')
-                if args.lines:
-                    first, last = map(int, args.lines.split(':'))
-                    if first < 1 or last < first:
-                        parser.error('--lines must be an inclusive positive range')
-                    body = '\n'.join(body.splitlines()[first-1:last])
                 preamble = None
                 if args.deck:
                     deck = next(d for d in deck_scan.scan_decks(ctx) if d.name == args.deck)
                     preamble = deck.preamble_text
                 with PreviewMetrics() as metrics:
                     pdf = slide_preview.render_slide_text_to_pdf(
-                        ctx, slug, body, preamble_text=preamble, preview_mode=args.mode,
-                        overlay=args.overlay, reuse_build=not args.no_cache, log=print)
+                        ctx, slug, body, preamble_text=preamble,
+                        reuse_build=not args.no_cache, log=print)
                 if args.profile:
                     print(json.dumps(metrics.to_dict()), flush=True)
                 try:

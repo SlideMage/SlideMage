@@ -104,7 +104,9 @@ def test_settings_action_saves_all_changes(tmp_path, monkeypatch, qapp):
     deck = make_deck(tmp_path)
 
     class AcceptedSheet:
-        def __init__(self, _parent, deck, _templates, tab):
+        groups_changed = False
+
+        def __init__(self, _parent, deck, _templates, tab, groups):
             self.deck = deck
             self.original = deck_settings.read_settings(deck.text)
             self.action = SAVE
@@ -122,7 +124,7 @@ def test_settings_action_saves_all_changes(tmp_path, monkeypatch, qapp):
     monkeypatch.setattr(deck_actions, "DeckSettingsSheet", AcceptedSheet)
     window = SimpleNamespace(
         centre=SimpleNamespace(unsaved=lambda _path: False), log=logged.append, project=EXAMPLE_PROJECT,
-        refresh_open_deck_editors=lambda: refreshed.append(True),
+        deck_groups=(), refresh_open_deck_editors=lambda: refreshed.append(True),
         reload_decks=lambda: reloaded.append(True),
     )
 
@@ -140,8 +142,9 @@ def test_unchanged_settings_write_nothing(tmp_path, monkeypatch, qapp):
 
     class SameSheet:
         action = SAVE
+        groups_changed = False
 
-        def __init__(self, _parent, deck, _templates, tab):
+        def __init__(self, _parent, deck, _templates, tab, groups):
             self.deck = deck
             self.original = deck_settings.read_settings(deck.text)
 
@@ -153,7 +156,8 @@ def test_unchanged_settings_write_nothing(tmp_path, monkeypatch, qapp):
 
     monkeypatch.setattr(deck_actions, "DeckSettingsSheet", SameSheet)
     logged = []
-    window = SimpleNamespace(centre=SimpleNamespace(unsaved=lambda _path: False), log=logged.append, project=EXAMPLE_PROJECT)
+    window = SimpleNamespace(centre=SimpleNamespace(unsaved=lambda _path: False), log=logged.append,
+                             project=EXAMPLE_PROJECT, deck_groups=())
     deck_actions.on_deck_settings(window, deck)
     assert logged == [] and deck.path.read_text(encoding="utf-8") == DECK_TEXT
 
@@ -258,3 +262,48 @@ def test_a_template_with_more_modes_offers_them_for_the_deck_and_each_view(tmp_p
     assert modes.isEnabled() and [modes.itemData(i) for i in range(modes.count())] == ["", "dark", "gray"]
     modes.setCurrentIndex(modes.findData("gray"))
     assert versioned._view_theme_entries() == {"instructor": ("acme", "gray")}
+
+
+def test_the_tags_tab_lists_the_groups_and_marks_a_change(tmp_path, monkeypatch, qapp):
+    sheet = make_sheet(tmp_path, monkeypatch)
+    assert sheet.tab_titles[:3] == ["General", "PDF output", "Tags"]
+    assert not sheet.groups_changed and not sheet.dirty()
+    box = next(iter(sheet.group_picker.checks.values()))
+    box.setChecked(not box.isChecked())
+    assert sheet.groups_changed and sheet.dirty()
+    box.setChecked(not box.isChecked())
+    assert not sheet.groups_changed and not sheet.dirty()
+
+
+def test_saving_changed_tags_writes_them_and_the_settings_in_one_go(tmp_path, monkeypatch, qapp):
+    from slidemage.deck_groups import DEFAULT_GROUPS, selectable_tags
+
+    deck = make_deck(tmp_path)
+    tag = selectable_tags(DEFAULT_GROUPS)[0]
+
+    class TaggingSheet:
+        action = SAVE
+        groups_changed = True
+        chosen_groups = (tag,)
+
+        def __init__(self, _parent, deck, _templates, tab, groups):
+            self.deck = deck
+            self.original = deck_settings.read_settings(deck.text)
+
+        def exec(self):
+            return 1
+
+        def result_settings(self):
+            new = DeckSettings(**vars(self.original))
+            new.open_pdf = "presenter"
+            return new
+
+    monkeypatch.setattr(deck_actions, "DeckSettingsSheet", TaggingSheet)
+    logged = []
+    window = SimpleNamespace(
+        centre=SimpleNamespace(unsaved=lambda _path: False), log=logged.append, project=EXAMPLE_PROJECT,
+        deck_groups=DEFAULT_GROUPS, refresh_open_deck_editors=lambda: None, reload_decks=lambda: None)
+    deck_actions.on_deck_settings(window, deck)
+    written = deck.path.read_text(encoding="utf-8")
+    assert f"\decktags{{{tag}}}" in written and "%% SlideMage open PDF: presenter" in written
+    assert any("Tagged" in line for line in logged)

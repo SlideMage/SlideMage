@@ -65,10 +65,10 @@ def test_the_command_is_a_deck_command_in_the_palette_and_needs_a_deck(window):
     assert LABEL in {e.label for e in command_entries(window, [])}
 
 
-def test_the_command_is_in_the_deck_menu_and_update_previews_in_housekeeping(qapp):
+def test_the_command_is_in_the_deck_menu_and_update_previews_in_the_project_menu(qapp):
     context = command_context(COURSE)
     assert menu_actions(filled_menu(context, "Deck"))["rerender_deck_previews"].isEnabled()
-    assert "update_previews" in menu_actions(filled_menu(context, "Housekeeping"))
+    assert "update_previews" in menu_actions(filled_menu(context, "Project"))
 
 
 # -- the action ----------------------------------------------------------------------

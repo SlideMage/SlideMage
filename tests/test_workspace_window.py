@@ -85,15 +85,15 @@ def items(menu):
 def test_deck_switcher_groups_decks_and_lists_archived_ones_in_its_footer(qapp):
     menu = build_deck_menu(None, [OLD, TEST, MANUAL, COURSE, WORK], COURSE)
     assert entries(menu) == [
-        (deck_key(WORK), "#workdeck", True),                        # the work deck stands alone
+        ("", "Pinned", True), (deck_key(WORK), "#workdeck", True),   # the work deck stands alone, under "Pinned"
         ("", "Course decks", True), (deck_key(COURSE), "course", True),
         ("", "SlideMage manual", True), (deck_key(MANUAL), "slidemage-manual", True),
         ("", "Test decks", True), (deck_key(TEST), "test-all", True),
         ("", "Archived decks (1)", True), (deck_key(OLD), "old-course", True),
     ]
-    assert menu._entries[2][4] == "check"                          # the open deck is ticked
+    assert menu._entries[3][4] == "check"                          # the open deck is ticked
     menu = build_deck_menu(None, [WORK], WORK)
-    assert [text for _key, text, _on in entries(menu)] == ["#workdeck"]
+    assert [text for _key, text, _on in entries(menu)] == ["Pinned", "#workdeck"]
 
 
 def test_window_opens_the_first_active_deck_then_the_one_left_open(window, monkeypatch):
@@ -266,9 +266,9 @@ def test_narrow_top_bar_keeps_hidden_text_and_images_reachable(topbar, window, q
     window.state.set_dirty(False)
     assert bar._save.text() == "●" and bar._save.toolTip() == "Saved"
     assert bar._compile.toolTip() == "Compile deck PDF · Instructor"
-    assert ("compile:instructor", "Compile PDF · Instructor", True) in entries(bar._compile_menu)
+    assert ("compile:instructor", "Instructor", True) in entries(bar._compile_menu)
     monkeypatch.setattr(window.images_page, "ensure_loaded", lambda: None)
-    images = menu_actions(filled_menu(window, "View"))["images"]     # Images is in the menu bar at every width
+    images = menu_actions(filled_menu(window, "Project"))["images"]     # Images is in the menu bar at every width
     assert images.isEnabled() and images.text() == "Image descriptions"
     images.trigger()
     assert window.stack.currentWidget() is window.images_page and not bar._images.isHidden()
@@ -432,15 +432,14 @@ def test_selected_pages_compile_the_current_view(window, monkeypatch):
 def test_compile_menu_offers_only_what_the_deck_can_do(qapp):
     full = items(build_compile_menu(None, command_context(COURSE)))
     assert list(full) == [
-        "compile:instructor", "compile:during-course", "compile:after-course", "compile:all", "compile:mode",
-        "compile:chapters", "compile:presenter", "compile:slides", "compile:pages", "compile:several",
-        "compile:everything", "transcript:during-course", "transcript:after-course", "present", "present_here", "stop", "build_options"]
-    assert full["compile:chapters"] and not full["stop"] and not full["compile:slides"]   # no slide selected
-    assert items(build_compile_menu(None, command_context(COURSE, selected=('aaa', 'bbb'))))["compile:slides"]
+        "compile:current", "compile:instructor", "compile:during-course", "compile:after-course", "compile:presenter",
+        "compile:all", "compile:chapters", "compile:pages", "compile:several", "transcript:during-course",
+        "transcript:after-course", "transcript:both", "present", "present_here", "stop", "build_options"]
+    assert full["compile:chapters"] and not full["stop"]
     plain = items(build_compile_menu(None, command_context(make_deck("plain", versions=False))))
-    assert list(plain) == ["compile:instructor", "compile:all", "compile:mode", "compile:chapters", "compile:presenter",
-                           "compile:slides", "compile:pages", "compile:several", "compile:everything",
-                           "present", "present_here", "stop", "build_options"]
+    assert list(plain) == ["compile:current", "compile:instructor", "compile:presenter", "compile:all",
+                           "compile:chapters", "compile:pages", "compile:several", "present", "present_here", "stop",
+                           "build_options"]
     assert not plain["compile:chapters"]                              # no \section chapters
     assert items(build_compile_menu(None, command_context(COURSE, compiling=True)))["stop"]
 
@@ -682,15 +681,15 @@ def test_deck_actions_are_disabled_where_the_old_row_had_no_such_button(qapp, de
     assert [key for key in deck_keys if not actions[key].isEnabled()] == disabled
 
 
-def test_the_menu_bar_has_its_nine_menus_and_runs_the_choice(window, monkeypatch):
+def test_the_menu_bar_has_its_ten_menus_and_runs_the_choice(window, monkeypatch):
     monkeypatch.setattr(window.images_page, "ensure_loaded", lambda: None)
     bar = window.menuBar()
     assert [a.text() for a in bar.actions()] == [
-        "&File", "&Edit", "&Deck", "&Slide", "&View", "&Build", "&AI", "H&ousekeeping", "&Help"]
+        "&File", "&Edit", "&View", "&Project", "&Deck", "&Slide", "Prese&nt", "&Build", "&AI", "&Help"]
     assert not hasattr(window.topbar, "_more")                          # the ⋮ button is gone
-    view = bar.findChild(type(filled_menu(window, "View")), "menu:view")
-    view.aboutToShow.emit()                                              # filled as it opens
-    menu_actions(view)["images"].trigger()                               # opens a page, no modal dialog
+    project = bar.findChild(type(filled_menu(window, "Project")), "menu:project")
+    project.aboutToShow.emit()                                           # filled as it opens
+    menu_actions(project)["images"].trigger()                               # opens a page, no modal dialog
     assert window.stack.currentWidget() is window.images_page
 
 

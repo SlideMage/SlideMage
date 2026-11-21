@@ -22,6 +22,41 @@ from ..kit.widgets import Button, Field, ModalSheet, Surface, caption, show_prob
 GROUP_LABELS = labels()
 
 
+class GroupPicker(Surface):
+    """One checkbox per selectable group of `groups`, those of `current_groups` checked (without one of the list,
+    the fallback group is), and the caption saying where a deck with none checked is listed. Used by the sheet
+    below and by the Tags tab of the Deck settings."""
+
+    def __init__(self, current_groups: Sequence[str], groups: Sequence[DeckGroup] = DEFAULT_GROUPS) -> None:
+        super().__init__()
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(SPACE.xl)
+        group_box = Surface()
+        group_layout = QVBoxLayout(group_box)
+        group_layout.setContentsMargins(0, 0, 0, 0)
+        group_layout.setSpacing(SPACE.sm)
+        self.checks: dict[str, QCheckBox] = {}
+        # The manual's own group is never offered (deck_groups.TAG_MANUAL): a copy of the manual
+        # starts out in the fallback group (by default a course deck).
+        selectable, group_labels = selectable_tags(groups), labels(groups)
+        fallback = fallback_tag(groups)
+        self.initial = tuple([tag for tag in selectable if tag in current_groups]
+                             or ([fallback] if fallback else []))
+        for tag in selectable:
+            check = QCheckBox(group_labels[tag])
+            check.setChecked(tag in self.initial)
+            self.checks[tag] = check
+            group_layout.addWidget(check)
+        layout.addWidget(Field("Groups (the sections of the deck switcher the deck is listed in)", group_box))
+        home = (headings(groups)[fallback] or group_labels[fallback]) if fallback else "Other decks"
+        layout.addWidget(caption(f"With none checked, the deck is listed under {home}."))
+
+    def chosen_groups(self) -> tuple[str, ...]:
+        """The checked groups' tags, in the list's order."""
+        return tuple(tag for tag, check in self.checks.items() if check.isChecked())
+
+
 class DeckGroupSheet(ModalSheet):
     def __init__(self, parent, title: str, current_groups: Sequence[str], *, ok_text: str = "Save",
                  name_prompt: Optional[str] = None, default_name: str = "",
@@ -54,24 +89,10 @@ class DeckGroupSheet(ModalSheet):
             self.template_box.setCurrentIndex(max(0, self.template_box.findData(current_template)))
             layout.addWidget(Field("Template (institution layout of the deck)", self.template_box))
 
-        group_box = Surface()
-        group_layout = QVBoxLayout(group_box)
-        group_layout.setContentsMargins(0, 0, 0, 0)
-        group_layout.setSpacing(SPACE.sm)
-        self._checks: dict[str, QCheckBox] = {}
-        # The manual's own group is never offered (deck_groups.TAG_MANUAL): a copy of the manual
-        # starts out in the fallback group (by default a course deck).
-        selectable, group_labels = selectable_tags(groups), labels(groups)
-        fallback = fallback_tag(groups)
-        current = [tag for tag in selectable if tag in current_groups] or ([fallback] if fallback else [])
-        for tag in selectable:
-            check = QCheckBox(group_labels[tag])
-            check.setChecked(tag in current)
-            self._checks[tag] = check
-            group_layout.addWidget(check)
-        layout.addWidget(Field("Groups (the sections of the deck switcher the deck is listed in)", group_box))
-        home = (headings(groups)[fallback] or group_labels[fallback]) if fallback else "Other decks"
-        layout.addWidget(caption(f"With none checked, the deck is listed under {home}."))
+        self._picker = GroupPicker(current_groups, groups)
+        self._checks = self._picker.checks
+        current = self._picker.initial
+        layout.addWidget(self._picker)
         self.edit_groups_requested = False
         if edit_groups:
             row = QHBoxLayout()

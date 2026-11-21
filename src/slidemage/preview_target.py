@@ -174,18 +174,17 @@ def render(target: PreviewTarget, view: str, language: str, *, log,
 
 def render_text(
     target: PreviewTarget, text: str, view: str, language: str, *, log,
-    presenter: bool = False, mode: str = "slide", overlay: Optional[int] = None,
+    presenter: bool = False,
     cancel=None, all_steps: bool = False, force_build=False, workspace=None,
 ) -> Path:
     """Compile `text` (the editor's buffer, saved or not) in place of the slide's
-    file. `mode` is "slide", "region" (the text as a frame) or "element" (the
-    text cropped); `overlay` shows only that reveal step of each frame.
+    file.
     A presenter render is the instructor version with beamer's second screen. A whole slide that needs its deck gets
     the deck's sections and agenda records around it (deck_context.skeleton)."""
     if target.hidden and not presenter:
         raise ValueError(f"Slide {target.id_slug} is hidden in {view}")
     context = {}
-    if (target.deck is not None and mode == "slide" and not presenter and target.position is not None
+    if (target.deck is not None and not presenter and target.position is not None
             and deck_context.reasons(text)):
         around = deck_context.skeleton(target.context, target.deck, target.position, target.id_slug, view,
                                        language, deck_context.aux_titles_for(target.context, target.deck, view, language))
@@ -196,11 +195,9 @@ def render_text(
         deck_version=VIEW_INSTRUCTOR if presenter else view, deck_language=language.lower(),
         presenter=presenter, preamble_text=view_themes.preamble_for_view(target.preamble_text, VIEW_INSTRUCTOR if presenter else view),
         frame_number=(target.presenter_frame_number if presenter and target.presenter_frame_number is not None
-                      else target.frame_number), log=log, preview_mode=mode, overlay=overlay,
-        steps=target.steps if mode == "slide" else None,
-        final=target.macro == "slidefinal" and mode == "slide",
-        slide_version=target.version if mode == "slide" else None,
-        omitted=target.macro in ("omitslide", "omitslideversion") and mode == "slide",
+                      else target.frame_number), log=log,
+        steps=target.steps, final=target.macro == "slidefinal", slide_version=target.version,
+        omitted=target.macro in ("omitslide", "omitslideversion"),
         cancel=cancel, all_steps=all_steps,
         workspace=workspace,
         **context,

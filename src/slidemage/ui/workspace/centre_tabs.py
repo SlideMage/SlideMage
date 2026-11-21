@@ -25,6 +25,7 @@ from PySide6.QtCore import QObject, QTimer, Qt, Signal
 from PySide6.QtGui import QMouseEvent, QWheelEvent
 from PySide6.QtWidgets import QHBoxLayout, QScrollArea, QSizePolicy
 
+from ... import open_path
 from ..kit.tokens import SPACE
 from ..kit import kit_qss as q
 from ..kit.widgets import ClickFrame, ElidedLabel, IconButton, PopoverMenu, Surface
@@ -263,6 +264,7 @@ class _TabButton(ClickFrame):
     close_right_requested = Signal()
     reveal_requested = Signal()
     show_in_deck_requested = Signal()
+    duplicate_requested = Signal()
 
     def __init__(self, tab: CentreTab) -> None:
         super().__init__()
@@ -346,7 +348,7 @@ class _TabButton(ClickFrame):
             super().keyPressEvent(event)
 
     def _menu(self) -> PopoverMenu:
-        """Close, Close others, Close all to the right, Reveal in Explorer (D5 of the plan)."""
+        """Close, Close others, Close all to the right, Duplicate tab, Show in Explorer (D5 of the plan)."""
         menu = PopoverMenu(self, min_width=200)
         menu.add_item("close", "Close deck" if self.tab.kind == DECK else "Close", enabled=self.tab.closable)
         menu.add_item("close_others", "Close others")
@@ -354,7 +356,9 @@ class _TabButton(ClickFrame):
         menu.add_separator()
         if self.tab.kind == FILE and self.deck_name:
             menu.add_item("show_in_deck", f"Show in deck {self.deck_name}")
-        menu.add_item("reveal", "Reveal in Explorer")
+        menu.add_item("duplicate", "Duplicate tab", enabled=self.tab.kind == DECK,
+                      detail="" if self.tab.kind == DECK else "Only the slide tab can be duplicated")
+        menu.add_item("reveal", open_path.REVEAL_TEXT)
         menu.triggered.connect(self._on_menu_action)
         return menu
 
@@ -371,6 +375,7 @@ class _TabButton(ClickFrame):
             "close_right": self.close_right_requested,
             "reveal": self.reveal_requested,
             "show_in_deck": self.show_in_deck_requested,
+            "duplicate": self.duplicate_requested,
         }[key].emit()
 
 
@@ -394,6 +399,7 @@ class TabStrip(Surface):
     close_right_requested = Signal(object)      # its context menu's Close all to the right
     reveal_requested = Signal(object)           # its context menu's Reveal in Explorer
     show_in_deck_requested = Signal(object)     # its context menu's Show in deck: the deck's working tab
+    duplicate_requested = Signal(object)        # its context menu's Duplicate tab: the slide tab's slide in a tab of its own
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -457,6 +463,7 @@ class TabStrip(Surface):
                 button.close_right_requested.connect(lambda t=tab: self.close_right_requested.emit(t))
                 button.reveal_requested.connect(lambda t=tab: self.reveal_requested.emit(t))
                 button.show_in_deck_requested.connect(lambda t=tab: self.show_in_deck_requested.emit(t))
+                button.duplicate_requested.connect(lambda t=tab: self.duplicate_requested.emit(t))
                 self._row.insertWidget(index, button)
         self._buttons = {tab: self._buttons[tab] for tab in tabs}
         for index, tab in enumerate(tabs):

@@ -120,7 +120,7 @@ def test_unreadable_steps_in_a_deck_call_are_not_guessed():
 
 
 def test_all_steps_selects_every_overlay_and_refuses_nothing_else():
-    line = slide_preview._overlay_line(None, True)
+    line = slide_preview._overlay_line(True)
     assert "\\gdef\\beamer@whichframes{1-}" in line and "allowframebreaks" not in line
-    assert slide_preview._overlay_line(None) == ""
-    assert "{2}" in slide_preview._overlay_line(2, False)
+    assert slide_preview._overlay_line() == ""
+    assert slide_preview._overlay_line(False) == ""

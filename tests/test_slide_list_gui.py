@@ -301,8 +301,21 @@ def choose_section(slide_list, title):
                                    slide_list_module.QItemSelectionModel.SelectionFlag.NoUpdate)
 
 
+def flyout(menu, key_):
+    """The flyout the submenu row `key_` of `menu` opens."""
+    return menu._submenus[key_][1](menu)
+
+
 def _entry(menu, key_):
-    return next(e for e in menu._entries if e[0] == "item" and e[1] == key_)
+    """The row `key_` of `menu`, or of one of its flyouts."""
+    for entry in menu._entries:
+        if entry[0] == "item" and entry[1] == key_:
+            return entry
+    for sub in menu._submenus:
+        for entry in flyout(menu, sub)._entries:
+            if entry[0] == "item" and entry[1] == key_:
+                return entry
+    raise StopIteration(key_)
 
 
 # -- find, focus and selection -----------------------------------------------------------
@@ -629,16 +642,17 @@ def test_the_slide_menu_offers_every_way_to_call_a_slide(make_list, monkeypatch,
     focus(slide_list, "aaa")
     menu = slide_list._slide_menu()
     expected = [
-        "slide:open", "slide:preview", "slide:open_tab", "slide:images", "slide:reviewed",
+        "slide:open", "slide:preview", "slide:open_tab", "slide:images", "slide:reviewed", "review:toggle",
+        "review:note", "submenu:visibility", "slide:before", "slide:after", "slide:section_before",
+        "slide:section_after", "slide:duplicate", "submenu:move", "slide:remove"]
+    if with_route:
+        expected.insert(expected.index("submenu:move"), "slide:translate")
+    assert keys_of(menu) == expected
+    assert keys_of(flyout(menu, "submenu:visibility")) == [
         "variant:slide", "variant:slidefinal", "variant:omitslide", "variant:conditionalslide",
         "variant:slidestep", "variant:slideversion:1-0-0", "variant:omitslideversion:1-0-0",
-        "slide:visible:instructor", "slide:visible:during-course", "slide:visible:after-course",
-        "review:toggle", "review:note",
-        "slide:before", "slide:after", "slide:duplicate", "slide:section_before", "move:0",
-            "slide:remove"]
-    if with_route:
-        expected.insert(expected.index("slide:section_before"), "slide:translate")
-    assert keys_of(menu) == expected
+        "slide:visible:instructor", "slide:visible:during-course", "slide:visible:after-course"]
+    assert keys_of(flyout(menu, "submenu:move")) == ["move:0"]
     assert _entry(menu, "variant:slide")[4] == "check"             # the current call is ticked
     for macro, expected in (
             ("slidefinal", "\\slidefinal{aaa-First}"), ("omitslide", "\\omitslide{aaa-First}"),
@@ -659,13 +673,14 @@ def test_the_slide_menu_hides_a_slide_in_one_view_and_opens_the_other_tools(make
     focus(slide_list, "aaa")
     run = lambda command: window.commands.run(command, window)   # noqa: E731 -- what a menu entry does
     menu = slide_list._slide_menu()
-    assert [e[2] for e in menu._entries if e[0] == "item" and e[1].startswith("slide:visible")] == [
+    assert [e[2] for e in flyout(menu, "submenu:visibility")._entries
+            if e[0] == "item" and e[1].startswith("slide:visible")] == [
         "Hide in Instructor", "Hide in During course", "Hide in After course"]
     run("slide:visible:during-course")
     assert deck_lines(path)[0] == "\\conditionalslide[instructor,after-course]{aaa-First}"
     focus(slide_list, "aaa")
-    assert [e[2] for e in slide_list._slide_menu()._entries if e[0] == "item" and e[1] == "slide:visible:during-course"] \
-        == ["Show in During course"]
+    assert [e[2] for e in flyout(slide_list._slide_menu(), "submenu:visibility")._entries
+            if e[0] == "item" and e[1] == "slide:visible:during-course"] == ["Show in During course"]
     run("slide:preview")
     assert (slide_list.state.focused_slide, slide_list.state.mode) == ("aaa", "preview")
     slide_list.state.set_mode("details")
@@ -694,8 +709,10 @@ def test_the_bulk_menu_moves_slides_into_a_section(make_list):
     menu = slide_list._bulk_menu()
     assert keys_of(menu) == [
         "slide:visible:instructor", "slide:visible:during-course", "slide:visible:after-course",
-        "review:toggle", "review:note",
-        "move:0", "move:1", "move:2", "move:3", "slide:update_versions", "slide:reviewed", "compile:slides", "slide:clear", "slide:remove"]
+        "slide:reviewed", "review:toggle", "review:note", "slide:update_versions", "compile:slides", "submenu:move",
+        "slide:clear", "slide:remove"]
+    assert keys_of(flyout(menu, "submenu:move")) == ["move:0", "move:1", "move:2", "move:3"]
+    assert _entry(menu, "compile:slides")[2] == "Compile PDF of selected slides"
     assert _entry(menu, "slide:remove")[2] == "Remove 2 from the deck"
     slide_list._on_menu_chosen("move:2")               # into the empty section
     assert deck_lines(path) == ["\\section{One}", "\\slide{bbb-One}", "\\section{Empty}", "\\slide{aaa-Front}",

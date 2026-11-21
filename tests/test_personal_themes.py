@@ -102,7 +102,7 @@ def test_extensions_lists_personal_themes_marked_with_file_and_reveal(qapp, proj
     assert isinstance(row, PersonalThemeRow) and row.location_label.text() == str(path)
     texts = [label.text() for label in row.findChildren(QLabel)]
     assert "Personal (project folder)" in texts and "My Look" in texts
-    assert row.reveal_button.text() == "Reveal in Explorer"
+    assert row.reveal_button.text() == open_path.REVEAL_TEXT
     assert tab.theme_rows == {}                                  # not an installed package: no remove or update controls
     revealed = []
     monkeypatch.setattr(open_path, "reveal_in_file_manager", revealed.append)

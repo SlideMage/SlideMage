@@ -35,6 +35,11 @@ def open_in_default_app(path: Path | str) -> None:
         )
 
 
+# The menu text for reveal_in_file_manager, as each system calls it (Linux only opens the folder).
+REVEAL_TEXT = ("Show in Explorer" if sys.platform.startswith("win")
+               else "Reveal in Finder" if sys.platform == "darwin" else "Open containing folder")
+
+
 def reveal_in_file_manager(path: Path | str) -> None:
     """Show `path` selected in the OS's file manager (Explorer, Finder); on Linux, where the file managers have no
     common way to select, its folder."""

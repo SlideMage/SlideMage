@@ -27,7 +27,7 @@ def groups(service, candidates, size: int) -> list[list]:
     for key, spec in candidates:
         options, target = spec.options, spec.target
         if (size < 2 or not options.saved or target.hidden or target.needs_context or spec.capture_error
-                or options.presenter or options.mode != 'slide' or options.overlay is not None
+                or options.presenter
                 or deck_context.reasons(spec.revision.text)):
             continue
         try:

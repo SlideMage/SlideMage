@@ -160,9 +160,7 @@ def test_an_unsaved_buffer_gets_the_skeleton_only_when_it_needs_the_deck(ctx, de
     monkeypatch.setattr(slide_preview, "render_slide_text_to_pdf", lambda *a, **k: seen.append(k))
     preview_target.render_text(target, "\\tableofcontents", "instructor", "EN", log=print)
     preview_target.render_text(target, "plain text", "instructor", "EN", log=print)
-    preview_target.render_text(target, "\\tableofcontents", "instructor", "EN", log=print,
-                               mode="region")
-    assert "context_before" in seen[0] and "context_before" not in seen[1] and "context_before" not in seen[2]
+    assert "context_before" in seen[0] and "context_before" not in seen[1]
 
 
 def test_the_page_compile_of_a_slide_becomes_its_own_pdf(ctx, deck, monkeypatch, tmp_path):

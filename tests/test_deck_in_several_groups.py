@@ -88,7 +88,7 @@ def test_a_deck_in_two_groups_is_in_both_sections_of_switch_deck(qapp):
 def test_a_pinned_deck_is_also_listed_under_its_other_groups(qapp):
     deck = make_deck("both", ["course", "work"])
     assert ROLE_PINNED in deck.roles and deck.groups == ("work", "course")
-    assert switcher([deck]) == [(None, ["both"]), ("Course decks", ["both"])]
+    assert switcher([deck]) == [("Pinned", ["both"]), ("Course decks", ["both"])]
 
 
 def test_a_deck_has_the_roles_of_all_its_groups():

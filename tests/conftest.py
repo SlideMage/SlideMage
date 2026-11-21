@@ -233,7 +233,7 @@ def command_context(deck=None, *, compiling=False, selected=(), decks=()):
 
 def menu_bar_ids(ctx=None) -> list[str]:
     """Every command id the menu bar can show, submenus included (DECKS is not a command)."""
-    from slidemage.ui.workspace.menus import DECKS, Submenu, expand, menu_bar
+    from slidemage.ui.workspace.menus import DECKS, Item, Submenu, expand, menu_bar
 
     if ctx is None:
         ctx = command_context()
@@ -244,7 +244,7 @@ def menu_bar_ids(ctx=None) -> list[str]:
                 if isinstance(entry, Submenu):
                     ids += expand(ctx, entry.ids)
                 elif entry != DECKS:
-                    ids.append(entry)
+                    ids.append(entry.id if isinstance(entry, Item) else entry)
     return ids
 
 

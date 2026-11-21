@@ -890,64 +890,88 @@ class SlideList(QWidget):
     def _slide_menu(self) -> PopoverMenu:
         row = self.targets()[0]
         call = row.deck_call
+        editable = call.editable
         menu = self._new_menu(280)
         menu.add_header(f"{row.call.id} · {row.title}")
-        add_commands(menu, self.app, ["slide:open", "slide:preview", "slide:open_tab", "slide:images", "slide:reviewed", "slide:compare"])
-        if not call.editable:
+        add_commands(menu, self.app, ["slide:open", "slide:preview", "slide:open_tab", "slide:images"], "View")
+        if not editable:
             menu.add_header(f"Read-only here: {call.readonly_reason}")
         menu.add_separator()
-        menu.add_header("Call as")
-        editable = call.editable
-        for macro in BASE_MACROS:
-            menu.add_item(f"variant:{macro}", VARIANT_TITLES[macro], meta=f"\\{macro}", enabled=editable,
-                          icon="check" if call.macro == macro else "")
-        versions = deck_editor.available_versions(self.app.project, row.deck_call.id_slug)
-        if row.deck_call.macro in VERSIONED_MACROS and row.deck_call.version not in versions:
-            versions.append(row.deck_call.version)
-        for version in versions:
-            for macro, title in (("slideversion", "Pinned to"), ("omitslideversion", "Instructor only, pinned to")):
-                menu.add_item(f"variant:{macro}:{version}", f"{title} v{version}", meta=f"\\{macro}",
-                              enabled=editable, icon="check" if (call.macro, call.version) == (macro, version) else "")
-        menu.add_separator()
-        add_commands(menu, self.app, [f"slide:visible:{view}" for view in VIEWS])
+        menu.add_header("Review")
+        add_commands(menu, self.app, ["slide:reviewed", "slide:compare"])
         self._add_review_items(menu, [row])
         menu.add_separator()
-        add_commands(menu, self.app, ["slide:before", "slide:after", "slide:duplicate", "slide:translate",
-                                  "slide:section_before"])
+        menu.add_submenu("submenu:visibility", "Visibility", lambda parent: self._visibility_flyout(parent, row))
+        menu.add_separator()
+        add_commands(menu, self.app, ["slide:before", "slide:after", "slide:section_before", "slide:section_after",
+                                      "slide:duplicate", "slide:translate"], "Add")
+        menu.add_separator()
         self._add_move_items(menu, editable)
         menu.add_separator()
         add_commands(menu, self.app, ["slide:remove"])
         return menu
 
+    def _visibility_flyout(self, parent: PopoverMenu, row: SlideRow) -> PopoverMenu:
+        """How the slide is called (its macro, a pinned version) and in which views it shows."""
+        call = row.deck_call
+        editable = call.editable
+        flyout = PopoverMenu(parent, min_width=280)
+        flyout.add_header("Call as")
+        for macro in BASE_MACROS:
+            flyout.add_item(f"variant:{macro}", VARIANT_TITLES[macro], meta=f"\\{macro}", enabled=editable,
+                            icon="check" if call.macro == macro else "")
+        versions = deck_editor.available_versions(self.app.project, row.deck_call.id_slug)
+        if row.deck_call.macro in VERSIONED_MACROS and row.deck_call.version not in versions:
+            versions.append(row.deck_call.version)
+        for version in versions:
+            for macro, title in (("slideversion", "Pinned to"), ("omitslideversion", "Instructor only, pinned to")):
+                flyout.add_item(f"variant:{macro}:{version}", f"{title} v{version}", meta=f"\\{macro}",
+                                enabled=editable, icon="check" if (call.macro, call.version) == (macro, version) else "")
+        flyout.add_separator()
+        add_commands(flyout, self.app, [f"slide:visible:{view}" for view in VIEWS], hints=False)
+        return flyout
+
     def _bulk_menu(self) -> PopoverMenu:
         rows = self.targets()
         menu = self._new_menu(260)
         menu.add_header(f"{len(rows)} slides selected")
-        add_commands(menu, self.app, [f"slide:visible:{view}" for view in VIEWS])
+        add_commands(menu, self.app, [f"slide:visible:{view}" for view in VIEWS], "Visibility")
+        menu.add_separator()
+        menu.add_header("Review")
+        add_commands(menu, self.app, ["slide:reviewed"])
         self._add_review_items(menu, rows)
+        menu.add_separator()
+        add_commands(menu, self.app, ["slide:update_versions", "compile:slides"])
         self._add_move_items(menu, all(r.call.editable for r in rows))
         menu.add_separator()
-        add_commands(menu, self.app, ["slide:update_versions", "slide:reviewed", "compile:slides", "slide:clear", "slide:remove"])
+        add_commands(menu, self.app, ["slide:clear", "slide:remove"])
         return menu
 
     def _add_review_items(self, menu: PopoverMenu, rows: list[SlideRow]) -> None:
         """The deck's own "under review" mark (\\SMReview{...}): a watermark on the previews, not in the PDF."""
         editable = all(r.deck_call.editable for r in rows)
         marked = all(r.review for r in rows)
-        menu.add_separator()
         menu.add_item("review:toggle", "Clear review mark" if marked else "Mark for review in this deck",
                       meta="\\SMReview", enabled=editable, icon="check" if marked else "")
         menu.add_item("review:note", "Review note…", enabled=editable)
 
     def _add_move_items(self, menu: PopoverMenu, enabled: bool) -> None:
-        menu.add_separator()
-        menu.add_header("Move to section")
+        """"Move to section" as a flyout with a row per section."""
+        menu.add_submenu("submenu:move", "Move to section", lambda parent: self._move_flyout(parent, enabled),
+                         enabled=enabled and bool(self._outline))
+
+    def _move_flyout(self, parent: PopoverMenu, enabled: bool) -> PopoverMenu:
+        flyout = PopoverMenu(parent, min_width=240)
         for index, section in enumerate(self._outline):
-            menu.add_item(f"move:{index}", section.title, enabled=enabled)
+            flyout.add_item(f"move:{index}", section.title, enabled=enabled)
+        return flyout
 
     def _section_menu(self) -> PopoverMenu:
         menu = self._new_menu(240)
-        add_commands(menu, self.app, ["section:rename", "section:add_slide", "section:section_before"])
+        add_commands(menu, self.app, ["section:rename"])
+        menu.add_separator()
+        add_commands(menu, self.app, ["section:slide_start", "section:add_slide", "section:section_before",
+                                      "section:section_after"], "Add")
         menu.add_separator()
         add_commands(menu, self.app, ["section:section_up", "section:section_down"])
         menu.add_separator()
@@ -966,7 +990,7 @@ class SlideList(QWidget):
         editable = marker and section.editable
         if name == "rename" and self._front_rows(section):
             return bool(self._front_rows(section)[0].call.editable)
-        if name == "section_before":
+        if name in ("section_before", "section_after", "slide_start"):
             return marker
         if name in ("rename", "remove_section"):
             return editable
@@ -1027,6 +1051,8 @@ class SlideList(QWidget):
             self.add_slide(name, target.call.id_slug, arg or None)
         elif name == "section_before":
             self._add_section(target.call.line_start)
+        elif name == "section_after":
+            self._add_section(target.call.line_end)
         elif name == "move":
             self._move_to_section(targets, self._outline[int(arg)])
         elif name == "remove":
@@ -1042,8 +1068,12 @@ class SlideList(QWidget):
             self.tree.rename(next(h for h in self.tree.section_items() if self.tree.data_of(h) is section))
         elif name == "add_slide":
             self._add_slide_to(section)
+        elif name == "slide_start":
+            self._add_slide_to(section, at_start=True)
         elif name == "section_before":
             self._add_section(deck_editor.section_line_span(deck.text, section.chapter)[0])
+        elif name == "section_after":
+            self._add_section_after(section)
         elif name in ("section_up", "section_down"):
             self._step_section(section, -1 if name == "section_up" else 1)
         elif name == "remove_section":
@@ -1304,16 +1334,26 @@ class SlideList(QWidget):
             return
         self._open_add(insert_at, indent, "at the end of the deck", id_slug, source, target)
 
-    def _add_slide_to(self, section: SectionRow) -> None:
+    def _add_slide_to(self, section: SectionRow, at_start: bool = False) -> None:
+        """Open the Add slide sheet for the end of `section`, or for its start (just below its marker line)."""
         deck = self.deck
         calls = [r.deck_call for r in section.rows]
         indent = calls[-1].indent if calls else "\t"
         try:
-            insert_at = deck_editor.section_append_point(deck, section.chapter)
+            insert_at = (deck_editor.section_line_span(deck.text, section.chapter)[1] if at_start
+                         else deck_editor.section_append_point(deck, section.chapter))
         except ValueError as exc:
             QMessageBox.critical(self, "Add slide", str(exc))
             return
-        self._open_add(insert_at, indent, f"at the end of {section.title}", None)
+        self._open_add(insert_at, indent, f"at the {'start' if at_start else 'end'} of {section.title}", None)
+
+    def _add_section_after(self, section: SectionRow) -> None:
+        try:
+            insert_at = deck_editor.section_append_point(self.deck, section.chapter)
+        except ValueError as exc:
+            QMessageBox.critical(self, "Add section", str(exc))
+            return
+        self._add_section(insert_at)
 
     def _open_add(self, insert_at: int, indent: str, where: str, slide: Optional[str], source: str = "new",
                   target: Optional[str] = None) -> None:
