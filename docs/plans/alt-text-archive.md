@@ -43,8 +43,11 @@ In Slidemaster on 2026-11-21: 63 of 504 entries had no live slide (12 with text,
 
 1. **Done in the first PR:** `alt_archive.py` (archive, restore, purge, `unreferenced_entries`), hooks in
    `delete_slide_id`, `archive_files` (slides and media) and "Replace image", dialog wording, tests.
-2. Housekeeping page "Archive unused descriptions" (rule 3, also the one-time cleanup of existing projects), and the
-   question in the auto-archiving dialog.
-3. `sync_store` reports `restorable` (a slide id or image path live again with an archived snapshot), the Images tab
-   banner, a list with search by slide name and text, restore, copy onto another image, purge; the manual's Images
-   slides.
+2. **Done in the second PR:** Housekeeping page "Archive unused descriptions" (rule 3, also the one-time cleanup of
+   existing projects), and the question in the auto-archiving dialog.
+3. **Done in the third PR:** `alt_archive.restorable_images()` / `restorable_slides()` (an image whose store row is
+   blank while the archive holds text for the path; a live slide whose archived data the store lacks; kept out of
+   `sync_store`, which `alt_archive` imports), a note and the "Alt-text archive..." button on the Images page, the
+   sheet (`ui/pages/image_archive_sheet.py`: images and slides tabs, search by name, slide and text, a picker for the
+   snapshots, restore, copy onto another image, delete one version) and the manual's slide 1ih. Restoring or copying
+   over text first archives the text that goes ("replaced by archived text"). A copy counts as unreviewed.

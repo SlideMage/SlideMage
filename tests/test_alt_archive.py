@@ -149,7 +149,8 @@ def test_restore_image_puts_the_text_back_but_never_over_text_that_is_there(ctx)
     restored = alt_images.load_store(ctx)[A]
     assert restored.short == "old" and set(restored.used_on) == {"s1", "s7"}      # uses from both
     assert alt_archive.restore_image(ctx, "media/none.png") == "none"
-    assert len(alt_archive.image_snapshots(ctx, A)) == 1                           # restoring keeps the snapshot
+    # restoring keeps the snapshot, and the "current" text it overwrote joined it
+    assert [s["entry"]["text"]["en"]["short"] for s in alt_archive.image_snapshots(ctx, A)] == ["old", "current"]
 
 
 def test_restore_slide_brings_back_takeaways_and_summary_and_names_what_is_missing(ctx):

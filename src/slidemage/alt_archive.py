@@ -37,7 +37,7 @@ duplicate but never a loss. An archive written by a newer SlideMage is never wri
 from __future__ import annotations
 
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from typing import Iterable
 
@@ -54,6 +54,7 @@ REASON_SLIDE_ARCHIVED = "slide archived"
 REASON_IMAGE_ARCHIVED = "image archived"
 REASON_IMAGE_REPLACED = "image replaced"
 REASON_UNUSED = "unused description"
+REASON_REPLACED = "replaced by archived text"      # the text a restore or copy overwrote at a person's request
 
 # Written only while holding this one; always taken inside the live store's lock, never the other way round.
 _archive_lock = threading.Lock()
@@ -266,8 +267,19 @@ def unused_descriptions(ctx: ProjectContext) -> list[UnusedDescription]:
 # Restore and purge
 # --------------------------------------------------------------------------
 
-def _blank(entry: ImageEntry) -> bool:
+def blank(entry: ImageEntry) -> bool:
     return not _worth_keeping(entry)
+
+
+def _keep_current(ctx: ProjectContext, entry: ImageEntry, reason: str) -> None:
+    """Before text a person asked to overwrite goes, it joins the archive: nothing is lost by choosing the archived
+    text. Called inside the live store's lock, like the archiving above."""
+    if not _worth_keeping(entry):
+        return
+    with _archive_lock:
+        data = _read(ctx)
+        if _add(data["images"], entry.image, _image_snapshot(entry, reason, date.today().isoformat())):
+            _write(ctx, data)
 
 
 def restore_image(ctx: ProjectContext, image: str, index: int = -1, *, overwrite: bool = False) -> str:
@@ -284,12 +296,77 @@ def restore_image(ctx: ProjectContext, image: str, index: int = -1, *, overwrite
     def mutate(entries: dict[str, ImageEntry]) -> bool:
         nonlocal outcome
         current = entries.get(image)
-        if current is not None and not _blank(current) and not overwrite:
+        if current is not None and not blank(current) and not overwrite:
             outcome = "kept"
             return False
         if current is not None:
+            _keep_current(ctx, current, REASON_REPLACED)
             archived.used_on = {**archived.used_on, **current.used_on}
         entries[image] = archived
+        return True
+
+    alt_images.update_store(ctx, mutate)
+    return outcome
+
+
+def restorable_images(ctx: ProjectContext) -> list[str]:
+    """The images whose entry in the store holds nothing a person or a model wrote while the archive holds a
+    description of the same path: a file put back into media/, or a path used again. The Images page offers them
+    (a new image of the same name is not the old one, so nothing restores these on its own)."""
+    archived = _read(ctx)["images"]
+    if not archived:
+        return []
+    return sorted(image for image, entry in alt_images.load_store(ctx).items()
+                  if archived.get(image) and blank(entry))
+
+
+def restorable_slides(ctx: ProjectContext, bare_ids: Iterable[str]) -> list[str]:
+    """Of these live slides, those the archive holds data for that the store lacks now: a takeaway override or a
+    reviewed stamp on an image the slide shows again, or its summary."""
+    archived = _read(ctx)["slides"]
+    wanted = [bare_id for bare_id in dict.fromkeys(bare_ids) if archived.get(bare_id)]
+    if not wanted:
+        return []
+    entries = alt_images.load_store(ctx)
+    notes = alt_images.load_slide_notes(ctx)
+    found = []
+    for bare_id in wanted:
+        snapshot = archived[bare_id][-1]
+        lacks_use = any(image in entries and not alt_images.use_to_dict(entries[image].used_on.get(bare_id)
+                                                                         or alt_images.SlideUse())
+                        for image in (snapshot.get("uses") or {}))
+        lacks_summary = bool(snapshot.get("summary")) and not (bare_id in notes and notes[bare_id].summary)
+        if lacks_use or lacks_summary:
+            found.append(bare_id)
+    return sorted(found)
+
+
+def copy_image_text(ctx: ProjectContext, image: str, target: str, index: int = -1, *, overwrite: bool = False) -> str:
+    """Copy the descriptions of an archived image onto another image (the file was replaced by a new one under
+    another name): every language's text, the role and who drafted it. Nothing of the archived slide uses, the hint
+    or the reviewed marks comes along, and the texts count as unreviewed again -- another picture needs another
+    look. Text that is on the target is kept unless `overwrite`. The result is "copied", "kept" (the target has
+    text), "none" (no such snapshot) or "missing" (the target has no entry in the store)."""
+    snapshots = image_snapshots(ctx, image)
+    if not snapshots or not -len(snapshots) <= index < len(snapshots):
+        return "none"
+    archived = alt_images.entry_from_dict(image, snapshots[index]["entry"])
+    outcome = "copied"
+
+    def mutate(entries: dict[str, ImageEntry]) -> bool:
+        nonlocal outcome
+        current = entries.get(target)
+        if current is None:
+            outcome = "missing"
+            return False
+        if not blank(current) and not overwrite:
+            outcome = "kept"
+            return False
+        _keep_current(ctx, current, REASON_REPLACED)
+        current.texts = {code: replace(text, status=alt_images.STATUS_AUTO) for code, text in archived.texts.items()}
+        current.role, current.drafted_by = archived.role, archived.drafted_by
+        if any(text.source for text in archived.texts.values()):
+            current.source_status = alt_images.SOURCE_TO_REVIEW
         return True
 
     alt_images.update_store(ctx, mutate)

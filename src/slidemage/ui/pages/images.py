@@ -40,6 +40,7 @@ from ..ai_models import cloud_label, fill_model_combo
 from ..dialogs.transcript_preview import show_transcript_preview
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, Card, Field, IconButton, SegmentedControl, Surface, caption
+from .image_archive_sheet import AltArchiveSheet
 from .image_dialogs import ReplaceImageSheet
 from .image_form import ImageForm, review_refused, store_writable
 from .image_jobs import Job, JobCard
@@ -125,6 +126,44 @@ class ImagesPage(ImageRunsMixin, Surface):
         buttons.addWidget(self.draft_all_button, 1)
         buttons.addWidget(self.translate_all_button, 1)
         layout.addLayout(buttons)
+        self.archive_note = caption("")
+        self.archive_button = Button("Alt-text archive…", "ghost", compact=True)
+        self.archive_button.setToolTip("What deleted and archived slides and images left behind: browse, restore, "
+                                       "copy onto another image or delete.")
+        self.archive_button.clicked.connect(self._open_archive)
+        layout.addWidget(self.archive_note)
+        layout.addWidget(self.archive_button)
+        self._restorable: tuple[set[str], set[str]] = (set(), set())
+
+    def _update_archive_note(self) -> None:
+        """Say so when the archive holds a description for an image that is in the project again without one (or
+        slide data for a slide shown again): the person restores it in the sheet. The button shows once the
+        archive holds anything."""
+        project = self.app.project
+        try:
+            images = set(alt_archive.restorable_images(project))
+            slides = set(alt_archive.restorable_slides(project, [view.row.slide_id for view in self._views]))
+            holds = alt_archive.archive_path(project).is_file() and any(alt_archive.load(project).values())
+        except alt_images.NewerStoreError:
+            images, slides, holds = set(), set(), False
+        self._restorable = (images, slides)
+        parts = [f"{len(images)} image description{'s' if len(images) != 1 else ''}" if images else "",
+                 f"data of {len(slides)} slide{'s' if len(slides) != 1 else ''}" if slides else ""]
+        found = " and ".join(part for part in parts if part)
+        self.archive_note.setText(f"The alt-text archive holds {found} that can be restored." if found else "")
+        self.archive_note.setVisible(bool(found))
+        self.archive_button.setVisible(holds)
+
+    def _open_archive(self) -> None:
+        if not self._may_leave_translation():
+            return
+        self.flush()
+        sheet = AltArchiveSheet(self, self.app.project, *self._restorable)
+        sheet.exec()
+        if sheet.changed:
+            self.reload(self._current_path())
+        else:
+            self._update_archive_note()
 
     def _build_slide_column(self) -> Card:
         card = Card()
@@ -239,6 +278,7 @@ class ImagesPage(ImageRunsMixin, Surface):
                     self.app.log(f"alt-text store: {len(report.new_uses)} new slide/image reference(s) found.")
             self._entries = alt_images.load_store(self.app.project)
             self._views = image_review.scan_views(self.app.project, self._entries)
+        self._update_archive_note()
         self._populate(preserve or self._current_path())
 
     def _current_path(self) -> Optional[Path]:
