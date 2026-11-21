@@ -363,17 +363,25 @@ def _entry_to_dict(entry: ImageEntry) -> dict:
         d["drafted_by"] = entry.drafted_by
     if entry.hint:
         d["hint"] = entry.hint
-    d["used_on"] = {
-        slide_id: {
-            k: v for k, v in (
-                ("takeaway", dict(sorted(use.takeaways.items()))),
-                ("reviewed", use.reviewed),
-                ("hash", use.stored_hash),
-            ) if v
-        }
-        for slide_id, use in sorted(entry.used_on.items())
-    }
+    d["used_on"] = {slide_id: use_to_dict(use) for slide_id, use in sorted(entry.used_on.items())}
     return d
+
+
+def use_to_dict(use: SlideUse) -> dict:
+    """One slide's use of an image as stored: only the parts that are set (takeaway per language, reviewed
+    stamp, slide-context hash)."""
+    return {k: v for k, v in (("takeaway", dict(sorted(use.takeaways.items()))), ("reviewed", use.reviewed),
+                              ("hash", use.stored_hash)) if v}
+
+
+def entry_to_dict(entry: ImageEntry) -> dict:
+    """The stored form of one entry (what sits under its image path in media/alt-text.json)."""
+    return _entry_to_dict(entry)
+
+
+def use_from_dict(u: dict) -> SlideUse:
+    """Inverse of use_to_dict()."""
+    return _use_from_dict(u)
 
 
 def _text_from_dict(d: dict) -> ImageText:
@@ -495,7 +503,8 @@ def update_store(ctx: ProjectContext, mutate) -> bool:
 
 def delete_entry(ctx: ProjectContext, image: str) -> bool:
     """Drops `image`'s whole entry (role/short/long/takeaway_default/
-    used_on -- everything) from the store, atomically. For the Images tab's
+    used_on -- everything) from the store, atomically, with no copy. Nothing in SlideMage calls this any more:
+    alt_archive.archive_images() moves the entry to the alt-text archive instead. It was the Images tab's
     "Replace image…" flow (2026-09-18): once every slide that used to
     reference `image` has been repointed at a new file, its old description
     describes a picture nothing shows any more -- this is what "yes, delete

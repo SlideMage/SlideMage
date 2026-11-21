@@ -34,7 +34,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..kit.tokens import SPACE
-from ... import alt_draft, alt_images, image_review, languages, slide_language, timing
+from ... import alt_archive, alt_draft, alt_images, image_review, languages, slide_language, timing
 from ...ai import ai_profile, routes
 from ..ai_models import cloud_label, fill_model_combo
 from ..dialogs.transcript_preview import show_transcript_preview
@@ -537,13 +537,13 @@ class ImagesPage(ImageRunsMixin, Surface):
         # Only if no slide shows the old image any more does its description describe nothing.
         if image_review.is_unused_after(form.entry, changed):
             if not image_review.has_text(form.entry):
-                alt_images.delete_entry(self.app.project, form.entry.image)
+                alt_archive.archive_images(self.app.project, [form.entry.image], alt_archive.REASON_IMAGE_REPLACED)
             elif QMessageBox.question(
                     self, "Replace image",
-                    f"\"{form.reference}\" is no longer used on any slide. Delete its now-unused description "
-                    "(short, long, takeaway and source text)?") == QMessageBox.StandardButton.Yes:
-                alt_images.delete_entry(self.app.project, form.entry.image)
-                self.app.log(f"Deleted now-unused description for {form.entry.image}")
+                    f"\"{form.reference}\" is no longer used on any slide. Move its now-unused description "
+                    "(short, long, takeaway and source text) to the alt-text archive?") == QMessageBox.StandardButton.Yes:
+                alt_archive.archive_images(self.app.project, [form.entry.image], alt_archive.REASON_IMAGE_REPLACED)
+                self.app.log(f"Moved now-unused description for {form.entry.image} to the alt-text archive")
         self.reload(view.row.path)
 
     # -- jobs -------------------------------------------------------------------------------------------------

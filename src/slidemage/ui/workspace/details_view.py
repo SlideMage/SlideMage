@@ -292,7 +292,8 @@ class DetailsPane(Surface):
         confirm = QMessageBox.question(
             self, "Delete slide",
             f"Permanently delete {slide_language.current_name(id_slug)} (and any frozen versions of it)?\n\n{usage}\n\n"
-            "This cannot be undone from within SlideMage.",
+            "This cannot be undone from within SlideMage. The slide's alt-text data (takeaways, reviewed marks, "
+            "summary) and any image description nothing else uses move to the alt-text archive.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
         if confirm != QMessageBox.StandardButton.Yes:
             return
