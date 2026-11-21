@@ -18,7 +18,7 @@ from ...background import run_in_background
 from ...kit.flow import FlowLayout
 from ...kit.tokens import RADIUS_LG
 from ...kit.widgets import (Button, Card, Chip, Field, ModalSheet, Surface, ToggleChip,
-                            RowButton, caption, clear_layout, text_label)
+                            RowButton, caption, clear_layout, enable_clear_button, text_label)
 from ...workspace.palette import matches, words_of
 from .similar import CLASSES
 from .shared import instructor_target, load_picture, resolver_of, save_library, show_picture
@@ -178,7 +178,7 @@ class SlidesView(Surface):
         column.addWidget(caption("One card per slide and its translations. Mark reusable slides to build your pool."))
         self.search = QLineEdit()
         self.search.setPlaceholderText("Find by title, ID or text")
-        self.search.setClearButtonEnabled(True)
+        enable_clear_button(self.search)
         self.search.textChanged.connect(self._filter)
         column.addWidget(self.search)
         self.topic_chips = FlowLayout()

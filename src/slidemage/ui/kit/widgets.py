@@ -36,8 +36,10 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLayout,
+    QLineEdit,
     QListWidget,
     QProgressBar,
+    QProxyStyle,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -135,6 +137,27 @@ def _repolish(widget: QWidget) -> None:
 def set_property(widget: QWidget, name: str, value: object) -> None:
     widget.setProperty(name, value)
     _repolish(widget)
+
+
+CLEAR_ICON_PX = 22          # Qt's own "x" in a search box is 16 px: small to hit and to see in a list of slides
+
+
+class _LargeClearIcon(QProxyStyle):
+    """Qt sizes, places and paints the "x" of a search box from this one metric: a bigger value makes the button
+    bigger and still keeps it at the right end (setting the button's own size left it hanging over the edge)."""
+
+    def pixelMetric(self, metric, option=None, widget=None):
+        if metric == QStyle.PixelMetric.PM_LineEditIconSize and isinstance(widget, QLineEdit):
+            return CLEAR_ICON_PX
+        return super().pixelMetric(metric, option, widget)
+
+
+def enable_clear_button(edit: QLineEdit) -> None:
+    """The "x" at the right end of a search box that empties it, larger than Qt's default."""
+    edit.setClearButtonEnabled(True)
+    style = _LargeClearIcon()
+    style.setParent(edit)       # the box owns it: it goes with the box
+    edit.setStyle(style)
 
 
 def show_problem(label: QLabel, text: str) -> None:
