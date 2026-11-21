@@ -1,8 +1,0 @@
-kind: new
-reason: direct request: an alt-text archive that keeps the descriptions of deleted and archived slides and images, phase 3 of docs/plans/alt-text-archive.md
-
-alt_archive.restorable_images() and restorable_slides() find what the archive holds that the project lacks now (an image whose store row is blank while the archive has text for its path; a live slide whose archived takeaways, reviewed marks or summary are missing). The Images page says so in a note under its batch buttons and shows an "Alt-text archive..." button once the archive holds anything; it opens AltArchiveSheet (ui/pages/image_archive_sheet.py): an Images and a Slides tab, each a searchable list (by name, slide id and text), a picker for the snapshots of the entry, the chosen snapshot as text, and Restore, Copy onto another image (images without a description only; alt_archive.copy_image_text()) and Delete this version (the only way anything leaves the archive, after a question). Restoring over text, or copying over it, first archives the text that goes (reason "replaced by archived text"); a copy sets the texts to unreviewed and carries no slide uses, hint or reviewed marks. The Images page reads the store again when the sheet changed it. The manual's slide 1ih mentions the archive. Tests: test_alt_archive_restore.py, test_alt_archive_sheet_gui.py.
-
-NEW: The Images page now has an alt-text archive where you can search the descriptions of deleted and archived slides and images, restore them, copy them onto another image or delete them for good.
-- When an image is back in the project without a description, the page tells you the archive holds one.
-- Restoring over a description you wrote since never loses it: it moves to the archive first.
