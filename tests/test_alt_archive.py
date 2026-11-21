@@ -218,3 +218,16 @@ def test_a_moved_old_version_of_a_slide_that_is_still_current_changes_nothing(ct
     assert unused_content.archive_files(ctx, [], [old], lambda _line: None) == (0, 1)
     assert alt_images.load_store(ctx)[A].used_on["s1x"].takeaways == {"en": "t"}
     assert not alt_archive.archive_path(ctx).exists()
+
+
+def test_unused_descriptions_say_whether_the_file_is_gone_and_whether_there_is_text(ctx):
+    (ctx.root / "media").mkdir()
+    (ctx.root / "media" / "b.png").write_bytes(b"i")
+    write_store(ctx, {A: entry(A, {}), B: ImageEntry(image=B), "tikz:t1": entry("tikz:t1", {}),
+                      "media/shown.png": entry("media/shown.png", {})})
+    slide(ctx, "s1", "media/shown.png")
+    found = {d.image: d for d in alt_archive.unused_descriptions(ctx)}
+    assert list(found) == [A, B, "tikz:t1"]                                    # sorted; the shown one is not offered
+    assert found[A].file_missing and found[A].has_text and found[A].suggested
+    assert not found[B].file_missing and not found[B].has_text and not found[B].suggested
+    assert found["tikz:t1"].file_missing
