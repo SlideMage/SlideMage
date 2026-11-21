@@ -322,4 +322,5 @@ Decided 2026-10-31:
 - The work starts after the framework redesign is finished and merged, because step 1 touches `ui/kit/theme.py`,
   which the redesign also changes.
 
-Handover for the session that does the work: `docs/Handover_2026-10-31-SlideMage-Presenter.md`.
+The handover for the session that does the work (`Handover_2026-10-31-SlideMage-Presenter.md`) was removed from `docs/`
+on 2026-11-21; it is in git history (`git log --diff-filter=D -- docs/Handover_2026-10-31-SlideMage-Presenter.md`).
