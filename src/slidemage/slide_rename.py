@@ -37,7 +37,7 @@ from pathlib import Path
 from typing import Optional
 
 from .fileio import read_text_exact, write_text_exact
-from . import ai_review, alt_images, deck_editor, deck_headers, deck_language, languages, library_data, slide_ids, slide_language
+from . import ai_review, alt_archive, alt_images, deck_editor, deck_headers, deck_language, languages, library_data, slide_ids, slide_language
 from .project import ProjectContext
 from .processes import delete_file, move_file
 
@@ -514,9 +514,9 @@ def delete_slide_id(ctx: ProjectContext, id_slug: str, remove_deck_references: b
     instruction). Unless remove_deck_references is False, also removes
     every whole \\slide-family call line referencing it from every deck
     (including #workdeck.tex), so no deck is left pointing at a file that
-    no longer exists on disk. Also drops this slide's own bare-id entries
-    from the image manifest (media/alt-text.json's used_on/notes, same
-    alt_images helpers rename_slide_id() above already uses), then
+    no longer exists on disk. Also moves this slide's own bare-id data
+    from the image store (media/alt-text.json's used_on/notes) into the
+    alt-text archive (alt_archive.archive_slides(): nothing is dropped), then
     regenerates deck-inclusion headers and translation cross-references
     (a slide that had a translation link to/from this one gets flagged
     the same "no longer resolves" way a rename target that vanished
@@ -550,25 +550,10 @@ def delete_slide_id(ctx: ProjectContext, id_slug: str, remove_deck_references: b
 
     bare_id = id_slug.split("-", 1)[0]
 
-    def _drop_uses(entries) -> bool:
-        changed = False
-        for entry in entries.values():
-            if bare_id in entry.used_on:
-                del entry.used_on[bare_id]
-                changed = True
-        return changed
-
+    # The slide's own alt-text data (takeaway overrides, reviewed stamps, summary) and any description its images no
+    # longer have a use for move to the alt-text archive instead of being dropped.
     with contextlib.suppress(alt_images.NewerStoreError):   # a newer SlideMage's store is left as it is
-        alt_images.update_store(ctx, _drop_uses)
-
-    def _drop_notes(notes) -> bool:
-        if bare_id in notes:
-            del notes[bare_id]
-            return True
-        return False
-
-    with contextlib.suppress(alt_images.NewerStoreError):   # a newer SlideMage's store is left as it is
-        alt_images.update_slide_notes(ctx, _drop_notes)
+        alt_archive.archive_slides(ctx, [(bare_id, id_slug)], alt_archive.REASON_SLIDE_DELETED)
 
     deck_headers.regenerate_headers(ctx)
     regenerate_translation_links(ctx)

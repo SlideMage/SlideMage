@@ -13,7 +13,7 @@ from types import SimpleNamespace
 import pytest
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox, QWidget
 
-from slidemage import alt_blocks, alt_draft, alt_images, image_review
+from slidemage import alt_archive, alt_blocks, alt_draft, alt_images, image_review
 from slidemage.ai import ai_profile, resolver
 from slidemage.ai.ai_profile import IMAGE_DESCRIPTION, Route
 from fake_routes import FakeProvider
@@ -798,7 +798,8 @@ def test_replace_image_offers_to_delete_the_orphaned_description(make_page, monk
 
     monkeypatch.setattr(images, "ReplaceImageSheet", Sheet)
     deleted = []
-    monkeypatch.setattr(alt_images, "delete_entry", lambda _ctx, image: deleted.append(image))
+    monkeypatch.setattr(alt_archive, "archive_images",
+                        lambda _ctx, images, reason=None, **_kw: deleted.extend(images))
     monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
     page._replace_image(page._forms[0])
     assert deleted == [CHART]

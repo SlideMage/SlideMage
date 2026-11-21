@@ -62,10 +62,10 @@ import shutil
 from pathlib import Path
 from typing import Callable, Iterable
 
-from . import ai_review, deck_language, languages, library_data
+from . import ai_review, alt_archive, alt_images, deck_language, languages, library_data
 from .progress import Progress
 from .project import ProjectContext
-from .slide_language import current_name
+from .slide_language import CURRENT_SUFFIX, bare_id, current_name, current_path_for_bare_id
 from .tex_source import COMMENT_RE
 
 
@@ -224,6 +224,27 @@ def _archive_files(
     return moved
 
 
+def _archive_alt_text(ctx: ProjectContext, media: list[Path], slides: list[Path], log: LogCallback) -> None:
+    """What the image store holds for the files just moved goes to the alt-text archive: a slide that has no current
+    file any more (a moved frozen version of a live slide changes nothing) with its own takeaways, reviewed stamps
+    and summary, then the entry of each moved media file. Not a reason to fail the move: it has happened."""
+    gone = {bare_id(p.name): p.name[: -len(CURRENT_SUFFIX)] for p in slides
+            if p.name.endswith(CURRENT_SUFFIX) and current_path_for_bare_id(ctx, bare_id(p.name)) is None}
+    try:
+        result = alt_archive.archive_slides(ctx, sorted(gone.items()), alt_archive.REASON_SLIDE_ARCHIVED)
+        images = [path.relative_to(ctx.root).as_posix() for path in media]
+        archived = alt_archive.archive_images(ctx, images, alt_archive.REASON_IMAGE_ARCHIVED)
+    except alt_images.NewerStoreError:
+        log("Image descriptions were not moved to the alt-text archive: they were saved by a newer SlideMage.")
+        return
+    except OSError as exc:
+        log(f"Image descriptions were not moved to the alt-text archive: {exc}")
+        return
+    if result.slides or result.images or archived:
+        log(f"Moved to the alt-text archive: data of {len(result.slides)} slide(s), "
+            f"{len(result.images) + len(archived)} image description(s)")
+
+
 def archive_files(ctx: ProjectContext, media: list[Path], slides: list[Path], log: LogCallback,
                   on_progress: Callable[[Progress], None] | None = None) -> tuple[int, int]:
     """Move these media/ files into media/archive/ and these slides/ files into slides/archive/.
@@ -239,6 +260,7 @@ def archive_files(ctx: ProjectContext, media: list[Path], slides: list[Path], lo
     media_moved = _archive_files(media, ctx.media_dir / "archive", "media file", log, step)
     slides_moved = _archive_files(slides, ctx.slides_dir / "archive", "slide", log, step)
     ai_review.mark_reviewed(ctx, [p for p in slides if not p.exists()])
+    _archive_alt_text(ctx, [p for p in media if not p.exists()], [p for p in slides if not p.exists()], log)
     log(
         f"==== Archive unused content done: {media_moved} media file(s), "
         f"{slides_moved} slide(s) moved ===="
