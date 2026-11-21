@@ -122,4 +122,5 @@ checks the folder with the installer's rules and writes both files; the same fol
 
 ## For the website side
 
-See `docs/Handover_2026-10-31-Citation-Formats-For-Website.md`.
+The handover note for the website repository (`Handover_2026-10-31-Citation-Formats-For-Website.md`) was removed from
+`docs/` on 2026-11-21; it is in git history (`git log --diff-filter=D -- docs/Handover_2026-10-31-Citation-Formats-For-Website.md`).
