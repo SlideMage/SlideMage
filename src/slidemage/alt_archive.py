@@ -239,6 +239,29 @@ def unreferenced_entries(ctx: ProjectContext) -> list[str]:
     return sorted(image for image in alt_images.load_store(ctx) if image not in live)
 
 
+@dataclass(frozen=True)
+class UnusedDescription:
+    """One entry no slide references, with what a person needs to decide about it."""
+    image: str
+    file_missing: bool      # the image file is not on disk (a tikz illustration no slide draws has no file either)
+    has_text: bool          # a person or a model wrote something: archiving keeps it, dropping would lose it
+
+    @property
+    def suggested(self) -> bool:
+        """Archive it unless it may be a new image not yet placed on a slide: the file is gone."""
+        return self.file_missing
+
+
+def unused_descriptions(ctx: ProjectContext) -> list[UnusedDescription]:
+    """The entries to offer for archiving in the review of unused content: the ones no slide references (so not the
+    ones the archiving in hand is about to orphan, which move on their own), sorted by image."""
+    entries = alt_images.load_store(ctx)
+    live = referenced_images(ctx)
+    return [UnusedDescription(image, file_missing=image.startswith(alt_blocks.TIKZ_PREFIX)
+                              or not (ctx.root / image).is_file(), has_text=_worth_keeping(entries[image]))
+            for image in sorted(entries) if image not in live]
+
+
 # --------------------------------------------------------------------------
 # Restore and purge
 # --------------------------------------------------------------------------
