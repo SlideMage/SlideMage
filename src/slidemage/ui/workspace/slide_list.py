@@ -49,7 +49,7 @@ from ..dialogs.remove_section import ALL_SECTIONS, WITH_SLIDES, RemoveSectionShe
 from ..kit.tokens import SPACE
 from ..kit import kit_qss as q
 from ..kit.theme import ThemeManager
-from ..kit.widgets import Button, IconButton, PopoverMenu, Toast
+from ..kit.widgets import Button, IconButton, PopoverMenu, Toast, enable_clear_button
 from .menus import VIEW_LABELS, add_commands
 from .slide_tree import BlockRow, SlideTree, tooltip_text
 from .state import VIEWS, DeckWork, WorkspaceState
@@ -115,7 +115,7 @@ class SlideList(QWidget):
         self.find = QLineEdit()
         self.find.setObjectName(q.SLIDES_FIND)
         self.find.setPlaceholderText("Find slide by id or title")
-        self.find.setClearButtonEnabled(True)     # the "x" on the right that empties the box
+        enable_clear_button(self.find)            # the "x" on the right that empties the box
         self.find.textChanged.connect(self._apply_filter)
         self.find.returnPressed.connect(self._go_to_first_match)
         escape = QShortcut(QKeySequence(Qt.Key.Key_Escape), self.find)
