@@ -49,7 +49,9 @@ class Migration:
 
 
 # Each removed feature gets a one-time offer in the release that removes it.
-MIGRATIONS: list[Migration] = [Migration(CAMPUSONLINE, "v9.0.0"), Migration(CLAUDE, "v9.1.0"), Migration(OLLAMA, "v9.1.0")]
+# (Released as v9.0.0 and v9.1.0 under the numbering before v0.11.0, which is v0.9.0.0 and v0.9.1.0 today.)
+MIGRATIONS: list[Migration] = [Migration(CAMPUSONLINE, "v0.9.0.0"), Migration(CLAUDE, "v0.9.1.0"),
+                               Migration(OLLAMA, "v0.9.1.0")]
 
 
 def _routes_with_models(ctx: ProjectContext) -> set[str]:

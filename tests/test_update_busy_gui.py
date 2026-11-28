@@ -52,7 +52,7 @@ def test_cancel_during_the_download_stops_it_without_an_error_box(monkeypatch, q
     monkeypatch.setattr(updater, "install_zip", lambda *a: installed.append(a))
     monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: boxes.append(a))
     win = _window(logged)
-    maintenance.download_and_install_update(win, updater.Release("v9.9.9", "https://example.invalid", "a", 1, ""))
+    maintenance.download_and_install_update(win, updater.Release("v0.9.9.9", "https://example.invalid", "a", 1, ""))
     wait_until(started.is_set)
     sheet = win.findChild(BusySheet)
     next(b for b in sheet.findChildren(QPushButton) if b.text() == "Cancel").click()

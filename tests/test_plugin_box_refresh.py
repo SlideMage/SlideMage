@@ -24,7 +24,7 @@ id = "refreshplug"
 name = "Refresh fixture"
 version = "0.1.0"
 api_version = 1
-requires_slidemage = ">=8.0"
+requires_slidemage = ">=0.8.0"
 summary = "Fixture plugin whose box shows data that changes."
 author = "Test"
 homepage = "https://example.org/refreshplug"

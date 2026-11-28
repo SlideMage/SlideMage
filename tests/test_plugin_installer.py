@@ -119,7 +119,7 @@ def test_missing_package(tmp_path):
 @pytest.mark.parametrize("old, new, message", [
     ('id = "hello"', 'id = "Hello!"', "not valid"),                 # a bad id
     ("api_version = 1", "api_version = 99", "interface 99"),         # a newer plugin interface
-    (">=8.0", ">=1.99.0", "needs SlideMage"),                         # needs a newer SlideMage
+    (">=0.8.0", ">=1.99.0", "needs SlideMage"),                         # needs a newer SlideMage
 ])
 def test_a_manifest_that_cannot_be_installed(tmp_path, old, new, message):
     fails(make_zip(tmp_path, toml=HELLO_TOML.replace(old, new)), message)

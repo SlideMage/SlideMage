@@ -52,7 +52,7 @@ def fixture_members() -> dict[str, bytes]:
 @pytest.mark.parametrize("old, new, words", [
     ('id = "sample-theme"', 'id = "Sample"', "id (the template key)"),
     ('version = "1.0.0"', 'version = "1.0"', "version must look like 1.2.3"),
-    ('requires_slidemage = ">=10.16"', 'requires_slidemage = "10.16"', "requires_slidemage"),
+    ('requires_slidemage = ">=0.10.16"', 'requires_slidemage = "10.16"', "requires_slidemage"),
     ('homepage = "https://slidemage.org/plugins/"', 'homepage = "slidemage.org"', "homepage"),
     ('layout = "fira"', 'layout = "Fira Sans"', "layout"),
     ('layout = "fira"\n', '', "layout is missing"),
@@ -111,7 +111,7 @@ def test_the_grayscale_template_and_its_profile_are_bundled():
 
 def test_pack_cli_writes_a_reproducible_archive_and_checksum(theme_folder, tmp_path):
     result = subprocess.run([sys.executable, str(REPO / "tools" / "make_theme_package.py"), str(theme_folder),
-                             "--out", str(tmp_path / "dist"), "--app-version", "v10.16.0"],
+                             "--out", str(tmp_path / "dist"), "--app-version", "v0.10.16.0"],
                             capture_output=True, text=True, check=True)
     package = tmp_path / "dist" / "sample-theme-1.0.0.smtheme"
     assert Path(result.stdout.strip()) == package
@@ -166,7 +166,7 @@ def test_an_archive_without_theme_toml_or_not_a_zip_is_refused(tmp_path):
 
 def test_a_bundled_key_or_a_too_new_requirement_installs_nothing(package, tmp_path):
     with pytest.raises(themes.ThemeError, match="needs SlideMage"):
-        themes.install_file(package, app_version="v10.15.0")
+        themes.install_file(package, app_version="v0.10.15.0")
     members = fixture_members()
     members["theme.toml"] = TOML.replace('id = "sample-theme"', 'id = "slidemage"').encode()
     members["SlideMage_template_slidemage.tex"] = members.pop("SlideMage_template_sample-theme.tex")

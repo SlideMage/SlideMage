@@ -56,12 +56,12 @@ def test_snapshot_banner_only_in_a_snapshot(qapp, monkeypatch, tmp_path):
     proj = tmp_path / "Proj"
     project.write_project_json(proj, {"format": 1, "snapshot": {
         "deck_name": "t-A", "created": "2026-10-07T14:12:30+02:00", "read_only": True}})
-    (tmp_path / "snapshot.json").write_text(json.dumps({"slidemage": {"version": "v5.33.0"}}),
+    (tmp_path / "snapshot.json").write_text(json.dumps({"slidemage": {"version": "v0.5.33.0"}}),
                                             encoding="utf-8")
     banner = window_module.WorkspaceWindow._build_snapshot_banner
     label = banner(SimpleNamespace(project=ProjectContext.at(proj)))
     assert label.text().startswith(
-        "Deck snapshot of t-A, taken 2026-10-07 14:12 with SlideMage v5.33.0.")
+        "Deck snapshot of t-A, taken 2026-10-07 14:12 with SlideMage v0.5.33.0.")
     assert banner(SimpleNamespace(project=ProjectContext.at(tmp_path))) is None     # an ordinary folder
 
 

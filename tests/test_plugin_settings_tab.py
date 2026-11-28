@@ -79,7 +79,7 @@ def app(qapp, tmp_path):
 
 
 def load_plugins():
-    session.set_loaded(loader.load_all(Registrar, "v8.64.0"))
+    session.set_loaded(loader.load_all(Registrar, "v0.8.64.0"))
 
 
 def load_dev(monkeypatch, *names):
@@ -110,7 +110,7 @@ def catalogue_json(*plugins, schema=1):
 
 
 def entry(plugin_id="hello", name="Hello", version="0.1.0", sha256=HELLO_SHA, size=100, recommended=False,
-          network=(), requires=">=8.0"):
+          network=(), requires=">=0.8.0"):
     return {
         "id": plugin_id, "name": name, "summary": f"{name} does things.", "homepage": "https://example.org/",
         "source": "https://example.org/src", "icon": None, "license": "GPL-3.0-or-later", "maintainer": "Test",

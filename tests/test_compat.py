@@ -13,7 +13,7 @@ from slidemage.compat import APPEARANCE, BREAKS, Change, Finding
 NOW = datetime(2026, 10, 6, 12, 0, 0)
 
 
-def make_project(tmp_path: Path, last_version="v5.28.1", **extra) -> Path:
+def make_project(tmp_path: Path, last_version="v0.5.28.1", **extra) -> Path:
     root = tmp_path / "proj"
     (root / "decks").mkdir(parents=True)
     (root / "slides").mkdir()
@@ -41,43 +41,43 @@ def rename(root: Path) -> dict[Path, bytes]:
             for p in (root / "decks").glob("*.tex")}
 
 
-BREAKING = Change("old-to-new", "v5.30.0", BREAKS, "\\old is now \\new", "Renamed.",
+BREAKING = Change("old-to-new", "v0.5.30.0", BREAKS, "\\old is now \\new", "Renamed.",
                   fix="Replace \\old by \\new.", detect=scan, migrate=rename)
-MANUAL_FIX = Change("manual-only", "v5.30.0", compat.LAYOUT, "Layout", "Hand work.",
+MANUAL_FIX = Change("manual-only", "v0.5.30.0", compat.LAYOUT, "Layout", "Hand work.",
                     fix="Edit it.")
-LOOK = Change("looks", "v5.30.0", APPEARANCE, "Looks different", "Bars are lower.")
+LOOK = Change("looks", "v0.5.30.0", APPEARANCE, "Looks different", "Bars are lower.")
 
 
 def converted(root: Path) -> list[Finding]:
     return [Finding("media/store.json", 0, "converted")] if (root / "media" / "store.json").is_file() else []
 
 
-AUTO = Change("store-format", "v5.29.0", compat.LAYOUT, "The store has a new format", "Converted on open.",
+AUTO = Change("store-format", "v0.5.29.0", compat.LAYOUT, "The store has a new format", "Converted on open.",
               detect=converted, automatic=True)
 
 
 def test_dont_ask_again_is_per_change_and_remembered(tmp_path):
     root = make_project(tmp_path)
     compat.dismiss(root, ["old-to-new", "looks"])
-    ev = compat.evaluate(root, "v5.30.0", [BREAKING, MANUAL_FIX, LOOK])
+    ev = compat.evaluate(root, "v0.5.30.0", [BREAKING, MANUAL_FIX, LOOK])
     assert [p.change.id for p in ev.everything] == ["manual-only"]
-    project.record_project_open(root, "v5.31.0")         # other keys survive later opens
+    project.record_project_open(root, "v0.5.31.0")         # other keys survive later opens
     assert compat.dismissed_ids(root) == {"old-to-new", "looks"}
 
 
 def test_an_open_does_not_acknowledge_changes_or_show_future_migrations(tmp_path):
     root = make_project(tmp_path)
-    assert not compat.evaluate(root, "v5.29.0", [BREAKING]).everything
-    project.record_project_open(root, "v5.30.0")
-    assert compat.evaluate(root, "v5.30.0", [BREAKING]).loud
+    assert not compat.evaluate(root, "v0.5.29.0", [BREAKING]).everything
+    project.record_project_open(root, "v0.5.30.0")
+    assert compat.evaluate(root, "v0.5.30.0", [BREAKING]).loud
     assert compat.checked_version(root) == "v0.5.28.1"     # the open rewrote the old-scheme v5.28.1
-    compat.acknowledge(root, "v5.30.0")
-    assert not compat.evaluate(root, "v5.30.0", [BREAKING, MANUAL_FIX]).everything
+    compat.acknowledge(root, "v0.5.30.0")
+    assert not compat.evaluate(root, "v0.5.30.0", [BREAKING, MANUAL_FIX]).everything
 
 
 def test_update_backs_up_writes_atomically_and_includes_the_workdeck(tmp_path):
     root = make_project(tmp_path)
-    ev = compat.evaluate(root, "v5.30.0", [BREAKING])
+    ev = compat.evaluate(root, "v0.5.30.0", [BREAKING])
     dry = compat.run_update(root, ev.loud, dry_run=True, now=NOW)
     assert sorted(dry.changed) == ["decks/#workdeck.tex", "decks/course.tex"] and dry.backup is None
     assert b"\\old" in (root / "decks" / "course.tex").read_bytes()      # nothing written
@@ -93,7 +93,7 @@ def test_update_backs_up_writes_atomically_and_includes_the_workdeck(tmp_path):
     assert not list((root / "decks").glob("*.slidemage-tmp"))
     # idempotent, and the detector now finds nothing
     assert not compat.run_update(root, ev.loud, now=NOW).changed
-    assert not compat.evaluate(root, "v5.30.0", [BREAKING]).everything
+    assert not compat.evaluate(root, "v0.5.30.0", [BREAKING]).everything
 
 
 def test_a_failing_migration_is_reported_and_does_not_stop_the_rest(tmp_path):
@@ -102,27 +102,27 @@ def test_a_failing_migration_is_reported_and_does_not_stop_the_rest(tmp_path):
     def broken(_root):
         raise ValueError("boom")
 
-    bad = Change("bad", "v5.30.0", BREAKS, "Bad", "x", migrate=broken)
-    ev = compat.evaluate(root, "v5.30.0", [bad, BREAKING])
+    bad = Change("bad", "v0.5.30.0", BREAKS, "Bad", "x", migrate=broken)
+    ev = compat.evaluate(root, "v0.5.30.0", [bad, BREAKING])
     done = compat.run_update(root, ev.loud, now=NOW)
     assert done.errors == ["bad: boom"] and len(done.changed) == 2
 
 
 def test_a_project_used_by_a_newer_slidemage_is_noticed_once(tmp_path):
-    root = make_project(tmp_path, "v5.31.0")
-    assert compat.evaluate(root, "v5.28.1", []).newer_notice == "v5.31.0"
-    compat.ignore_newer(root, "v5.31.0")
-    assert compat.evaluate(root, "v5.28.1", []).newer_notice == ""
-    project.write_project_json(root, {**project.read_project_json(root), "highest_app_version": "v5.32.0"})
-    assert compat.evaluate(root, "v5.28.1", []).newer_notice == "v5.32.0"
+    root = make_project(tmp_path, "v0.5.31.0")
+    assert compat.evaluate(root, "v0.5.28.1", []).newer_notice == "v0.5.31.0"
+    compat.ignore_newer(root, "v0.5.31.0")
+    assert compat.evaluate(root, "v0.5.28.1", []).newer_notice == ""
+    project.write_project_json(root, {**project.read_project_json(root), "highest_app_version": "v0.5.32.0"})
+    assert compat.evaluate(root, "v0.5.28.1", []).newer_notice == "v0.5.32.0"
 
 
 def test_report_for_people_and_tools(tmp_path):
     root = make_project(tmp_path)
-    ev = compat.evaluate(root, "v5.30.0", [BREAKING, LOOK])
+    ev = compat.evaluate(root, "v0.5.30.0", [BREAKING, LOOK])
     assert [p.change.id for p in ev.loud] == ["old-to-new"] and ev.can_update
     assert [p.change.id for p in ev.quiet] == ["looks"] and len(ev.loud[0].findings) == 3
-    md = compat.write_report(root, ev, "v5.30.0")
+    md = compat.write_report(root, ev, "v0.5.30.0")
     text = md.read_text(encoding="utf-8")
     assert "## For an AI tool" in text and "`decks/course.tex:1`" in text
     assert "Replace \\old by \\new." in text and "automatic update: yes" in text
@@ -134,7 +134,7 @@ def test_report_for_people_and_tools(tmp_path):
 def test_command_line_exit_code(tmp_path, monkeypatch):
     root = make_project(tmp_path)
     monkeypatch.setattr(compat, "CHANGES", [BREAKING])
-    monkeypatch.setattr(version, "VERSION_NUMBER", "v5.30.0")
+    monkeypatch.setattr(version, "VERSION_NUMBER", "v0.5.30.0")
     assert compat.main([str(root)]) == 1
     assert compat.main([str(root), "--fix", "--json"]) == 0
     assert b"\\new" in (root / "decks" / "course.tex").read_bytes()
@@ -156,18 +156,18 @@ def test_registry_ids_are_unique_and_every_breaking_release_has_an_entry():
 
 def test_changes_slidemage_made_itself_are_a_notice_not_an_update(tmp_path):
     root = make_project(tmp_path)
-    assert not compat.evaluate(root, "v5.30.0", [AUTO, BREAKING]).applied      # not converted: nothing to tell
+    assert not compat.evaluate(root, "v0.5.30.0", [AUTO, BREAKING]).applied      # not converted: nothing to tell
     (root / "media").mkdir()
     (root / "media" / "store.json").write_text("{}", encoding="utf-8")
-    ev = compat.evaluate(root, "v5.30.0", [AUTO, MANUAL_FIX, LOOK])
+    ev = compat.evaluate(root, "v0.5.30.0", [AUTO, MANUAL_FIX, LOOK])
     assert [p.change.id for p in ev.applied] == ["store-format"]
     assert [p.change.id for p in ev.loud] == ["manual-only"] and not ev.can_update
     assert [p.change.id for p in ev.everything] == ["manual-only", "store-format", "looks"]
-    assert ev.readable_from == "v5.29.0"
-    assert "automatic update: done by SlideMage" in compat.report_markdown(root, ev, "v5.30.0")
-    assert compat.report_data(ev, "v5.30.0")["changes"][1]["applied_by_slidemage"] is True
+    assert ev.readable_from == "v0.5.29.0"
+    assert "automatic update: done by SlideMage" in compat.report_markdown(root, ev, "v0.5.30.0")
+    assert compat.report_data(ev, "v0.5.30.0")["changes"][1]["applied_by_slidemage"] is True
     compat.dismiss(root, ["store-format"])
-    assert not compat.evaluate(root, "v5.30.0", [AUTO]).everything
+    assert not compat.evaluate(root, "v0.5.30.0", [AUTO]).everything
 
 
 def test_decks_with_topic_blocks_or_appendix_views_get_a_one_time_notice(tmp_path):

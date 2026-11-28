@@ -33,7 +33,7 @@ def window(qapp, monkeypatch, tmp_path):
     monkeypatch.setattr(loader.project, "config_dir", lambda: tmp_path / "config")
     monkeypatch.setenv(loader.PATH_ENV, CHECKOUT)
     # The plugin asks for the first SlideMage with the host (>=9.0); this branch is still numbered below it.
-    monkeypatch.setattr(loader, "load_all", functools.partial(loader.load_all, app_version="v9.0.0"))
+    monkeypatch.setattr(loader, "load_all", functools.partial(loader.load_all, app_version="v0.9.0.0"))
     app_module.load_plugins(ctx)
     window = build_window(monkeypatch, ctx)
     window.show()

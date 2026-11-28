@@ -46,7 +46,7 @@ def make_project(tmp_path, bundle):
     root = tmp_path / "work" / "project"
     shutil.copytree(example, root)
     shutil.copytree(latex, root.parent / "latex")
-    bundled_copies.record_copies(root, "v5.19.0", framework_dir=root.parent / "latex",
+    bundled_copies.record_copies(root, "v0.5.19.0", framework_dir=root.parent / "latex",
                                  framework_source=latex, example_source=example)
     return root
 
@@ -89,8 +89,8 @@ def test_updates_back_up_replaced_files_and_keep_user_edits(tmp_path, bundle):
     assert (framework.add, framework.remove, framework.kept) == (["beamerthemeSlideMage.sty"], [obsolete], [edited])
 
     ctx, steps = ProjectContext.at(root), []
-    backup = bundled_copies.apply_update(ctx, manual, "v5.20.0", now=NOW, on_progress=steps.append)
-    framework_backup = bundled_copies.apply_update(ctx, framework, "v5.20.0", now=NOW)
+    backup = bundled_copies.apply_update(ctx, manual, "v0.5.20.0", now=NOW, on_progress=steps.append)
+    framework_backup = bundled_copies.apply_update(ctx, framework, "v0.5.20.0", now=NOW)
     assert len(steps) == 5 and steps[-1].fraction == 1
     assert (root / one).read_text() == "slide one v2\n" and (root / three).is_file()
     assert not (root / two).exists() and (root / snippet).read_text() == "my own code\n"
@@ -119,7 +119,7 @@ def test_header_regeneration_allows_updates_and_preserves_user_edits(tmp_path, b
         write(example / name, bundled_header + "upstream\n")
     manual = plan(root, bundle)[MANUAL]
     assert manual.update == [one] and manual.kept == [two]
-    bundled_copies.apply_update(ProjectContext.at(root), manual, "v5.26.1", now=NOW)
+    bundled_copies.apply_update(ProjectContext.at(root), manual, "v0.5.26.1", now=NOW)
     assert (root / one).read_text() == local_header + "upstream\n"
     assert (root / two).read_text() == local_header + "my own wording\n"
     assert plan(root, bundle) == {}
@@ -267,14 +267,14 @@ def _run_dialog(monkeypatch, root, bundle, choose: str):
 def test_dialog_dont_ask_again(tmp_path, bundle, monkeypatch, qapp):
     from slidemage import version
 
-    monkeypatch.setattr(version, "VERSION_NUMBER", "v5.20.0")
+    monkeypatch.setattr(version, "VERSION_NUMBER", "v0.5.20.0")
     root = make_project(tmp_path, bundle)
     write(bundle[1] / "slides" / "1aa-EN-One-current.tex", "slide one v2\n")
     window = _run_dialog(monkeypatch, root, bundle, "Don't ask again for this version")
     assert window.reloaded == 0
     assert (root / "slides" / "1aa-EN-One-current.tex").read_text() == "slide one v1\n"
-    assert bundled_copies.is_dismissed(root, "v5.20.0")
-    assert not bundled_copies.is_dismissed(root, "v5.21.0")
+    assert bundled_copies.is_dismissed(root, "v0.5.20.0")
+    assert not bundled_copies.is_dismissed(root, "v0.5.21.0")
 
 
 def test_the_shipped_framework_has_the_theme_and_no_gotham_file():

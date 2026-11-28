@@ -2,7 +2,7 @@ id = "bad-manifest"
 name = "bad-manifest fixture"
 version = "one"
 api_version = 1
-requires_slidemage = ">=8.0"
+requires_slidemage = ">=0.8.0"
 summary = "Fixture plugin bad-manifest."
 author = "Test"
 homepage = "https://example.org/bad-manifest"

@@ -14,13 +14,13 @@ from slidemage import release_signing, updater
 
 
 def test_version_comparison():
-    assert updater.parse_version("v3.29.5") == (0, 3, 29, 5)   # old scheme reads as 0.<old>
-    assert updater.is_newer("v0.11.0", "v10.19.0")
+    assert updater.parse_version("v0.3.29.5") == (0, 3, 29, 5)   # old scheme reads as 0.<old>
+    assert updater.is_newer("v0.11.0", "v0.10.19.0")
     assert updater.is_breaking(_release("v0.12.0"), "v0.11.1") and not updater.is_breaking(_release("v0.11.2"), "v0.11.1")
     assert updater.parse_version("v3.29.5-beta") is None
-    assert updater.is_newer("v3.29.10", "v3.29.9")
-    assert not updater.is_newer("v3.29.5", "v3.29.5")
-    assert not updater.is_newer("nightly", "v3.29.5")
+    assert updater.is_newer("v0.3.29.10", "v0.3.29.9")
+    assert not updater.is_newer("v0.3.29.5", "v0.3.29.5")
+    assert not updater.is_newer("nightly", "v0.3.29.5")
 
 
 def test_install_replaces_binary_and_extra_files(tmp_path):
@@ -75,7 +75,7 @@ def test_a_refused_token_does_not_block_the_apps_own_update(tmp_path, monkeypatc
     monkeypatch.setattr(updater, "config_dir", lambda: tmp_path)
     monkeypatch.delenv(updater.TOKEN_ENV_VAR, raising=False)
     updater.save_token("github_pat_expired")
-    payload = [{"tag_name": "v3.30.0", "html_url": "https://example.invalid/r", "assets": []}]
+    payload = [{"tag_name": "v0.3.30.0", "html_url": "https://example.invalid/r", "assets": []}]
     sent = []
 
     def urlopen(request, **_k):
@@ -86,7 +86,7 @@ def test_a_refused_token_does_not_block_the_apps_own_update(tmp_path, monkeypatc
 
     monkeypatch.setattr(updater.urllib.request, "urlopen", urlopen)
     with caplog.at_level("WARNING", logger="slidemage.update"):
-        assert [r.tag for r in updater.fetch_releases()] == ["v3.30.0"]
+        assert [r.tag for r in updater.fetch_releases()] == ["v0.3.30.0"]
     assert sent == ["Bearer github_pat_expired", None]
     assert "refused the saved token" in caplog.text and "Settings → General" in caplog.text
 
@@ -114,7 +114,7 @@ def test_without_a_token_a_refusal_is_reported_and_not_retried(tmp_path, monkeyp
 
     monkeypatch.setattr(updater.urllib.request, "urlopen", forbidden)
     with pytest.raises(updater.UpdateError, match=match):
-        updater.plan_update(updater.fetch_releases(), "v3.29.0")
+        updater.plan_update(updater.fetch_releases(), "v0.3.29.0")
     assert len(calls) == 1
 
 
@@ -123,23 +123,23 @@ def _release(tag, body=""):
 
 
 def test_breaking_notes_and_markers():
-    marked = _release("v4.2.0", "Intro.\n\nBREAKING: projects need format 2.\nSecond line.\n\nOther.")
+    marked = _release("v0.4.2.0", "Intro.\n\nBREAKING: projects need format 2.\nSecond line.\n\nOther.")
     assert updater.breaking_notes(marked) == ["BREAKING: projects need format 2.\nSecond line."]
-    section = _release("v4.2.0", "## Breaking changes\n\n- one\n- two\n\n## Fixes\n\n- three")
+    section = _release("v0.4.2.0", "## Breaking changes\n\n- one\n- two\n\n## Fixes\n\n- three")
     assert updater.breaking_notes(section) == ["- one\n- two"]
-    assert updater.is_breaking(marked, "v4.1.0")
-    assert updater.is_breaking(section, "v4.1.0")
-    assert updater.is_breaking(_release("v5.0.0"), "v4.1.0")  # major bump without a marker
-    assert not updater.is_breaking(_release("v4.2.0", "Mentions BREAKING: mid-line only"), "v4.1.0")
+    assert updater.is_breaking(marked, "v0.4.1.0")
+    assert updater.is_breaking(section, "v0.4.1.0")
+    assert updater.is_breaking(_release("v0.5.0.0"), "v0.4.1.0")  # major bump without a marker
+    assert not updater.is_breaking(_release("v0.4.2.0", "Mentions BREAKING: mid-line only"), "v0.4.1.0")
 
 
 def test_fetch_releases_skips_unpublished_releases_and_picks_the_platform_asset(monkeypatch):
     monkeypatch.setattr(updater.sys, "platform", "linux")
     digest = "sha256:" + "A" * 64
     payload = [
-        {"tag_name": "v4.2.0", "draft": True},
-        {"tag_name": "v4.1.1", "prerelease": True},
-        {"tag_name": "v4.1.0", "body": "BREAKING: x", "html_url": "u", "assets": [
+        {"tag_name": "v0.4.2.0", "draft": True},
+        {"tag_name": "v0.4.1.1", "prerelease": True},
+        {"tag_name": "v0.4.1.0", "body": "BREAKING: x", "html_url": "u", "assets": [
             {"name": "SlideMage-windows.zip", "url": "win"},
             {"name": "SlideMage-linux.zip", "url": "lin", "size": 2, "digest": digest},
             {"name": "SlideMage-linux.zip.sig", "url": "sig"},
@@ -152,20 +152,20 @@ def test_fetch_releases_skips_unpublished_releases_and_picks_the_platform_asset(
 
     monkeypatch.setattr(updater.urllib.request, "urlopen", urlopen)
     [release] = updater.fetch_releases(limit=5)
-    assert (release.tag, release.body, release.asset_url, release.asset_size) == ("v4.1.0", "BREAKING: x", "lin", 2)
+    assert (release.tag, release.body, release.asset_url, release.asset_size) == ("v0.4.1.0", "BREAKING: x", "lin", 2)
     assert (release.asset_name, release.asset_digest, release.signature_url) == ("SlideMage-linux.zip", digest.lower(), "sig")
 
 
 def test_a_release_without_this_installations_file_is_not_offered_yet():
-    breaking = _release("v4.2.0", "BREAKING: x")
-    built = replace(_release("v4.3.0"), asset_url="https://api.example.invalid/build")
-    unbuilt = _release("v4.4.0")
+    breaking = _release("v0.4.2.0", "BREAKING: x")
+    built = replace(_release("v0.4.3.0"), asset_url="https://api.example.invalid/build")
+    unbuilt = _release("v0.4.4.0")
     releases = [unbuilt, built, breaking]
-    plan = updater.plan_update(releases, "v4.1.0", need_asset=True)
+    plan = updater.plan_update(releases, "v0.4.1.0", need_asset=True)
     assert plan.latest == built and plan.breaking == [breaking] and plan.safe is None
-    assert updater.plan_update(releases, "v4.1.0").latest == unbuilt
-    assert updater.plan_update([unbuilt], "v4.1.0", need_asset=True).latest is None
-    plan = updater.plan_update(releases, "v4.2.0", need_asset=True)
+    assert updater.plan_update(releases, "v0.4.1.0").latest == unbuilt
+    assert updater.plan_update([unbuilt], "v0.4.1.0", need_asset=True).latest is None
+    plan = updater.plan_update(releases, "v0.4.2.0", need_asset=True)
     assert plan.latest == plan.safe == built and plan.breaking == []
 
 

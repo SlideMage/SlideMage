@@ -1196,7 +1196,7 @@ def create_snapshot(
         info = project.read_project_info(project_root)
         project_json = {
             "format": info["format"], "last_app_version": app["version"],
-            "highest_app_version": app["version"],
+            "highest_app_version": app["version"], project.VERSION_SCHEME_KEY: project.VERSION_SCHEME,
             "compat": {"checked_version": app["version"]},
             # The snapshot's own slides may not show the project's languages: it states them.
             languages.KEY: languages.project_languages(project.ProjectContext.at(project_root)).as_json(),

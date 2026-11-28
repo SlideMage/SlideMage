@@ -36,7 +36,7 @@ def test_split_and_base():
 
 
 def test_betas_come_before_their_release_and_after_the_one_before():
-    ordered = ["v10.19.0", "v0.18.5", "v1.0.0-beta.1", "v1.0.0-beta.2", "v1.0.0-beta.10", "v1.0.0", "v1.0.1",
+    ordered = ["v0.10.19.0", "v0.18.5", "v1.0.0-beta.1", "v1.0.0-beta.2", "v1.0.0-beta.10", "v1.0.0", "v1.0.1",
                "v1.1.0-beta.1", "v1.1.0"]
     keys = [version.release_key(tag) for tag in ordered]
     assert keys == sorted(keys) and len(set(keys)) == len(keys)
@@ -73,7 +73,7 @@ def test_one_point_oh_is_not_a_break_by_its_number():
     assert not updater.is_breaking(_release("v1.0.0"), "v0.18.5")
     assert not updater.is_breaking(_release("v1.0.0-beta.1"), "v0.18.5")
     assert updater.is_breaking(_release("v1.2.0"), "v0.18.5")          # skipping past 1.0 stays a major step
-    # v2.0.0 from v1.x: not testable until the old-scheme reading (version.to_zero_x) is retired before 2.0.
+    assert updater.is_breaking(_release("v2.0.0"), "v1.4.0")          # a real major step
     assert updater.is_breaking(_release("v1.0.0", "BREAKING: something."), "v0.18.5")
     assert release_notes.check("v1.0.0", "v0.18.5", ["Text."]) == []
     assert release_notes.check("v1.2.0", "v0.18.5", ["Text."])

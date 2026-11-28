@@ -40,10 +40,10 @@ def chips(sheet):
 # -- the picker --------------------------------------------------------------------------------
 
 def test_picker_lists_recent_projects_with_a_chip_each(tmp_path, qapp):
-    current = make_project(tmp_path / "current", last_app_version="v5.35.0")
-    checked = make_project(tmp_path / "checked", last_app_version="v5.21.0")
-    newer = make_project(tmp_path / "newer", last_app_version="v6.0.2", highest_app_version="v6.0.2")
-    plain = make_project(tmp_path / "plain", last_app_version="v5.35.0")
+    current = make_project(tmp_path / "current", last_app_version="v0.5.35.0")
+    checked = make_project(tmp_path / "checked", last_app_version="v0.5.21.0")
+    newer = make_project(tmp_path / "newer", last_app_version="v0.6.0.2", highest_app_version="v0.6.0.2")
+    plain = make_project(tmp_path / "plain", last_app_version="v0.5.35.0")
     for i in range(project.RECENT_LIMIT):
         project.save_last_project(tmp_path / f"old-{i}")
     for folder in (checked, plain, newer, checked, current, tmp_path / "gone"):
@@ -51,11 +51,11 @@ def test_picker_lists_recent_projects_with_a_chip_each(tmp_path, qapp):
     recent = project.recent_projects()
     assert len(recent) == project.RECENT_LIMIT and recent.count(checked) == 1
     assert tmp_path / "old-0" not in recent
-    sheet = OpenProjectSheet(None, current=current, app_version="v5.35.0",
+    sheet = OpenProjectSheet(None, current=current, app_version="v0.5.35.0",
                              needs_check=lambda path: path == checked)
     assert [row.status.name for row in sheet.rows[:5]] == ["gone", "current", "checked", "newer", "plain"]
-    assert chips(sheet) == {"gone": "not found", "current": "open now", "checked": "made with 5.21.0 · check",
-                            "newer": "made with 6.0.2 · newer", "plain": "made with 5.35.0"}
+    assert chips(sheet) == {"gone": "not found", "current": "open now", "checked": "made with 0.5.21.0 · check",
+                            "newer": "made with 0.6.0.2 · newer", "plain": "made with 0.5.35.0"}
     assert not sheet.rows[0].isEnabled()                    # a folder that is gone cannot be opened
     sheet.rows[4].clicked.emit()
     assert sheet.chosen == plain.resolve() and sheet.result() == 1
@@ -109,7 +109,7 @@ def test_new_project_really_scaffolds_an_empty_project(tmp_path, qapp):
 
 def test_newer_project_notice_after_opening_can_check_for_updates(qapp):
     called = []
-    sheet = NewerProjectSheet(None, "econ", "v6.0.2", "v5.35.0", opening=False, on_update=lambda: called.append(1))
+    sheet = NewerProjectSheet(None, "econ", "v0.6.0.2", "v0.5.35.0", opening=False, on_update=lambda: called.append(1))
     assert sheet.choice == NewerProjectSheet.NOT_NOW
     button(sheet, "Check for updates").click()
     assert called == [1] and sheet.choice == NewerProjectSheet.UPDATE
@@ -129,7 +129,7 @@ def test_the_start_up_guard_for_a_newer_format_follows_the_sheet(tmp_path, monke
             assert sheet.choice == NewerProjectSheet.OPEN
 
     monkeypatch.setattr(NewerProjectSheet, "exec", choose)
-    assert cli._confirm_newer_project(tmp_path / "econ", {"last_app_version": "v6.0.2"}) is expected
+    assert cli._confirm_newer_project(tmp_path / "econ", {"last_app_version": "v0.6.0.2"}) is expected
 
 
 def test_importing_the_app_selects_no_project(tmp_path):
