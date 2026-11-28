@@ -15,10 +15,10 @@ _spec.loader.exec_module(release_notes)
 def test_major_bump_needs_a_breaking_paragraph():
     plain = ["New feature."]
     marked = ["New feature.", "BREAKING: projects need a new format."]
-    assert release_notes.check("v5.0.0", "v4.3.1", plain)
-    assert release_notes.check("v5.0.0", "v4.3.1", marked) == []
-    assert release_notes.check("v4.4.0", "v4.3.1", plain) == []
-    assert release_notes.check("v4.4.0", None, plain) == []  # first release
+    assert release_notes.check("v0.5.0.0", "v0.4.3.1", plain)
+    assert release_notes.check("v0.5.0.0", "v0.4.3.1", marked) == []
+    assert release_notes.check("v0.4.4.0", "v0.4.3.1", plain) == []
+    assert release_notes.check("v0.4.4.0", None, plain) == []  # first release
     # 0.x: the minor is what a major was; the renumbering release itself is exempt
     assert release_notes.check("v0.12.0", "v0.11.1", plain)
     assert release_notes.check("v0.12.0", "v0.11.1", marked) == []
@@ -52,32 +52,32 @@ def test_new_paragraph_gives_summary_and_bullets():
 def test_release_lists_every_versions_bullets_then_breaking_then_changelog():
     from slidemage import updater
     entries = [
-        _entry("v6.1.0", ["Technical.", "NEW: Two things.", "BREAKING: decks need X."],
+        _entry("v0.6.1.0", ["Technical.", "NEW: Two things.", "BREAKING: decks need X."],
                summary="Two things.", news=["Feature B."]),
-        _entry("v6.0.1", ["Technical."], news=["Fix A."]),
+        _entry("v0.6.0.1", ["Technical."], news=["Fix A."]),
     ]
-    out = release_notes.render("v6.1.0", "v6.0.0", entries)
+    out = release_notes.render("v0.6.1.0", "v0.6.0.0", entries)
     assert out == (
         "Two things.\n\n"
-        "*This release covers v6.0.1 and v6.1.0.*\n\n"
+        "*This release covers v0.6.0.1 and v0.6.1.0.*\n\n"
         "- Feature B.\n- Fix A.\n\n"
-        "## Breaking changes\n\n- **v6.1.0:** decks need X.\n\n"
-        "## Full changelog\n\nhttps://github.com/SlideMage/SlideMage/compare/v6.0.0...v6.1.0\n"
+        "## Breaking changes\n\n- **v0.6.1.0:** decks need X.\n\n"
+        "## Full changelog\n\nhttps://github.com/SlideMage/SlideMage/compare/v0.6.0.0...v0.6.1.0\n"
     )
     # the updater sees exactly the breaking change, not the changelog link
-    release = updater.Release(tag="v6.1.0", body=out, page_url="", asset_url=None, asset_size=0)
-    assert updater.breaking_notes(release) == ["- **v6.1.0:** decks need X."]
+    release = updater.Release(tag="v0.6.1.0", body=out, page_url="", asset_url=None, asset_size=0)
+    assert updater.breaking_notes(release) == ["- **v0.6.1.0:** decks need X."]
 
 
 def test_release_without_new_paragraph_is_refused(capsys, monkeypatch):
     # only versions after v8.2.1 need the paragraph; 5.35.4 .. 8.2.1 are exempt
-    entries = [_entry("v8.3.1", ["Technical only."])]
-    assert release_notes.missing_news(entries) == ["v8.3.1"]
-    for old in ("v5.35.3", "v5.36.0", "v6.0.0", "v8.2.1"):
+    entries = [_entry("v0.8.3.1", ["Technical only."])]
+    assert release_notes.missing_news(entries) == ["v0.8.3.1"]
+    for old in ("v0.5.35.3", "v0.5.36.0", "v0.6.0.0", "v0.8.2.1"):
         assert release_notes.missing_news([_entry(old, ["Old style."])]) == []
     monkeypatch.setattr(release_notes, "history_since", lambda tag, prev: entries)
     monkeypatch.setattr(release_notes, "notes_for", lambda tag: ["Technical only."])
-    assert release_notes.main(["v8.3.1", "--previous", "v8.3.0"]) == 3
+    assert release_notes.main(["v0.8.3.1", "--previous", "v0.8.3.0"]) == 3
     assert "no NEW: paragraph" in capsys.readouterr().err
 
 

@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .fileio import atomic_write, read_json
-from .version import zero_x_string
+from .version import BETA_SUFFIX, split_beta
 
 MARKER = "slide_ids.csv"
 ENV_VAR = "SLIDEMAGE_PROJECT"
@@ -381,7 +381,8 @@ class ProjectStatus:
 
 def project_status(root: Path, app_version: str) -> ProjectStatus:
     info = read_project_info(root)
-    used_with = read_project_json(root).get("highest_app_version") or info["last_app_version"]
+    data = read_project_json(root)
+    used_with = stored_version(data, data.get("highest_app_version") or info["last_app_version"])
     from .updater import parse_version
     top, current = parse_version(used_with or ""), parse_version(app_version)
     newer = info["format"] > PROJECT_FORMAT or (top is not None and current is not None and top > current)
@@ -454,18 +455,45 @@ def _newer_version(a: str, b: str) -> str:
 # project.json's version strings: top-level keys and those in its "compat" entry (compat.py).
 _STORED_VERSIONS = ("last_app_version", "highest_app_version")
 _STORED_COMPAT_VERSIONS = ("checked_version", "ignore_newer")
+# Apps before v0.11.0 stored their versions as vX.Y.Z with X from 2 to 10 (v10.19.0 is v0.10.19.0 today). From v1.1 on
+# SlideMage writes VERSION_SCHEME_KEY into project.json: a file without it was last written by an app before v1.1, so a
+# first part of 2 to 10 in it can only be the old numbering, and stored_version reads it as 0.x; record_project_open
+# rewrites those values once and adds the key. A file with the key is never converted, so a SlideMage 2 is read as 2.
+VERSION_SCHEME_KEY = "version_scheme"
+VERSION_SCHEME = 1
+_OLD_FIRST_PARTS = range(2, 11)
+
+
+def _zero_x(text):
+    """An old-numbering version string in its 0.x form ("v10.19.0" -> "v0.10.19.0"); anything else unchanged."""
+    if not isinstance(text, str):
+        return text
+    base, beta = split_beta(text)
+    digits = base[1:] if base[:1] in ("v", "V") else base
+    parts = digits.split(".")
+    if not all(part.isdigit() for part in parts) or int(parts[0]) not in _OLD_FIRST_PARTS:
+        return text
+    suffix = f"{BETA_SUFFIX}{beta}" if beta is not None else ""
+    return f"{base[:len(base) - len(digits)]}0.{digits}{suffix}"
+
+
+def stored_version(data: dict, text):
+    """A version string read from project.json data `data` (or a value of its "compat" entry), as this app reads it:
+    in a file from before v1.1 (no VERSION_SCHEME_KEY) an old-numbering one becomes its 0.x form."""
+    return text if data.get(VERSION_SCHEME_KEY) == VERSION_SCHEME else _zero_x(text)
 
 
 def _zero_x_versions(data: dict) -> dict:
-    """`data` with every stored old-scheme version in its 0.x form."""
+    """`data` with every stored version as stored_version reads it, and VERSION_SCHEME_KEY set."""
     for key in _STORED_VERSIONS:
         if key in data:
-            data[key] = zero_x_string(data[key])
+            data[key] = stored_version(data, data[key])
     compat = data.get("compat")
     if isinstance(compat, dict):
         for key in _STORED_COMPAT_VERSIONS:
             if key in compat:
-                compat[key] = zero_x_string(compat[key])
+                compat[key] = stored_version(data, compat[key])
+    data[VERSION_SCHEME_KEY] = VERSION_SCHEME
     return data
 
 
@@ -479,18 +507,20 @@ def record_project_open(root: Path, app_version: str) -> None:
     the version whose changes the user has dealt with (compat.py) -- starts
     at the version the project was last opened with, so an existing project
     isn't told about changes made before this feature. Versions stored under the old numbering (before v0.11.0)
-    are rewritten to their 0.x form ("v10.19.0" -> "v0.10.19.0"; version.zero_x_string)."""
+    are rewritten once to their 0.x form ("v10.19.0" -> "v0.10.19.0"; stored_version), and VERSION_SCHEME_KEY marks
+    the file as converted."""
     info = read_project_info(root)
     if info["format"] > PROJECT_FORMAT:
         return
-    data = _zero_x_versions(read_project_json(root))
+    original = read_project_json(root)
+    previous = stored_version(original, info["last_app_version"])
+    data = _zero_x_versions(original)
     if not data.get("flat_snapshots_removed"):
         folders = (root / ".previews" / "slide_previews", previews_cache_dir(root) / "slide_previews")
         # A sync client may hold a file open (Windows, Nextcloud): never fail the open; try again next start.
         for folder in folders:
             shutil.rmtree(folder, ignore_errors=True)
         data["flat_snapshots_removed"] = not any(folder.exists() for folder in folders)
-    previous = zero_x_string(info["last_app_version"])
     data["format"] = PROJECT_FORMAT
     data["last_app_version"] = app_version
     data["highest_app_version"] = _newer_version(

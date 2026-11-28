@@ -25,7 +25,7 @@ from test_plugin_settings_tab import app as app  # noqa: F401
 
 
 def manifest(plugin_id="hello", version="0.1.0"):
-    return Manifest(plugin_id, plugin_id.title(), version, 1, ">=8.0", "s", "a", "https://e.org/", "MIT")
+    return Manifest(plugin_id, plugin_id.title(), version, 1, ">=0.8.0", "s", "a", "https://e.org/", "MIT")
 
 
 def plugin(plugin_id="hello", version="0.1.0", source="installed", state="loaded"):
@@ -46,7 +46,7 @@ def test_only_installed_plugins_with_a_newer_fitting_release():
                  entry("notinstalled", version="3.0.0"))
     loaded = [plugin("hello", "0.9.0"), plugin("same", "1.0.0"), plugin("older", "1.0.0"),
               plugin("dev", "0.1.0", source="dev"), plugin("future", "1.0.0"), plugin("unlisted", "1.0.0")]
-    found = updates.available_updates(loaded, cat, "v8.64.0")
+    found = updates.available_updates(loaded, cat, "v0.8.64.0")
     assert [(i, v, r.version) for i, v, r in found] == [("hello", "0.9.0", "0.10.0")]
 
 
@@ -236,7 +236,7 @@ def test_nothing_new_shows_nothing_but_stamps(window, work_calls, monkeypatch):
 def test_the_tab_flags_a_withdrawn_version(app, tmp_path):    # noqa: F811
     installer.install(zip_plugin(tmp_path))
     installer._changed.clear()
-    session.set_loaded(loader.load_all(Registrar, "v8.64.0"))
+    session.set_loaded(loader.load_all(Registrar, "v0.8.64.0"))
     write_cache(entry("hello", version="0.2.0", requires=">=99"))
     tab = PluginsTab(app)
     row = tab.rows["hello"]

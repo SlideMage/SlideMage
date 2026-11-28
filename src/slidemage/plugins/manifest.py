@@ -12,7 +12,7 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..version import base_version, to_zero_x
+from ..version import base_version
 
 MANIFEST_NAME = "plugin.toml"
 
@@ -68,14 +68,14 @@ def parse_version(text: str) -> tuple[int, int, int]:
 
 
 def parse_app_version(text: str) -> tuple[int, ...]:
-    """SlideMage's own version ("v0.11.0", or "v0.10.19.0" from the history) as numbers; an old-scheme one
-    ("v10.19.0", ">=10.17" in a requirement) reads as 0.<old>, a beta ("v1.1.0-beta.2") as the release it belongs to,
-    so ">=1.1" admits the betas of 1.1. ValueError for anything else."""
+    """SlideMage's own version ("v1.1.0", or "v0.10.19.0" from the history) as numbers, padded to four parts; a beta
+    ("v1.1.0-beta.2") reads as the release it belongs to, so ">=1.1" admits the betas of 1.1. A range in the numbering
+    before v0.11.0 (">=9.0") is no longer read as 0.x: it now asks for SlideMage 9. ValueError for anything else."""
     m = re.fullmatch(r"v?(\d+(?:\.\d+){0,3})", base_version(text))
     if not m:
         raise ValueError(f"not a version: {text!r}")
     parts = tuple(int(g) for g in m.group(1).split("."))
-    parts = to_zero_x(parts + (0,) * (3 - len(parts)))
+    parts = parts + (0,) * (3 - len(parts))
     return parts + (0,) * (4 - len(parts))
 
 

@@ -14,29 +14,9 @@ from .processes import command_output
 
 VERSION_NUMBER = "v1.0.0"
 
-# Versions before v0.11.0 were numbered vX.Y.Z with X from 2 to 10; the history, the tags and the files projects
-# and plugins hold under that scheme are read as 0.X.Y.Z (v10.19.0 is v0.10.19.0). A first part of 2 or more can only
-# be the old scheme: the new one stays in 0.x until a stable v1.0.0.
-LEGACY_FIRST_MAJOR = 2
-
-
-def to_zero_x(parts: tuple[int, ...]) -> tuple[int, ...]:
-    """`parts` of an old-scheme version with the leading 0 (10, 19, 0 -> 0, 10, 19, 0); any other unchanged."""
-    return (0, *parts) if parts and parts[0] >= LEGACY_FIRST_MAJOR else parts
-
-
-def zero_x_string(text: str) -> str:
-    """A stored old-scheme version string in its 0.x form ("v10.19.0" -> "v0.10.19.0"); anything else unchanged.
-    record_project_open rewrites project.json with it, so to_zero_x can retire before 2.0 (v1.0 plan, step 3)."""
-    if not isinstance(text, str):
-        return text
-    base, beta = split_beta(text)
-    digits = base[1:] if base[:1] in ("v", "V") else base
-    parts = digits.split(".")
-    if not all(part.isdigit() for part in parts) or int(parts[0]) < LEGACY_FIRST_MAJOR:
-        return text
-    suffix = f"{BETA_SUFFIX}{beta}" if beta is not None else ""
-    return f"{base[:len(base) - len(digits)]}0.{digits}{suffix}"
+# Versions before v0.11.0 were numbered vX.Y.Z with X from 2 to 10. Since v1.1 nothing reads them as 0.x any more
+# (v1.0 plan, step 3): the history is four-part 0.x, the 1.0 repository has no old tags, plugins and themes declare
+# 1.x ranges (the catalogue refuses old ones), and project.json is converted once (project.stored_version).
 
 
 # Betas (user, 2026-11-28): "vX.Y.Z-beta.N", a test version of the coming vX.Y.Z, published on GitHub as a
@@ -63,13 +43,13 @@ def is_beta(tag: str) -> bool:
 
 
 def release_key(tag: str) -> tuple[int, ...] | None:
-    """A sort key that orders releases including betas: the numbers (old scheme read as 0.x, padded to four parts),
+    """A sort key that orders releases including betas: the numbers (padded to four parts),
     then (0, N) for beta N and (1, 0) for the release itself. None for anything that is not a version."""
     base, beta = split_beta(tag)
     parts = base.lstrip("vV").split(".")
     if not parts or not all(part.isdigit() for part in parts):
         return None
-    numbers = to_zero_x(tuple(int(part) for part in parts))
+    numbers = tuple(int(part) for part in parts)
     numbers = numbers + (0,) * (4 - len(numbers))
     return numbers + ((0, beta) if beta is not None else (1, 0))
 

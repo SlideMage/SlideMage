@@ -80,10 +80,10 @@ def test_plugin_release_lookup_respects_app_and_api_compatibility():
     assert (plugin.id, extra.id, extra.recommended) == ("multi-release", "extra-tools", True)
     assert not hasattr(cat, "themes") and not hasattr(plugin, "color")
     for app, apis, version in (
-        ("v9.0.0", {1}, "1.0.0"),
-        ("v9.0.0", {1, 2}, "1.5.0"),
+        ("v0.9.0.0", {1}, "1.0.0"),
+        ("v0.9.0.0", {1, 2}, "1.5.0"),
         ("v99.0.0", {1}, "2.0.0"),
-        ("v8.64.0", {1, 2}, None),
+        ("v0.8.64.0", {1, 2}, None),
     ):
         release = best_release(plugin, app, apis)
         assert (release.version if release else None) == version, (app, apis)

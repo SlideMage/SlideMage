@@ -35,7 +35,7 @@
         {
           "version": "1.5.0",
           "api_version": 2,
-          "requires_slidemage": ">=9.0",
+          "requires_slidemage": ">=0.9.0",
           "url": "https://github.com/stpalan/slidemage-plugin-multi-release/releases/download/v1.5.0/multi-release-1.5.0.smplugin",
           "sha256": "49ad69eedf3acd8f27a928c4b3f8e3aee0791c1018618c9e5aa691efbce7c9cf",
           "size": 19500,
@@ -45,7 +45,7 @@
         {
           "version": "1.0.0",
           "api_version": 1,
-          "requires_slidemage": ">=9.0",
+          "requires_slidemage": ">=0.9.0",
           "url": "https://github.com/stpalan/slidemage-plugin-multi-release/releases/download/v1.0.0/multi-release-1.0.0.smplugin",
           "sha256": "12a101614c3b8145e0f6be33b6e6c70bda5f78276e7c333d5d9b4ef04d17fad8",
           "size": 18000,
@@ -69,7 +69,7 @@
         {
           "version": "0.3.0",
           "api_version": 1,
-          "requires_slidemage": ">=9.0",
+          "requires_slidemage": ">=0.9.0",
           "url": "https://github.com/stpalan/slidemage-plugin-extra-tools/releases/download/v0.3.0/extra-tools-0.3.0.smplugin",
           "sha256": "4258c7600b14a50d9f926608ef2cf978fc656247c07e846afc6d4cffa169074b",
           "size": 9100,

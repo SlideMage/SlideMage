@@ -19,7 +19,7 @@
         {
           "version": "0.1.0",
           "api_version": 1,
-          "requires_slidemage": ">=9.0",
+          "requires_slidemage": ">=0.9.0",
           "url": "https://github.com/stpalan/slidemage-plugin-hello/releases/download/v0.1.0/hello-0.1.0.smplugin",
           "sha256": "a72af2022f7b2a5b161964d6e55376815e76be50c8645e2d02ee2dc7358c00f9",
           "size": 12357,

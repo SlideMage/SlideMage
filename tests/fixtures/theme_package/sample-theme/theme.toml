@@ -2,7 +2,7 @@
 id = "sample-theme"
 name = "Sample Theme"
 version = "1.0.0"
-requires_slidemage = ">=10.16"
+requires_slidemage = ">=0.10.16"
 summary = "A test theme: the SlideMage look with a green title bar and its own logo file."
 author = "SlideMage tests"
 homepage = "https://slidemage.org/plugins/"

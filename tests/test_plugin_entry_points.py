@@ -17,7 +17,7 @@ id = "entryfix"
 name = "Entry fixture"
 version = "0.1.0"
 api_version = 1
-requires_slidemage = ">=8.0"
+requires_slidemage = ">=0.8.0"
 summary = "Fixture plugin with entry points."
 author = "Test"
 homepage = "https://example.org/entryfix"

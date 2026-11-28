@@ -2,7 +2,7 @@ id = "future-api"
 name = "future-api fixture"
 version = "0.1.0"
 api_version = 2
-requires_slidemage = ">=8.0"
+requires_slidemage = ">=0.8.0"
 summary = "Fixture plugin future-api."
 author = "Test"
 homepage = "https://example.org/future-api"

@@ -61,7 +61,7 @@ from typing import Callable, Optional
 
 from . import diagnostics, fileio, release_signing, tls_trust
 from .project import MARKER, config_dir
-from .version import base_version, is_beta, release_key, to_zero_x
+from .version import base_version, is_beta, release_key
 
 REPO = "SlideMage/SlideMage"
 RELEASES_URL = f"https://api.github.com/repos/{REPO}/releases"
@@ -135,13 +135,12 @@ class UpdatePlan:
 
 
 def parse_version(tag: str) -> Optional[tuple[int, ...]]:
-    """(0, 11, 2) for "v0.11.2" or "0.11.2"; None for anything else. An old-scheme version reads as 0.<old>:
-    "v10.19.0" is (0, 10, 19, 0), below (0, 11, 0) (version.to_zero_x). A beta reads as the release it belongs to
+    """(0, 11, 2) for "v0.11.2" or "0.11.2"; None for anything else. A beta reads as the release it belongs to
     ("v1.1.0-beta.2" is (1, 1, 0)); is_newer() and plan_update() order betas with version.release_key."""
     parts = base_version(tag).lstrip("vV").split(".")
     if not parts or not all(part.isdigit() for part in parts):
         return None
-    return to_zero_x(tuple(int(part) for part in parts))
+    return tuple(int(part) for part in parts)
 
 
 # v1.0.0 is the stable continuation of the 0.x line, not a break with it: going from 0.x to exactly 1.0.0 (or a

@@ -27,13 +27,13 @@ GH = "owner-org/slidemage-theme-sample"
 API = f"https://api.github.com/repos/{GH}"
 
 
-def build(tmp_path: Path, version: str, requires: str = ">=10.16", toml_version: str | None = None) -> bytes:
+def build(tmp_path: Path, version: str, requires: str = ">=0.10.16", toml_version: str | None = None) -> bytes:
     folder = tmp_path / f"src-{version}-{toml_version}" / "sample-theme"
     shutil.copytree(FIXTURE, folder)
     path = folder / "theme.toml"
     text = path.read_text(encoding="utf-8")
     text = text.replace('version = "1.0.0"', f'version = "{toml_version or version}"')
-    text = text.replace('requires_slidemage = ">=10.16"', f'requires_slidemage = "{requires}"')
+    text = text.replace('requires_slidemage = ">=0.10.16"', f'requires_slidemage = "{requires}"')
     path.write_text(text, encoding="utf-8")
     return make_theme_package.pack(folder, folder.parent / "dist", app_version="1.999.0").read_bytes()
 

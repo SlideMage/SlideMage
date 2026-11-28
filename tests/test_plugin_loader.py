@@ -31,7 +31,7 @@ def use_dev(monkeypatch, *names):
     monkeypatch.setenv(loader.PATH_ENV, __import__("os").pathsep.join(str(FIXTURES / n) for n in names))
 
 
-def load(version="v8.64.0"):
+def load(version="v0.8.64.0"):
     return {p.id: p for p in loader.load_all(Registrar, version)}
 
 

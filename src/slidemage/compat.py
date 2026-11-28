@@ -160,9 +160,10 @@ def _save_state(root: Path, compat: dict) -> None:
 
 
 def checked_version(root: Path) -> str:
+    data = project.read_project_json(root)
     state = _state(root)
-    return (state.get("checked_version")
-            or project.read_project_info(root)["last_app_version"] or "")
+    return project.stored_version(data, state.get("checked_version")
+                                  or project.read_project_info(root)["last_app_version"] or "")
 
 
 def dismissed_ids(root: Path) -> set[str]:
@@ -219,8 +220,9 @@ def evaluate(root: Path, app_version: str, changes: Optional[list[Change]] = Non
         else:
             (result.loud if change.severity in LOUD else result.quiet).append(pending)
 
-    highest = project.read_project_json(root).get("highest_app_version", "")
-    top, ignored = _tuple(highest), _tuple(_state(root).get("ignore_newer", ""))
+    data = project.read_project_json(root)
+    highest = project.stored_version(data, data.get("highest_app_version", ""))
+    top, ignored = _tuple(highest), _tuple(project.stored_version(data, _state(root).get("ignore_newer", "")))
     if top is not None and current is not None and top > current and (ignored is None or top > ignored):
         result.newer_notice = highest
     return result

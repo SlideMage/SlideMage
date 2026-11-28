@@ -152,7 +152,7 @@ def test_a_failing_sheet_leaves_the_flag_alone(monkeypatch, qapp):
     assert not upgrade.offer_seen()
 
 
-def migration_env(monkeypatch, used=None, release="v8.0.0"):
+def migration_env(monkeypatch, used=None, release="v0.8.0.0"):
     monkeypatch.setattr(upgrade, "MIGRATIONS", [upgrade.Migration("alpha", release)])
     monkeypatch.setattr(upgrade, "used_features", lambda ctx: {"alpha": "Your decks use Alpha"} if used is None else used)
     opened = []

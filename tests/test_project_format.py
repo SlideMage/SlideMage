@@ -19,7 +19,7 @@ def _write(root, data):
 
 
 def test_newer_format_asks_and_is_left_alone(tmp_path, monkeypatch):
-    newer = {"format": project.PROJECT_FORMAT + 1, "last_app_version": "v5.0.0"}
+    newer = {"format": project.PROJECT_FORMAT + 1, "last_app_version": "v0.5.0.0"}
     _write(tmp_path, newer)
     for answer in (False, True):
         def confirm(root, info):
@@ -27,7 +27,7 @@ def test_newer_format_asks_and_is_left_alone(tmp_path, monkeypatch):
             return answer
 
         monkeypatch.setattr(cli, "_confirm_newer_project", confirm)
-        assert cli.check_project_format(tmp_path, "v4.1.0") is answer
+        assert cli.check_project_format(tmp_path, "v0.4.1.0") is answer
         assert _info(tmp_path) == newer
 
 
@@ -42,11 +42,11 @@ def test_other_keys_stay_and_the_highest_version_never_goes_down(tmp_path):
     assert data["compat"]["checked_version"] == "v0.15.30"
 
 
-def test_old_scheme_versions_are_rewritten_once_to_zero_x(tmp_path):
-    """v1.0 plan step 3: so version.to_zero_x can retire before 2.0, an open rewrites old-numbered versions."""
-    _write(tmp_path, {"format": project.PROJECT_FORMAT, "last_app_version": "v10.19.0",
-                      "highest_app_version": "v10.20.1",
-                      "compat": {"checked_version": "v10.18.0", "ignore_newer": "v10.20.1", "dismissed": ["x"]}})
+def test_old_scheme_versions_are_rewritten_once(tmp_path):
+    """v1.0 plan step 3: an open of a file from before v1.1 rewrites old-numbered versions once (project.stored_version)."""
+    _write(tmp_path, {"format": project.PROJECT_FORMAT, "last_app_version": "v0.10.19.0",
+                      "highest_app_version": "v0.10.20.1",
+                      "compat": {"checked_version": "v0.10.18.0", "ignore_newer": "v0.10.20.1", "dismissed": ["x"]}})
     project.record_project_open(tmp_path, "v0.18.9")
     data = _info(tmp_path)
     assert data["last_app_version"] == "v0.18.9"
@@ -55,6 +55,6 @@ def test_old_scheme_versions_are_rewritten_once_to_zero_x(tmp_path):
 
 
 def test_an_old_scheme_last_version_seeds_checked_version_in_zero_x(tmp_path):
-    _write(tmp_path, {"format": project.PROJECT_FORMAT, "last_app_version": "v9.4.2"})
+    _write(tmp_path, {"format": project.PROJECT_FORMAT, "last_app_version": "v0.9.4.2"})
     project.record_project_open(tmp_path, "v0.18.9")
     assert _info(tmp_path)["compat"]["checked_version"] == "v0.9.4.2"

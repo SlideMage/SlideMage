@@ -75,7 +75,7 @@ def entries(*ids):
     return [catalogue.parse({"schema": 1, "generated": "x", "plugins_page": "https://e.org/", "plugins": [
         {"id": i, "name": i, "summary": "s", "homepage": "https://e.org/", "source": "https://e.org/",
          "icon": None, "license": "MIT", "maintainer": "m", "recommended": False, "needs": [], "network": [],
-         "releases": [{"version": "1.0.0", "api_version": 1, "requires_slidemage": ">=8.0", "url": "https://e.org/x",
+         "releases": [{"version": "1.0.0", "api_version": 1, "requires_slidemage": ">=0.8.0", "url": "https://e.org/x",
                        "sha256": "0" * 64, "size": 1, "published": "2026-10-26"}]}]}).plugins[0] for i in ids]
 
 
