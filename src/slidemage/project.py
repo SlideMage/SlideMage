@@ -455,8 +455,8 @@ def _newer_version(a: str, b: str) -> str:
 # project.json's version strings: top-level keys and those in its "compat" entry (compat.py).
 _STORED_VERSIONS = ("last_app_version", "highest_app_version")
 _STORED_COMPAT_VERSIONS = ("checked_version", "ignore_newer")
-# Apps before v0.11.0 stored their versions as vX.Y.Z with X from 2 to 10 (v10.19.0 is v0.10.19.0 today). From v1.1 on
-# SlideMage writes VERSION_SCHEME_KEY into project.json: a file without it was last written by an app before v1.1, so a
+# Apps before v0.11.0 stored their versions as vX.Y.Z with X from 2 to 10 (v10.19.0 is v0.10.19.0 today). From v1.0.1 on
+# SlideMage writes VERSION_SCHEME_KEY into project.json: a file without it was last written by an app before v1.0.1, so a
 # first part of 2 to 10 in it can only be the old numbering, and stored_version reads it as 0.x; record_project_open
 # rewrites those values once and adds the key. A file with the key is never converted, so a SlideMage 2 is read as 2.
 VERSION_SCHEME_KEY = "version_scheme"
@@ -479,7 +479,7 @@ def _zero_x(text):
 
 def stored_version(data: dict, text):
     """A version string read from project.json data `data` (or a value of its "compat" entry), as this app reads it:
-    in a file from before v1.1 (no VERSION_SCHEME_KEY) an old-numbering one becomes its 0.x form."""
+    in a file from before v1.0.1 (no VERSION_SCHEME_KEY) an old-numbering one becomes its 0.x form."""
     return text if data.get(VERSION_SCHEME_KEY) == VERSION_SCHEME else _zero_x(text)
 
 

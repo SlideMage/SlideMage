@@ -1,4 +1,4 @@
-kind: new
+kind: fixed
 reason: v1.0 plan step 3 sub-step 3, direct request: "Remove the old numbering reading now."
 
 The numbering before v0.11.0 (vX.Y.Z with X from 2 to 10) is no longer read as 0.x: version.to_zero_x,

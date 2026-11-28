@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The numbering before v0.11.0 (vX.Y.Z, X from 2 to 10) is no longer read as 0.x anywhere (v1.0 plan, step 3), except
-once per project file: project.json written before v1.1 (no version_scheme key) is converted on reading and on the
+once per project file: project.json written before v1.0.1 (no version_scheme key) is converted on reading and on the
 next open, so an old project neither reads as "used by a newer SlideMage" nor makes a real SlideMage 2 read as 0.2."""
 from __future__ import annotations
 

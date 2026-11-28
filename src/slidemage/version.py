@@ -14,7 +14,7 @@ from .processes import command_output
 
 VERSION_NUMBER = "v1.0.0"
 
-# Versions before v0.11.0 were numbered vX.Y.Z with X from 2 to 10. Since v1.1 nothing reads them as 0.x any more
+# Versions before v0.11.0 were numbered vX.Y.Z with X from 2 to 10. Since v1.0.1 nothing reads them as 0.x any more
 # (v1.0 plan, step 3): the history is four-part 0.x, the 1.0 repository has no old tags, plugins and themes declare
 # 1.x ranges (the catalogue refuses old ones), and project.json is converted once (project.stored_version).
 
