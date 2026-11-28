@@ -1,0 +1,17 @@
+%% Included in decks: slidemage-manual
+%%
+
+% SlideMage manual, chapter "Plugins": running a checkout and the host self-test.
+\setSlideVersion{1-0-0}
+\begin{standardframe}{Testing a plugin}
+	\small
+	Run your checkout in SlideMage before packaging it.
+	\par\medskip
+	\shrinklists{1}
+	\begin{itemize}
+		\item Set \SMCode{SLIDEMAGE\_PLUGIN\_PATH} to the folder holding \SMCode{plugin.toml}, then start SlideMage
+		\item Separate several folders with \SMCode{:} on Linux and macOS, \SMCode{;} on Windows. A checkout replaces an installed plugin with the same id
+		\item \SMCode{slidemage --self-test --plugins} checks standard-library imports and loads a minimal test plugin. It does not load yours: use the checkout method for that
+		\item To join the SlideMage list, submit at \href{https://slidemage.org/plugins/submit/}{\SMCode{slidemage.org/plugins/submit/}}
+	\end{itemize}
+\end{standardframe}

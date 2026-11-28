@@ -1,0 +1,5 @@
+The licence of hyph-nb.tex in hyph-utf8 (Copyright (C) 2004–2005 Rune Kleveland, Ole Michael Selberg, 2007 Karl Ove Hufthammer), as stated in the file:
+
+Copying and distribution of this file, with or without modification,
+are permitted in any medium without royalty, provided the copyright
+notice and this notice are preserved.

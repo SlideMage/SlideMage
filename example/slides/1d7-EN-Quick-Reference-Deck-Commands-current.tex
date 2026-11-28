@@ -1,0 +1,43 @@
+%% Included in decks: slidemage-manual, slidemage-manual-copy
+%%
+
+% SlideMage manual, appendix: everything that goes into a deck file.
+\setSlideVersion{1-0-1+}
+\providecommand{\qrhead}[1]{\par\smallskip{\color{c_primary_highlight}\textbf{#1}}\par}
+\providecommand{\qritem}[2]{\par\noindent\hangindent=1em #1 \hfill #2\par}
+\begin{standardframe}{Quick reference: deck commands}
+	\scriptsize
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.48\linewidth}
+			\qrhead{In the preamble}
+			\qritem{\SMCmd{input}\SMCode{\{SlideMage\_template\_<name>\}}}{the template}
+			\qritem{\SMCmd{FooterText}}{the footer's text}
+			\qritem{\SMCmd{deckversion}\SMCode{[...]}, in the override block}{the deck version}
+			\qritem{\SMCmd{decklanguage}\SMCode{[en|de]}}{language}
+			\qritem{\SMCmd{deckoutputfolder}\SMCode{[v]\{path\}}}{where PDFs go}
+			\qritem{\SMCmd{SMNavigationBar}\SMCode{[...]}}{footer navigation}
+			\qritem{\SMCmd{deckappendixtoc}}{always the appendix}
+			\qritem{\SMCmd{setfootnotesymbols}\SMCode{\{...\}}}{footnote markers}
+			\qritem{\SMCmd{SMSetFootnoteMarkers}\SMCode{\{boxed|dice\}}}{footnote style}
+			\qritem{\SMCmd{SMAutoTopMarginfalse}}{every frame at its default position}
+			\qritem{\SMCode{\textbackslash colorlet\{SMHighlightColor\}\{...\}}}{\SMCode{highlightframe}}
+			\qritem{\SMCmd{decktags}\SMCode{\{...\}}}{the group}
+			\qritem{\SMCode{\textbackslash newcommand\{\textbackslash SMModeOverride\}\{dark\}}}{dark slides}
+			\qritem{\SMCode{\%\% SlideMage course URL: ...}}{the course link (CampusOnline plugin)}
+		\end{column}
+		\begin{column}{0.48\linewidth}
+			\qrhead{In the body}
+			\qritem{\SMCmd{section}\SMCode{\{Title\}}}{a chapter}
+			\qritem{\SMCmd{slide}\SMCode{\{id-slug\}}}{the current slide}
+			\qritem{\SMCmd{slideversion}\SMCode{\{id-slug\}\{1-0-0\}}}{a pinned version}
+			\qritem{\SMCmd{slidefinal}\SMCode{\{id-slug\}}}{fully revealed}
+			\qritem{\SMCmd{conditionalslide}\SMCode{[v]\{id-slug\}}}{in some versions}
+			\qritem{\SMCmd{slidestep}\SMCode{\{id-slug\}[v]\{steps\}}}{some steps}
+			\qritem{\SMCmd{omitslide}\SMCode{\{id-slug\}}}{instructor only}
+			\par\medskip
+			\SMCode{[v]}: deck versions -- \SMCode{instructor}, \SMCode{during-course}, \SMCode{after-course}. For \SMCmd{deckoutputfolder} also \SMCode{presenter} and \SMCode{transcript}: the presenter PDF is the instructor version with notes, so a slide condition needs no extra value.
+			\par\medskip
+			SlideMage writes most of this for you: the version block, tags, language, output folders and the slide calls; the CampusOnline plugin writes the course link.
+		\end{column}
+	\end{columns}
+\end{standardframe}

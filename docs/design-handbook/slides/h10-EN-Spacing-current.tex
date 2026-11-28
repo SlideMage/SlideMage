@@ -1,0 +1,12 @@
+%% Included in decks: design-handbook
+\setSlideVersion{1-0-0}
+\begin{standardframe}{Spacing and corners}
+\begin{columns}[T,onlytextwidth]\begin{column}{.35\linewidth}\input{snippets/space.tex}
+\end{column}\begin{column}{.63\linewidth}\input{snippets/radius.tex}
+\end{column}\end{columns}\begin{itemize}
+\item Zero stays literal. A one-pixel border or alignment correction is not a spacing step.
+\item Use \SMCode{pill(height)} for circles and round badges: radius is half the height.
+\item Qt can draw square corners above half-height; do not replace round shapes with a huge radius.
+\item Use shared gaps for equivalent roles; keep grouping and content fit.
+\end{itemize}
+\end{standardframe}

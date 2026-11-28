@@ -1,0 +1,240 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""The widget that shows one slide (or one note page) with the laser and drawings over it (plan 4.1)."""
+from __future__ import annotations
+
+from typing import Optional, Protocol
+
+from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, Qt
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QRadialGradient
+from PySide6.QtWidgets import QWidget
+
+from ...presentation.pdf_source import SLIDE, PresentationDeck
+from ...presentation.session import Point, Stroke
+from ...presentation.settings import PresentationSettings
+from ..kit.tokens import STAGE
+from .slide_input import SlideInput
+
+BADGE_COLORS = {"black": STAGE.stage_over, "frozen": STAGE.stage_warn, "both": STAGE.stage_over}
+
+
+class View(Protocol):
+    """What a canvas shows; the controller gives each canvas the view of its role."""
+    def page(self) -> Optional[int]: ...
+    def strokes(self) -> list[Stroke]: ...
+    def pointer(self) -> Optional[Point]: ...
+    def status(self) -> Optional[tuple[str, str]]: ...
+
+
+class SlideCanvas(QWidget):
+    def __init__(self, deck: PresentationDeck, view: View, *, part: str = SLIDE, laser_color: str = PresentationSettings.laser_color,
+                 laser_size: float = 0.02, background: str = STAGE.stage_bg, empty_text: str = "", top: bool = False,
+                 slide_input: Optional[SlideInput] = None, settings: Optional[PresentationSettings] = None,
+                 name: str = "",
+                 parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.deck, self.view, self.part, self.laser_size = deck, view, part, laser_size
+        self.laser_color, self.background, self.empty_text, self.top = laser_color, background, empty_text, top
+        self.input = slide_input
+        self._hover: Optional[QPointF] = None      # where the mouse is over this canvas (the eraser circle follows it)
+        self.settings = settings     # when given, the laser's color and size are read from it as it is drawn
+        self.name = name             # "Current" or "Next" in the presenter window's top-left corner
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setMinimumSize(40, 30)
+        if slide_input is not None:
+            self.setMouseTracking(True)
+
+    def set_input(self, slide_input: Optional[SlideInput]) -> None:
+        """Gives the canvas the mouse (draw, laser, links) or takes it away, live. Taking it away ends a laser or
+        stroke in progress and drops the arrow or hand cursor the canvas set itself, so the parent's cursor shows."""
+        if self.input is not None and slide_input is not self.input:
+            self.input.leave()
+        self.input = slide_input
+        self.setMouseTracking(slide_input is not None)
+        if slide_input is None:
+            self.unsetCursor()
+            self._set_hover(None)
+
+    # -- geometry ---------------------------------------------------------------------
+
+    def target(self) -> QRect:
+        """The slide's rectangle inside the widget: as large as fits, centred (or at the top)."""
+        width, height = self.width(), self.height()
+        aspect = self.deck.aspect
+        w = min(width, int(height * aspect))
+        h = int(w / aspect)
+        return QRect((width - w) // 2, 0 if self.top else (height - h) // 2, w, h)
+
+    def _fraction(self, event) -> Optional[Point]:
+        rect = self.target()
+        if rect.width() < 1 or rect.height() < 1:
+            return None
+        position = event.position()
+        return ((position.x() - rect.x()) / rect.width(), (position.y() - rect.y()) / rect.height())
+
+    # -- painting ---------------------------------------------------------------------
+
+    def paintEvent(self, _event) -> None:
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor(self.background))
+        page = self.view.page()
+        rect = self.target()
+        image = None
+        if page is not None:
+            ratio = self.devicePixelRatioF()
+            image = self.deck.render(page, self.part, int(rect.width() * ratio), int(rect.height() * ratio))
+        if image is None:
+            if page is not None and self.empty_text:
+                painter.setPen(QColor(STAGE.stage_muted))
+                painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap, self.empty_text)
+            elif page is None and self.empty_text:
+                painter.setPen(QColor(STAGE.stage_muted))
+                painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self.empty_text)
+            self._name_tag(painter, self._badge(painter))
+            return
+        painter.drawImage(QRectF(rect), image)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        for stroke in self.view.strokes():
+            self._stroke(painter, rect, stroke)
+        pointer = self.view.pointer()
+        if pointer is not None:
+            self._laser(painter, rect, pointer)
+        circle = self._eraser_circle()
+        if circle is not None:
+            self._draw_eraser(painter, circle)
+        self._name_tag(painter, self._badge(painter))
+
+    def _eraser_circle(self) -> Optional[QRectF]:
+        """The eraser's reach around the mouse: only while the eraser is on and the mouse is over this canvas, and
+        this canvas takes input."""
+        if self._hover is None or self.input is None or not self.input.erasing():
+            return None
+        radius = max(3.0, self.input.settings.eraser_size * self.target().height())
+        return QRectF(self._hover.x() - radius, self._hover.y() - radius, 2 * radius, 2 * radius)
+
+    @staticmethod
+    def _draw_eraser(painter: QPainter, circle: QRectF) -> None:
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(QPen(QColor(0, 0, 0, 200), 3))        # a dark ring under a light one: seen on any slide
+        painter.drawEllipse(circle)
+        painter.setPen(QPen(QColor(255, 255, 255, 235), 1.5))
+        painter.drawEllipse(circle)
+
+    def _set_hover(self, position: Optional[QPointF]) -> None:
+        """Moves the circle's anchor, repainting only where the circle was and where it is now."""
+        before, now = self._hover, position
+        self._hover = now
+        if before == now:
+            return
+        for spot in (before, now):
+            if spot is not None and self.input is not None and self.input.erasing():
+                radius = max(3.0, self.input.settings.eraser_size * self.target().height()) + 3
+                self.update(QRectF(spot.x() - radius, spot.y() - radius, 2 * radius, 2 * radius).toAlignedRect())
+
+    def _stroke(self, painter: QPainter, rect: QRect, stroke: Stroke) -> None:
+        pen = QPen(QColor(stroke.color), max(2.0, stroke.width * rect.height()))
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        path = QPainterPath()
+        points = [QPointF(rect.x() + x * rect.width(), rect.y() + y * rect.height()) for x, y in stroke.points]
+        path.moveTo(points[0])
+        if len(points) == 1:
+            path.lineTo(points[0] + QPointF(0.01, 0))
+        for point in points[1:]:
+            path.lineTo(point)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawPath(path)
+
+    def _laser(self, painter: QPainter, rect: QRect, pointer: Point) -> None:
+        centre = QPointF(rect.x() + pointer[0] * rect.width(), rect.y() + pointer[1] * rect.height())
+        size, color = ((self.settings.laser_size, self.settings.laser_color) if self.settings is not None
+                       else (self.laser_size, self.laser_color))
+        radius = max(3.0, size * rect.height())
+        color = QColor(color)
+        halo = QColor(color)
+        halo.setAlpha(0)
+        glow = QColor(color)
+        glow.setAlpha(110)
+        gradient = QRadialGradient(centre, radius * 2.2)
+        gradient.setColorAt(0.0, glow)
+        gradient.setColorAt(1.0, halo)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(gradient)
+        painter.drawEllipse(centre, radius * 2.2, radius * 2.2)
+        painter.setBrush(color)
+        painter.drawEllipse(centre, radius, radius)
+
+    def _badge(self, painter: QPainter) -> Optional[QRect]:
+        """What the projector shows, when it is not the slide; the box it took, for the name tag beside it."""
+        status = self.view.status()
+        if status is None:
+            return None
+        text, kind = status
+        color = QColor(BADGE_COLORS[kind])
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+        painter.setPen(QPen(color, 6))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRect(self.rect().adjusted(3, 3, -3, -3))
+        font = painter.font()
+        font.setBold(True)
+        font.setPointSize(max(9, font.pointSize()))
+        painter.setFont(font)
+        box = painter.fontMetrics().boundingRect(text).adjusted(-8, -3, 8, 3)
+        box.moveTopLeft(self.rect().topLeft() + QPointF(6, 6).toPoint())
+        painter.fillRect(box, color)
+        painter.setPen(QColor(STAGE.stage_on_solid))
+        painter.drawText(box, Qt.AlignmentFlag.AlignCenter, text)
+        return box
+
+    def _name_tag(self, painter: QPainter, beside: Optional[QRect]) -> None:
+        """The view's name, small and quiet in the top-left corner (right of the status badge when there is one),
+        so the presenter tells the current slide from the next one at a glance."""
+        if not self.name:
+            return
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        font = painter.font()
+        font.setBold(False)
+        font.setPointSize(max(12, font.pointSize() + 3))
+        painter.setFont(font)
+        box = painter.fontMetrics().boundingRect(self.name).adjusted(-9, -4, 9, 4)
+        box.moveTopLeft(QPoint(beside.right() + 8, beside.top()) if beside is not None else self.rect().topLeft() + QPoint(6, 6))
+        painter.setPen(Qt.PenStyle.NoPen)
+        scrim = QColor(STAGE.stage_scrim)
+        scrim.setAlpha(150)
+        painter.setBrush(scrim)
+        painter.drawRoundedRect(QRectF(box), 4, 4)
+        painter.setPen(QColor(STAGE.stage_name))
+        painter.drawText(box, Qt.AlignmentFlag.AlignCenter, self.name)
+
+    # -- mouse ------------------------------------------------------------------------
+
+    def mousePressEvent(self, event) -> None:
+        point = self._fraction(event)
+        if self.input is None or event.button() != Qt.MouseButton.LeftButton or point is None:
+            return event.ignore()
+        self.input.press(*point, bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier))
+
+    def mouseMoveEvent(self, event) -> None:
+        point = self._fraction(event)
+        if self.input is None or point is None:
+            return event.ignore()
+        self._set_hover(event.position())
+        if event.buttons() & Qt.MouseButton.LeftButton:
+            self.input.move(*point, bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier))
+        else:
+            inside = 0 <= point[0] <= 1 and 0 <= point[1] <= 1
+            self.setCursor(Qt.CursorShape.PointingHandCursor if inside and self.input.over_link(*point)
+                           else Qt.CursorShape.ArrowCursor)
+
+    def mouseReleaseEvent(self, event) -> None:
+        point = self._fraction(event)
+        if self.input is None or event.button() != Qt.MouseButton.LeftButton or point is None:
+            return event.ignore()
+        self.input.release(*point)
+
+    def leaveEvent(self, event) -> None:
+        self._set_hover(None)
+        if self.input is not None:
+            self.input.leave()
+        super().leaveEvent(event)

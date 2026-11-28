@@ -1,0 +1,485 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Multi-language parsing primitives shared by the SlideMage GUI's
+language badges (deck_outline.py, the Add slide sheet,
+the Details view) and slide_rename.py's translation-link repair
+pass.
+
+Language lives in a slide's own id-slug, as its *second* hyphen segment
+(<id>-<LANG>-<slug>), exactly mirroring what
+SlideMage_base.tex's \\setSlideLanguageFromSlug parses at
+compile time -- this module is the Python-side twin of that macro, kept
+deliberately in sync with it rather than reading anything back out of a
+compiled PDF. A slide that predates this feature has no such segment
+(own_language() returns None for it), exactly like an untracked
+\\setSlideVersion{} today has no footer "v..." segment -- no migration is
+needed for the other ~665 files.
+
+Translation cross-references live in a plain header-comment convention,
+alongside the existing "%% Included in decks: ..." block
+(deck_headers.py):
+
+    %% Translation of: <source id-slug>        -- this file IS a translation
+    %% <LANG> translation: <target id-slug>     -- this file HAS a translation
+
+A slide and its translations are a translation group, a star: one original (the slide
+that is nobody's translation), each translation naming it, and the original naming each
+translation. Only the project's languages count as a language (languages.py).
+
+Slide insertion links a new translation to its source. The translation-link maintenance command
+refreshes those references and normalizes each group's headers to a star.
+"""
+from __future__ import annotations
+
+import contextlib
+import os
+import re
+import sys
+import threading
+import time
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+import logging
+
+from . import diagnostics, timing
+from .project import ProjectContext
+
+_perf_log = logging.getLogger("slidemage.perf")
+
+
+# A multilingual slide: the same in every language, so it is nobody's translation.
+MULT = "mult"
+
+TRANSLATION_OF_RE = re.compile(r"^%% Translation of: (\S+)", re.MULTILINE)
+# Only the project's codes count as a language (TranslationLinks).
+LANG_TRANSLATION_RE = re.compile(r"^%% ([A-Z]{2}|mult) translation: (\S+)", re.MULTILINE)
+
+CURRENT_SUFFIX = "-current.tex"
+FROZEN_RE = re.compile(r"-v([0-9]+-[0-9]+-[0-9]+)\.tex$")
+
+
+def bare_id(id_slug_or_ref: str) -> str:
+    """Everything before the first hyphen -- a slide's permanent,
+    language-independent ID. Matches slide_ids.py's own
+    ID_FROM_FILENAME_RE / SlideMage_base.tex's \\setSlideID@aux."""
+    return id_slug_or_ref.split("-", 1)[0]
+
+
+def own_language(id_slug: str, codes: tuple[str, ...]) -> Optional[str]:
+    """One of `codes` (the project's languages, upper case: languages.Languages.codes) or "mult", parsed from
+    id_slug's own second hyphen segment, or None for a slide with no such segment. Any other word there
+    ("x7k-IT-Governance" in a project without Italian) is part of the slug."""
+    parts = id_slug.split("-", 2)
+    if len(parts) >= 2 and (parts[1] in codes or parts[1] == MULT):
+        return parts[1]
+    return None
+
+
+def current_name(id_slug: str) -> str:
+    """The file name of a slide's current file ("1ab-EN-Demo-current.tex")."""
+    return f"{id_slug}{CURRENT_SUFFIX}"
+
+
+def frozen_name(id_slug: str, version: str) -> str:
+    """The frozen file name for a version in its file form ("1-0-0")."""
+    return f"{id_slug}-v{version}.tex"
+
+
+# Below current_name()/frozen_name(), not up with the other imports: deck_editor (by way of
+# deck_settings) needs FROZEN_RE and those two names, and imports them through this same module's
+# own `languages` import below -- languages -> deck_settings -> deck_editor -> back here, while
+# this module is still mid-initialization. Nothing above this line touches `languages` or
+# `slide_source` at module-execution time (both are only used inside function bodies further
+# down), so the import is safe to make here instead, after the names the cycle needs exist.
+from . import languages, slide_source
+
+
+def is_current_file(path: Path) -> bool:
+    """Whether `path` is a slide's current file (not one of its frozen versions)."""
+    return path.name.endswith(CURRENT_SUFFIX)
+
+
+def current_path_for_bare_id(ctx: ProjectContext, bare_id_: str) -> Optional[Path]:
+    """The slides/<bare_id_>-...-current.tex path on disk right now, or
+    None if that ID has no current file any more (renamed again, or
+    deleted) -- by this project's own convention there is at most one
+    -current.tex per bare ID."""
+    matches = list(ctx.slides_dir.glob(f"{bare_id_}-*{CURRENT_SUFFIX}"))
+    return matches[0] if matches else None
+
+
+def current_id_slug_for_bare_id(ctx: ProjectContext, bare_id_: str) -> Optional[str]:
+    path = current_path_for_bare_id(ctx, bare_id_)
+    if path is None:
+        return None
+    return path.name[: -len(CURRENT_SUFFIX)]
+
+
+def _header(path: Path) -> str:
+    try:
+        return path.read_text(
+            encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+# What every TranslationLinks shares (v0.14.57): the text read from each current file, and the groups a scan found, each
+# kept with the (mtime, size) of the files it came from, so a scan reads only the files that changed since the last one.
+# Each scan used to read the whole text of every *-current.tex: 1015 files and 2.3 MB on the user's project, 319 times in
+# 4 minutes (75 s), up to three times in a row on the GUI thread, and 0.9 s each while header sync and the thumbnail,
+# planner and preview threads scanned at the same time (stalls of 2-3 s after a deck save). The links parsed from each
+# text are kept too (v0.17.34): while a file is being edited the groups are scanned again on every refresh, and the
+# two regexes over 900 texts took more than the listing.
+_cache_lock = threading.Lock()
+_texts: dict[Path, tuple[tuple[int, int], str]] = {}                              # path -> (stamp, text)
+_parsed: dict[Path, tuple[tuple[int, int], tuple]] = {}                           # path -> (stamp, _links)
+_groups_cache: dict[tuple[Path, tuple[str, ...]], tuple[frozenset, dict]] = {}   # (folder, codes) -> (stamps, groups)
+# A file changed this recently is read again every time: Windows moves a file's mtime on only every 15 ms or so, and a
+# second write of the same size inside that keeps the stamp (git's "racy" files). A sync client can be later still.
+_RACY_NS = 2_000_000_000
+_OWN_MODULES = ("slide_language.py", "deck_language.py", "deck_outline.py")   # skipped by _caller
+
+
+def _listing(slides_dir: Path) -> tuple[dict[str, Path], dict[str, tuple[int, int]]]:
+    """(bare id -> current file, file name -> (mtime_ns, size)) of `slides_dir`. On Windows os.scandir gives the
+    stamps with the listing, so this costs no more than the glob it replaces."""
+    paths: dict[str, Path] = {}
+    stamps: dict[str, tuple[int, int]] = {}
+    try:
+        with os.scandir(slides_dir) as entries:
+            for entry in entries:
+                if not os.path.normcase(entry.name).endswith(CURRENT_SUFFIX):   # glob's case rule on Windows
+                    continue
+                try:
+                    stat = entry.stat()
+                except OSError:
+                    continue
+                paths[bare_id(entry.name)] = slides_dir / entry.name
+                stamps[entry.name] = (stat.st_mtime_ns, stat.st_size)
+    except OSError:
+        pass
+    return paths, stamps
+
+
+def _caller() -> str:
+    """`file.py:line function` of the first frame outside the language index's own modules, for the debug log."""
+    frame = sys._getframe(1)
+    while frame is not None and Path(frame.f_code.co_filename).name in _OWN_MODULES:
+        frame = frame.f_back
+    return f"{Path(frame.f_code.co_filename).name}:{frame.f_lineno} {frame.f_code.co_name}" if frame else "?"
+
+
+def clear_cache() -> None:
+    """Forget every text and group read so far (tests, and nothing else needs it: stamps tell a changed file)."""
+    with _cache_lock:
+        _texts.clear()
+        _parsed.clear()
+        _groups_cache.clear()
+
+
+@dataclass(frozen=True)
+class Group:
+    """A slide's translation group: the slide that is nobody's translation and its translations."""
+
+    original: Optional[str]      # the original's id-slug; None when the links name none (a cycle, or a tangle)
+    members: dict[str, str]      # language -> id-slug, the original among them; a language two slides claim is left out
+    valid: bool                  # a star: every translation names the original, one slide per language
+
+
+class TranslationLinks:
+    """One scan per resolution, including links recorded on only one side. `codes` are the project's
+    languages (languages.Languages.codes); only they count as a slide's language."""
+
+    def __init__(self, slides_dir: Path, codes: tuple[str, ...], *, reader=None,
+                 new_slide: tuple[Path, str] | None = None) -> None:
+        self._reader = reader
+        self.slides_dir = slides_dir
+        self.codes = codes
+        self._listed_ns = time.time_ns()
+        began = time.perf_counter()
+        self.paths, self.stamps = _listing(slides_dir)
+        self.listing_s = time.perf_counter() - began                                      # for the debug log
+        self.headers: dict[str, str] = {}
+        self._new_slide = new_slide is not None
+        if new_slide is not None:
+            path, text = new_slide
+            self.paths[bare_id(path.name)] = path
+            self.headers[path.name.removesuffix(CURRENT_SUFFIX)] = text
+        self._groups: dict[str, Group] | None = None
+        self.read_files, self.read_chars, self.read_seconds, self.slowest = 0, 0, 0.0, 0.0   # for the debug log
+
+    def _racy(self, stamp: tuple[int, int]) -> bool:
+        return stamp[0] >= self._listed_ns - _RACY_NS
+
+    def own(self, id_slug: str) -> str | None:
+        return own_language(id_slug, self.codes)
+
+    def header(self, id_slug: str) -> str:
+        if self._reader is not None:
+            return self._reader(self.slides_dir / current_name(id_slug))
+        if id_slug not in self.headers:
+            name = current_name(id_slug)
+            path = self.slides_dir / name
+            stamp = self.stamps.get(name)
+            with _cache_lock:
+                cached = _texts.get(path)
+            if stamp is not None and cached is not None and cached[0] == stamp and not self._racy(stamp):
+                self.headers[id_slug] = cached[1]
+            else:
+                began = time.perf_counter()
+                text = _header(path)
+                if timing.enabled():
+                    self.read_seconds += time.perf_counter() - began
+                    self.read_files += 1
+                    self.read_chars += len(text)
+                    self.slowest = max(self.slowest, time.perf_counter() - began)
+                if stamp is not None and not self._racy(stamp):
+                    # Read after the listing: a file written in between is newer than its stamp, and the next
+                    # listing's new stamp reads it again.
+                    with _cache_lock:
+                        _texts[path] = (stamp, text)
+                self.headers[id_slug] = text
+        return self.headers[id_slug]
+
+    def _links(self, id_slug: str) -> tuple[tuple[str, ...], tuple[tuple[str, str], ...]]:
+        """(the bare ids "Translation of:" names, the (language, bare id) pairs of "<LANG> translation:") of one file.
+        Kept like `header` keeps the text: a recent file is parsed again every time."""
+        path = self.slides_dir / current_name(id_slug)
+        stamp = self.stamps.get(path.name)
+        settled = self._reader is None and stamp is not None and not self._racy(stamp)
+        with _cache_lock:
+            cached = _parsed.get(path)
+        if settled and cached is not None and cached[0] == stamp:
+            return cached[1]
+        header = self.header(id_slug)
+        links = (tuple(bare_id(m.group(1)) for m in TRANSLATION_OF_RE.finditer(header)),
+                 tuple((m.group(1), bare_id(m.group(2))) for m in LANG_TRANSLATION_RE.finditer(header)))
+        if settled:
+            with _cache_lock:
+                _parsed[path] = (stamp, links)
+        return links
+
+    def group(self, id_slug: str) -> Group:
+        """The translation group of the slide with this id-slug's bare id. A slide of no language, or with no
+        current file, is its own group. Links count from either side, as "Translation of:" and as
+        "<LANG> translation:"."""
+        if self._groups is None:
+            began = time.perf_counter()
+            # The groups depend on the project's languages and the current files' text alone: unchanged stamps give
+            # the groups of the last scan (the Group objects are frozen and shared, never changed).
+            key, stamps = (self.slides_dir, self.codes), frozenset(self.stamps.items())
+            settled = (self._reader is None and not self._new_slide
+                       and not any(self._racy(stamp) for stamp in self.stamps.values()))
+            with _cache_lock:
+                cached = _groups_cache.get(key)
+            reused = settled and cached is not None and cached[0] == stamps
+            if reused:
+                self._groups = cached[1]
+            else:
+                self._groups = self._scan()
+                if settled:
+                    with _cache_lock:
+                        _groups_cache[key] = (stamps, self._groups)
+            if timing.enabled():
+                # its own logger: the `timing` area is the prompt-to-preview timeline of one request
+                diagnostics.event(_perf_log, "slide_language.scan", listed=len(self.paths),
+                                  listing_s=round(self.listing_s, 3), settled=settled, cached=reused,
+                                  files=self.read_files, chars=self.read_chars,
+                                  reading_s=round(self.read_seconds, 3), slowest_read_s=round(self.slowest, 3),
+                                  total_s=round(time.perf_counter() - began, 3),
+                                  gui=threading.current_thread() is threading.main_thread(), caller=_caller())
+        return self._groups.get(bare_id(id_slug)) or Group(id_slug, {}, True)
+
+    def find(self, id_slug: str, language: str) -> str | None:
+        """The id-slug of the group's member in `language`, None for the slide's own language and for a language
+        the group has no single slide in (conflicting links do not pick an arbitrary one)."""
+        language = language.upper()
+        if self.own(id_slug) in (None, MULT, language):
+            return None
+        return self.group(id_slug).members.get(language)
+
+    def _scan(self) -> dict[str, Group]:
+        slugs = {bare: path.name[:-len(CURRENT_SUFFIX)] for bare, path in self.paths.items()}
+        slugs = {bare: slug for bare, slug in slugs.items() if self.own(slug) not in (None, MULT)}
+        parents: dict[str, set[str]] = {bare: set() for bare in slugs}
+        for bare, slug in slugs.items():
+            originals, translations = self._links(slug)
+            for original in originals:
+                if original in slugs and self.own(slugs[original]) != self.own(slug):
+                    parents[bare].add(original)
+            for language, translation in translations:
+                if translation in slugs and self.own(slugs[translation]) == language != self.own(slug):
+                    parents[translation].add(bare)
+        neighbours: dict[str, set[str]] = {bare: set(found) for bare, found in parents.items()}
+        for bare, found in parents.items():
+            for parent in found:
+                neighbours[parent].add(bare)
+        groups: dict[str, Group] = {}
+        for start in slugs:
+            if start in groups:
+                continue
+            component, todo = {start}, [start]
+            while todo:
+                for other in neighbours[todo.pop()] - component:
+                    component.add(other)
+                    todo.append(other)
+            roots = [bare for bare in component if not parents[bare]]
+            rooted = len(roots) == 1 and all(len(parents[bare]) == 1 for bare in component if bare != roots[0])
+            claimed: dict[str, list[str]] = {}
+            for bare in sorted(component):
+                claimed.setdefault(self.own(slugs[bare]), []).append(slugs[bare])
+            members = {language: found[0] for language, found in claimed.items() if len(found) == 1}
+            if rooted:
+                members[self.own(slugs[roots[0]])] = slugs[roots[0]]
+            star = rooted and all(parents[bare] == {roots[0]} for bare in component if bare != roots[0])
+            group = Group(slugs[roots[0]] if rooted else None, members, star and len(members) == len(component))
+            groups.update(dict.fromkeys(component, group))
+        return groups
+
+
+_shared = threading.local()   # .scope: the indexes built in this thread's open shared_links block, by (folder, codes)
+
+
+@contextlib.contextmanager
+def shared_links():
+    """One GUI refresh asks for the links many times (slide list, assistant offers, preview target) and each ask
+    listed the whole slides folder again. Inside this block `links_for` on this thread builds one index on the first
+    ask and returns it to every later ask for the same folder and languages. Nothing inside may write a slide file:
+    the index is not refreshed until the block ends. Nested blocks share the outermost one. Also a decorator:
+    `@shared_links()`."""
+    outer = hasattr(_shared, "scope")
+    if not outer:
+        _shared.scope = {}
+    try:
+        yield
+    finally:
+        if not outer:
+            del _shared.scope
+
+
+def links_for(ctx: ProjectContext) -> TranslationLinks:
+    """A scan of the project's slides, with the project's languages: fresh, or the open `shared_links` scope's."""
+    key = (ctx.slides_dir, languages.project_languages(ctx).codes)
+    scope = getattr(_shared, "scope", None)
+    if scope is None:
+        return TranslationLinks(*key)
+    if key not in scope:
+        scope[key] = TranslationLinks(*key)
+    return scope[key]
+
+
+def translated_languages(ctx: ProjectContext, id_slug: str, *, links: Optional[TranslationLinks] = None) -> tuple[str, ...]:
+    """The languages, in the project's order, of the other slides in this slide's translation group.
+
+    Links belong to the current slide, also when a frozen version of it is shown.
+    Pass a shared index when building badges for a whole list."""
+    links = links or links_for(ctx)
+    own = links.own(id_slug)
+    if own in (None, MULT):
+        return ()
+    members = links.group(id_slug).members
+    return tuple(code for code in links.codes if code != own and code in members)
+
+
+@dataclass
+class TranslationLink:
+    """A slide and one other member of its translation group."""
+
+    partner: str                # the partner's id-slug
+    language: Optional[str]     # the partner's language
+    path: Path                  # the partner's current file
+    is_translation: bool        # this slide is the translation of `partner`, the original (else `partner` is of this,
+                                # or both are translations of the group's original)
+    outdated: bool              # the original was saved in SlideMage after the translation was last written
+    is_original: bool = False   # this slide is the original and `partner` its translation
+
+
+def translation_group(ctx: ProjectContext, id_slug: str, path: Optional[Path] = None, *,
+                      links: Optional[TranslationLinks] = None) -> list[TranslationLink]:
+    """One link to each other member of the slide's translation group, in the project's language order; empty
+    for a slide with no translations. Links belong to the current slide, even when `path` is a frozen version.
+
+    `outdated` measures this and nothing more: the original has been saved through SlideMage
+    (slide_source.last_saved(): its newest backup) later than the translation was last written
+    (the later of its own newest backup and its file's mtime). It is not a comparison of
+    content, and an edit made outside SlideMage is not noticed. The translation is the partner, or this slide
+    when the partner is the original."""
+    links = links or links_for(ctx)
+    own = links.own(id_slug)
+    if own in (None, MULT):
+        return []
+    path = path or links.slides_dir / current_name(id_slug)
+    group = links.group(id_slug)
+    original = group.original
+    is_original = original is not None and bare_id(original) == bare_id(id_slug)
+    found = []
+    for language in links.codes:
+        partner = group.members.get(language)
+        if language == own or partner is None:
+            continue
+        partner_path = links.paths[bare_id(partner)]
+        is_translation = partner == original
+        if is_translation:
+            original_path, translation = partner_path, path
+        elif is_original:
+            original_path, translation = path, partner_path
+        else:
+            original_path, translation = links.paths.get(bare_id(original or "")), partner_path
+        saved = slide_source.last_saved(ctx, original_path) if original_path else None
+        written = max(filter(None, (slide_source.last_saved(ctx, translation),
+                                    datetime.fromtimestamp(translation.stat().st_mtime))))
+        found.append(TranslationLink(partner, language, partner_path, is_translation,
+                                     saved is not None and saved > written, is_original))
+    return found
+
+
+@dataclass
+class LanguageBadge:
+    """What a GUI list row should show for one slide -- built once per
+    row so every caller (deck_outline.py, the Add slide sheet,
+    the Details view) renders the same underlying facts, even
+    though each one displays them slightly differently (rich-text HTML,
+    plain text + bold font, a QLabel)."""
+
+    own: Optional[str]
+    languages: tuple[str, ...]      # the other languages of the slide's translation group
+
+    @property
+    def both(self) -> bool:
+        """True when this slide's own language *and* at least one translation into a
+        *different* language exist -- the case that should be visually highlighted."""
+        return self.own is not None and bool(self.languages)
+
+    def text(self) -> str:
+        """"" for an untagged slide, "[EN]" for a tagged one, "[EN + DE]" or "[EN + DE FR]" with
+        translations, "[EN +3]" from four languages on (the tooltip lists them) -- callers append/style
+        this however suits their widget."""
+        if self.own is None:
+            return ""
+        if not self.languages:
+            return f"[{self.own}]"
+        if len(self.languages) >= 3:
+            return f"[{self.own} +{len(self.languages)}]"
+        return f"[{self.own} + {' '.join(self.languages)}]"
+
+
+def badge_for(ctx: ProjectContext, id_slug: str, *, links: Optional[TranslationLinks] = None) -> LanguageBadge:
+    links = links or links_for(ctx)
+    return LanguageBadge(own=links.own(id_slug), languages=translated_languages(ctx, id_slug, links=links))
+
+
+def call_for_slide_path(path: Path) -> tuple[str, str, Optional[str]]:
+    """Given slides/<id>-<slug>-current.tex or slides/<id>-<slug>-vX-Y-Z.tex,
+    return (macro, id_slug, version) for the \\slide{}/\\slideversion{}
+    call that loads exactly that file -- used by the slide-source editor,
+    which only knows its own file path, not a deck-parsed SlideCall."""
+    name = path.name
+    if name.endswith(CURRENT_SUFFIX):
+        return "slide", name[: -len(CURRENT_SUFFIX)], None
+    m = FROZEN_RE.search(name)
+    if m:
+        return "slideversion", name[: m.start()], m.group(1)
+    raise ValueError(f"{name}: doesn't look like a slides/ current or version file")

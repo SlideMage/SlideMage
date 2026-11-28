@@ -1,0 +1,41 @@
+%% Calibration deck: columns[T] below a list and below a table (v10.12.0). Each [T] columns starts its first line
+%% where a plain list would, at the gap a list keeps below the content above; until v10.12.0 beamer's 1ex pull-up at
+%% the column head took it up to the content (the table's bottom rule). ZCO is the same slide with plain lists in
+%% place of the columns; tests/test_revealed_footnotes.py compares the two.
+\setSlideVersion{1-0-0}
+\begin{standardframe}{Columns [T] below content}
+	\begin{itemize}
+		\item A list first
+	\end{itemize}
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.46\linewidth}
+			\begin{itemize}
+				\item Colta: a T column below a list
+			\end{itemize}
+		\end{column}
+		\begin{column}{0.46\linewidth}
+			\begin{itemize}
+				\item Beside it
+			\end{itemize}
+		\end{column}
+	\end{columns}
+	\begin{SMTable}[gap=12pt]{lcc}
+		\toprule
+		Frame & Title bar & Footer \\
+		\midrule
+		\SMCode{standardframe} & yes & yes \\
+		\bottomrule
+	\end{SMTable}
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.46\linewidth}
+			\begin{itemize}
+				\item Coltb: a T column below a table
+			\end{itemize}
+		\end{column}
+		\begin{column}{0.46\linewidth}
+			\begin{itemize}
+				\item Beside it
+			\end{itemize}
+		\end{column}
+	\end{columns}
+\end{standardframe}

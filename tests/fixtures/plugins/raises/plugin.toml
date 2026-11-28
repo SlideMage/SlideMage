@@ -1,0 +1,11 @@
+id = "raises"
+name = "raises fixture"
+version = "0.1.0"
+api_version = 1
+requires_slidemage = ">=8.0"
+summary = "Fixture plugin raises."
+author = "Test"
+homepage = "https://example.org/raises"
+license = "GPL-3.0-or-later"
+needs = []
+network = []

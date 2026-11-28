@@ -1,0 +1,65 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "slidemage"
+dynamic = ["version"]
+description = "Desktop app for building, compiling and managing SlideMage (LaTeX beamer) slide decks"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE", "LICENSES/*", "THIRD_PARTY_NOTICES.md"]
+dependencies = [
+    "PySide6>=6.5",
+    # Below 2.0: PyMuPDF 2.0 loads a layout model (onnx files) when imported, which the PyInstaller build does not
+    # bundle, so every release built with it stopped at startup (v8.33.0's Windows build, 2026-10-20).
+    "pymupdf<2",
+    "pillow",
+    "lxml",
+    "python-pptx",
+    "odfpy",
+    # QR codes (qr_code.py): pure Python, BSD-3-Clause.
+    "segno>=1.6",
+    "ptyprocess>=0.7.0 ; sys_platform != 'win32'",
+    "pywinpty>=3.0.5 ; sys_platform == 'win32'",
+    # The operating system's certificate store for HTTPS (tls_trust.py): pure Python, MIT. Python's own context only
+    # reads the roots Windows already holds, so github.com failed with CERTIFICATE_VERIFY_FAILED until Windows fetched one.
+    "truststore>=0.10",
+    # The spellchecker (spelling/): pure Python, no dependencies of their own. Pinned exactly: spelling/catalogue.py
+    # pins pyspellchecker's word lists (downloaded, not bundled) to this version's tag. pyspellchecker is MIT,
+    # spylls (Hunspell, for German) MPL-2.0.
+    "pyspellchecker==0.9.1",
+    "spylls==0.1.7",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-xdist", "ruff", "jsonschema"]
+build = ["pyinstaller"]
+keyring = ["keyring"]
+
+[project.gui-scripts]
+slidemage = "slidemage.cli:main"
+slidemage-presenter = "slidemage.presenter_app:main"
+
+[tool.hatch.version]
+path = "src/slidemage/version.py"
+pattern = 'VERSION_NUMBER = "v(?P<version>[^"]+)"'
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/slidemage"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/slidemage", "tests", "README.md", "LICENSE"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["infer_languages: the test sees what a project without a languages key infers, not English + German"]
+
+[tool.ruff]
+target-version = "py311"
+src = ["src"]
+
+[tool.ruff.lint]
+# Fatal errors plus unused imports, redefinitions, and local variables.
+select = ["E9", "F63", "F7", "F82", "F401", "F811", "F841"]

@@ -1,0 +1,10 @@
+%% Included in decks: design-handbook
+\setSlideVersion{1-0-0}
+\begin{standardframe}{For plugin authors}
+\SMCodeFile{snippets/plugin-example.py}\begin{itemize}
+\item Read the current \SMCode{host.theme()}; refresh your QSS and painted parts in \SMCode{on\_theme\_changed}.
+\item Keep the returned unsubscribe function and call it when the widget closes.
+\item Style only your own object names. Kit selectors and \SMCode{terminal\_tokens()} are internal.
+\item \SMCode{theme\_color()} is deprecated; it remains a quiet compatibility wrapper.
+\end{itemize}
+\end{standardframe}

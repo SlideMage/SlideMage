@@ -1,0 +1,9 @@
+# A tiny citation package for the tests (docs/CITATION_PACKAGE.md): no institution content.
+id = "sample"
+name = "Sample Format"
+version = "1.0.0"
+requires_slidemage = ">=0.13.0"
+summary = "A test citation format: numeric biblatex style, reports itself in the log."
+author = "SlideMage tests"
+homepage = "https://slidemage.org/plugins/"
+license = "LPPL-1.3c-or-later"

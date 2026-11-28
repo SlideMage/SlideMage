@@ -1,0 +1,25 @@
+%% Included in decks: slidemage-manual, slidemage-manual-copy
+%%
+
+% SlideMage manual, chapter "Working in SlideMage": the Source view, on the standardframe
+% demo slide (tools/manual/make_screenshots.py, shot workspace-source). Slide 1b2
+% explains the slide-level actions, 1cb the panels.
+\setSlideVersion{1-1-1+}
+\begin{standardframe}{Preview, source and split}
+	\small
+	The middle column shows the focused slide as \emph{Preview}, \emph{Split}, \emph{Source} or \emph{Details}, chosen above it. In \emph{Source} you write the LaTeX directly.
+	\par
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.52\linewidth}
+			{\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=\dimexpr\linewidth-0.8pt\relax]{media/screenshot-slidemage-slide-editor.png}}}
+		\end{column}
+		\begin{column}{0.45\linewidth}
+			\shrinklists{2}
+			\begin{itemize}
+				\item \textbf{Writing.} Buttons above the source insert styles, footnotes, colors; \emph{Insert} adds links, QR codes, code, lists, blocks, reveal steps, corner figures, text boxes; \emph{Cite} the bibliography. \emph{AutoSave} saves as you type (off: \SMCode{Ctrl+S}).
+				\item \textbf{Checking.} A line below the toolbar names mistakes as you type; \emph{Ask AI to fix} (AI plugin) hands them to the chat.
+				\item \textbf{Seeing the result.} \emph{Render} redraws the Preview; its arrow renders unsaved text too (\SMCode{Ctrl+Enter}).
+			\end{itemize}
+		\end{column}
+	\end{columns}
+\end{standardframe}

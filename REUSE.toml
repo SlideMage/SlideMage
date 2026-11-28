@@ -1,0 +1,171 @@
+version = 1
+SPDX-PackageName = "SlideMage"
+SPDX-PackageSupplier = "Stefan Palan"
+SPDX-PackageDownloadLocation = "https://github.com/SlideMage/SlideMage"
+
+# Files that cannot carry an SPDX header of their own. Python, Lua and the
+# SlideMage LaTeX files have one; see LICENSE for the overview.
+
+[[annotations]]
+path = ["pyproject.toml", "uv.lock", ".gitattributes", ".gitignore", ".github/**", ".claude/**",
+        "packaging/**", "tools/**", "tests/**", "changes/**", "src/slidemage/CHANGELOG.md",
+        "src/slidemage/assets/**"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Stefan Palan, Jürgen Fleiß"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# The bundled fonts keep their own licences (src/slidemage/assets/fonts/README.md).
+[[annotations]]
+path = ["src/slidemage/assets/fonts/Roboto*.ttf", "src/slidemage/assets/fonts/LICENSE-Roboto*.txt"]
+precedence = "override"
+SPDX-FileCopyrightText = "The Roboto Project Authors"
+SPDX-License-Identifier = "OFL-1.1"
+
+[[annotations]]
+path = ["src/slidemage/assets/fonts/MaterialIcons-Regular.ttf", "src/slidemage/assets/fonts/LICENSE-MaterialIcons-Apache-2.0.txt"]
+precedence = "override"
+SPDX-FileCopyrightText = "Google LLC"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = ["src/slidemage/assets/fonts/README.md"]
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Stefan Palan, Jürgen Fleiß"
+SPDX-License-Identifier = "CC-BY-SA-4.0"
+
+# The Fira fonts the "fira" layout profile falls back to (latex/fonts/fira/README.md).
+[[annotations]]
+path = ["latex/fonts/fira/*.otf", "latex/fonts/fira/LICENSE-Fira-OFL.txt"]
+precedence = "override"
+SPDX-FileCopyrightText = "2012-2018 The Mozilla Foundation and Telefonica S.A., bBox Type GmbH and Carrois Corporate GbR"
+SPDX-License-Identifier = "OFL-1.1"
+
+[[annotations]]
+path = ["latex/fonts/fira/README.md"]
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Stefan Palan, Jürgen Fleiß"
+SPDX-License-Identifier = "CC-BY-SA-4.0"
+
+# The LaTeX framework: our logo files (the preamble and Lua files have headers).
+[[annotations]]
+path = ["latex/slidemage-logo.pdf", "latex/slidemage-logo.svg", "latex/LICENSE"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Stefan Palan, Jürgen Fleiß"
+SPDX-License-Identifier = "LPPL-1.3c+"
+
+# The SlideMage beamer theme: a modified version of Romain Noël's Gotham theme (LPPL 1.3c), under the same licence.
+[[annotations]]
+path = ["latex/beamerthemeSlideMage.sty"]
+precedence = "override"
+SPDX-FileCopyrightText = ["2023-2026 Romain Noël <romainoel@free.fr>", "2026 Stefan Palan, Jürgen Fleiß"]
+SPDX-License-Identifier = "LPPL-1.3c"
+
+# The hyphenation patterns (v0.13.37): hyph-utf8's files, each under one of its own licences
+# (tools/fetch_hyphenation_patterns.py); every file's copyright and original notice is in NOTICES.txt.
+[[annotations]]
+path = ["latex/hyphenation/hyph-de-1996.*.txt", "latex/hyphenation/hyph-fr.*.txt", "latex/hyphenation/hyph-es.*.txt",
+        "latex/hyphenation/hyph-nl.*.txt", "latex/hyphenation/hyph-lt.*.txt", "latex/hyphenation/hyph-da.*.txt",
+        "latex/hyphenation/hyph-el-monoton.*.txt", "latex/hyphenation/hyph-it.*.txt",
+        "latex/hyphenation/hyph-sl.*.txt", "latex/hyphenation/hyph-uk.*.txt", "latex/hyphenation/hyph-pl.*.txt",
+        "latex/hyphenation/hyph-ga.*.txt", "latex/hyphenation/hyph-hi.*.txt", "latex/hyphenation/hyph-et.*.txt"]
+precedence = "override"
+SPDX-FileCopyrightText = "The hyph-utf8 authors, see latex/hyphenation/NOTICES.txt"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = ["latex/hyphenation/hyph-ca.*.txt", "latex/hyphenation/hyph-hr.*.txt", "latex/hyphenation/hyph-sh-cyrl.*.txt",
+        "latex/hyphenation/hyph-tr.*.txt", "latex/hyphenation/hyph-ru.*.txt", "latex/hyphenation/hyph-sv.*.txt",
+        "latex/hyphenation/hyph-is.*.txt", "latex/hyphenation/hyph-th.*.txt"]
+precedence = "override"
+SPDX-FileCopyrightText = "The hyph-utf8 authors, see latex/hyphenation/NOTICES.txt"
+SPDX-License-Identifier = "LPPL-1.3c+"
+
+[[annotations]]
+path = ["latex/hyphenation/hyph-cs.*.txt", "latex/hyphenation/hyph-sk.*.txt", "latex/hyphenation/hyph-lv.*.txt"]
+precedence = "override"
+SPDX-FileCopyrightText = "The hyph-utf8 authors, see latex/hyphenation/NOTICES.txt"
+SPDX-License-Identifier = "GPL-2.0-or-later"
+
+[[annotations]]
+path = ["latex/hyphenation/hyph-id.*.txt", "latex/hyphenation/hyph-hu.*.txt"]
+precedence = "override"
+SPDX-FileCopyrightText = "The hyph-utf8 authors, see latex/hyphenation/NOTICES.txt"
+SPDX-License-Identifier = "GPL-2.0-only"
+
+[[annotations]]
+path = ["latex/hyphenation/hyph-pt.*.txt"]
+precedence = "override"
+SPDX-FileCopyrightText = "The hyph-utf8 authors, see latex/hyphenation/NOTICES.txt"
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = ["latex/hyphenation/hyph-gl.*.txt"]
+precedence = "override"
+SPDX-FileCopyrightText = "The hyph-utf8 authors, see latex/hyphenation/NOTICES.txt"
+SPDX-License-Identifier = "Unlicense"
+
+[[annotations]]
+path = ["latex/hyphenation/hyph-bg.*.txt"]
+precedence = "override"
+SPDX-FileCopyrightText = "The hyph-utf8 authors, see latex/hyphenation/NOTICES.txt"
+SPDX-License-Identifier = "LicenseRef-hyph-bg"
+
+[[annotations]]
+path = ["latex/hyphenation/hyph-eu.*.txt"]
+precedence = "override"
+SPDX-FileCopyrightText = "The hyph-utf8 authors, see latex/hyphenation/NOTICES.txt"
+SPDX-License-Identifier = "LicenseRef-hyph-eu"
+
+[[annotations]]
+path = ["latex/hyphenation/hyph-fi.*.txt"]
+precedence = "override"
+SPDX-FileCopyrightText = "The hyph-utf8 authors, see latex/hyphenation/NOTICES.txt"
+SPDX-License-Identifier = "LicenseRef-hyph-fi"
+
+[[annotations]]
+path = ["latex/hyphenation/hyph-nb.*.txt"]
+precedence = "override"
+SPDX-FileCopyrightText = "The hyph-utf8 authors, see latex/hyphenation/NOTICES.txt"
+SPDX-License-Identifier = "LicenseRef-hyph-nb"
+
+[[annotations]]
+path = ["latex/hyphenation/NOTICES.txt"]
+precedence = "override"
+SPDX-FileCopyrightText = "The hyph-utf8 authors"
+SPDX-License-Identifier = "MIT AND LPPL-1.3c+ AND GPL-2.0-or-later AND GPL-2.0-only AND BSD-3-Clause AND Unlicense AND LicenseRef-hyph-bg AND LicenseRef-hyph-eu AND LicenseRef-hyph-fi AND LicenseRef-hyph-nb"
+
+# Documentation and the example project.
+[[annotations]]
+path = ["README.md", "docs/**", "example/**"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Stefan Palan, Jürgen Fleiß"
+SPDX-License-Identifier = "CC-BY-SA-4.0"
+
+# The images the stress-test project's calibration deck uses are the example project's own.
+[[annotations]]
+path = ["tests/fixtures/template_stress/media/**"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Stefan Palan, Jürgen Fleiß"
+SPDX-License-Identifier = "CC-BY-SA-4.0"
+
+# The test template's logo is a copy of SlideMage's own logo (latex/slidemage-logo.pdf).
+[[annotations]]
+path = ["tests/fixtures/template_acme/schemes/**"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Stefan Palan, Jürgen Fleiß"
+SPDX-License-Identifier = "LPPL-1.3c+"
+
+# The licence texts themselves and this overview.
+[[annotations]]
+path = ["LICENSE", "THIRD_PARTY_NOTICES.md", "REUSE.toml", "LICENSES/**"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Stefan Palan, Jürgen Fleiß"
+SPDX-License-Identifier = "CC-BY-SA-4.0"
+
+# The test theme package (tests/fixtures/theme_package/, docs/THEME_PACKAGE.md): its manifest, notes and licence
+# text, and a copy of SlideMage's own logo.
+[[annotations]]
+path = ["tests/fixtures/theme_package/**"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Stefan Palan, Jürgen Fleiß"
+SPDX-License-Identifier = "LPPL-1.3c+"

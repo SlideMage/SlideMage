@@ -1,0 +1,463 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""A deck's deck-wide settings: the lines of its preamble the Deck settings sheet
+(ui/dialogs/deck_settings.py) reads and writes -- template, language, footer
+text, course link, output folders, color mode and the appendix TOC.
+
+Everything here is plain text in, text out, so the dialog can apply all its
+changes in one stale-checked write (deck_editor.apply). Only a live line
+(not %-commented) counts, and a setting the deck does not have yet is added
+just before \\begin{document}, after the preamble \\input{} that defines the
+(inert) macros -- the same rule deck_editor.set_deck_tags() follows.
+The color mode is the exception: its line goes before the template input.
+"""
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from . import deck_editor
+from .deck_scan import (
+    DOCUMENT_BEGIN_LINE_RE,
+    OUTPUT_FOLDER_RE,
+    DECKAPPENDIXTOC_RE,
+    OPEN_PDF_RE,
+    parse_open_pdf,
+)
+from .tex_source import braced_argument, is_commented
+
+# \input{SlideMage_template_<template>} -- which template the deck uses.
+TEMPLATE_INPUT_RE = re.compile(r"\\input\{SlideMage_template_([^}\s]+)\}")
+# The deck's color mode when it is not the template's base mode: \newcommand{\SMModeOverride}{dark}, before the
+# template (latex/SlideMage_setup.tex, "Color modes and role colors"). Group 1 is the mode id. The older dark switch
+# \SMDarkMode is gone since v0.16.0; compat_color_cut.py rewrites it to this line.
+MODE_RE = re.compile(
+    r"\\(?:(?:(?:re)?newcommand|providecommand)\*?\s*(?:\{\\SMModeOverride\}|\\SMModeOverride\b)"
+    r"|def\s*\\SMModeOverride\b)\s*\{([A-Za-z0-9_]*)\}")
+# \decklanguage[en] -- a literal code; "\decklanguage[\decklanguageoverride]"
+# (the boilerplate's other branch) is left alone.
+LANGUAGE_RE = re.compile(r"\\decklanguage\s*\[([^\]]*)\]")
+# \newcommand{\FooterText}{...}: the match ends just before the {...}.
+FOOTER_RE = re.compile(r"\\(?:re)?newcommand\s*\{\\FooterText\}\s*(?=\{)")
+
+# \def\SMFooterHide{id,deck}: the footer elements the deck leaves out (framework: \SMFooterHide).
+FOOTER_HIDE_RE = re.compile(r"\\def\s*\\SMFooterHide\s*\{([^{}]*)\}")
+FOOTER_ELEMENTS: tuple[str, ...] = ("text", "id", "deck")
+
+# The footer's word for each deck version (user, 2026-11-23): \def\SMDeckLabelInstructor{speaker deck} in the deck's
+# preamble; without a line the framework's default (latex/SlideMage_base.tex). The version keys do not change.
+DECK_LABELS: dict[str, tuple[str, str]] = {
+    "instructor": ("SMDeckLabelInstructor", "instructor deck"),
+    "during-course": ("SMDeckLabelDuringCourse", "student course deck"),
+    "after-course": ("SMDeckLabelAfterCourse", "student final deck"),
+}
+DECK_LABEL_RE = re.compile(r"\\def\s*\\(SMDeckLabel(?:Instructor|DuringCourse|AfterCourse))\s*\{([^{}]*)\}")
+_VERSION_OF_LABEL = {macro: version for version, (macro, _default) in DECK_LABELS.items()}
+
+# The keys \deckoutputfolder takes: None is the bare form that covers every
+# output, the rest are one version, the presenter PDF or the transcript.
+OUTPUT_KEYS: tuple[str | None, ...] = (
+    None, "instructor", "presenter", "during-course", "after-course", "transcript")
+
+
+@dataclass
+class DeckSettings:
+    template: str = ""
+    language: str = "en"
+    footer_text: str = ""
+    output_folders: dict[str | None, str] = field(default_factory=dict)
+    appendix_toc: bool = False
+    # which PDF the deck table's "Open pdf" opens by default (deck_scan.OPEN_PDF_RE)
+    open_pdf: str = "instructor"
+    # the footer elements left out: any of FOOTER_ELEMENTS (text = the left text, id = the slide id
+    # block, deck = "instructor deck" etc.)
+    footer_hide: tuple[str, ...] = ()
+    # the footer's word for a deck version the deck sets itself ({version: label}; a version not in it: the default)
+    deck_labels: dict[str, str] = field(default_factory=dict)
+    # the template's color mode when it is not the base mode ("" for the base): \SMModeOverride before the template
+    mode: str = ""
+    # themes per view (view_themes): {view: (template key, mode)}; a view without an entry uses the deck's own
+    view_themes: dict[str, tuple[str, str]] = field(default_factory=dict)
+
+
+def set_open_pdf(text: str, choice: str) -> str:
+    """`text` with its "%% SlideMage open PDF: ..." line set to `choice`;
+    none for the default (instructor). Placed just before \\begin{document},
+    like the course link."""
+    end = _preamble_end(text)
+    for match in reversed(list(OPEN_PDF_RE.finditer(text, 0, end))):
+        line_start, line_end = deck_editor.line_span(text, match.start(), match.end())
+        text = text[:line_start] + text[line_end:]
+    if choice in ("", "instructor"):
+        return text
+    end = _preamble_end(text)
+    newline = "\r\n" if "\r\n" in text else "\n"
+    return text[:end] + f"%% SlideMage open PDF: {choice}{newline}" + text[end:]
+
+
+def _preamble_end(text: str) -> int:
+    begin = DOCUMENT_BEGIN_LINE_RE.search(text)
+    return begin.start() if begin else len(text)
+
+
+def _live(text: str, pattern: re.Pattern[str]) -> list[re.Match[str]]:
+    """Matches of `pattern` in the preamble that are not %-commented."""
+    end = _preamble_end(text)
+    return [m for m in pattern.finditer(text, 0, end) if not is_commented(text, m.start())]
+
+
+def _line_bounds(text: str, pos: int) -> tuple[int, int]:
+    """Start of the line holding `pos` and the start of the next line."""
+    start = text.rfind("\n", 0, pos) + 1
+    end = text.find("\n", pos)
+    return start, len(text) if end == -1 else end + 1
+
+
+def _insert_line(text: str, line: str, *, after: re.Match[str] | None = None) -> str:
+    """`line` as a new line after the line of `after`, else just before
+    \\begin{document} (at the end of the file for a fragment)."""
+    newline = deck_editor.eol(text)
+    if after is not None:
+        _, at = _line_bounds(text, after.start())
+        if at == len(text) and not text.endswith("\n"):
+            return text + newline + line + newline
+        return text[:at] + line + newline + text[at:]
+    begin = DOCUMENT_BEGIN_LINE_RE.search(text)
+    at = begin.start() if begin else len(text)
+    return text[:at] + line + newline + text[at:]
+
+
+def _remove(text: str, match: re.Match[str]) -> str:
+    """The directive of `match` taken out: its whole line (with the comment
+    that explains it) when nothing else stands on it, else just the directive."""
+    start, end = _line_bounds(text, match.start())
+    after = text[match.end():end].strip()
+    if not text[start:match.start()].strip() and (not after or after.startswith("%")):
+        return text[:start] + text[end:]
+    return text[:match.start()] + text[match.end():]
+
+
+OUTPUT_EXTENSIONS = (".pdf", ".md", ".html", ".htm")
+
+
+def split_output(raw: str) -> tuple[str, str]:
+    """The (folder, file name without extension) of a stored output path: a path whose last part has an extension names
+    a file, any other is a folder."""
+    path = raw.strip().replace("\\", "/")
+    last = path.rsplit("/", 1)[-1]
+    stem, dot, extension = last.rpartition(".")
+    if not (dot and stem and extension):
+        return path, ""
+    folder = path[:len(path) - len(last)]
+    # A bare file name is relative to the project's root: shown as "." so that editing it does not move it.
+    return (folder if folder == "/" else folder.rstrip("/") or "."), stem
+
+
+def join_output(key: str | None, folder: str, name: str, fallback_folder: str = "") -> str:
+    """The stored path of a folder and a file name. The name may carry the output's extension (.pdf, .md, .html), which
+    is dropped; the stored path ends in .pdf (.md for the transcript), as the paths with a file name always did. A name
+    without a folder goes to `fallback_folder`, else to the project's pdf (transcripts) folder."""
+    folder = folder.strip().replace("\\", "/")
+    name = name.strip()
+    if name.lower().endswith(OUTPUT_EXTENSIONS):
+        name = name.rsplit(".", 1)[0]
+    if not name:
+        return folder
+    if not folder:
+        folder = fallback_folder.strip().replace("\\", "/") or ("transcripts" if key == "transcript" else "pdf")
+    return f"{folder.rstrip('/') if folder != '/' else ''}/{name}" + (".md" if key == "transcript" else ".pdf")
+
+
+def _clean_path(path: str) -> str:
+    path = path.strip().replace("\\", "/")
+    # "#" is fine: \deckoutputfolder discards its argument unexpanded and SlideMage reads the path from the text.
+    if any(ch in path for ch in "{}%"):
+        raise ValueError("A folder or file path may not contain { } or %.")
+    return path
+
+
+def from_form(
+    original: DeckSettings, *, template: str, language: str, footer_text: str,
+    output_folders: dict[str | None, str], appendix_toc: bool, open_pdf: str,
+    footer_hide: tuple[str, ...] = (), mode: str = "",
+    view_themes: dict[str, tuple[str, str]] | None = None,
+    deck_labels: dict[str, str] | None = None,
+) -> DeckSettings:
+    """The settings a form of the sheet holds, checked: an output path may not hold LaTeX specials. A path left as it was in
+    `original` stays byte for byte, whatever its slashes; an empty one is no entry."""
+    folders = {}
+    for key, typed in output_folders.items():
+        typed = typed.strip()
+        path = typed if typed == original.output_folders.get(key, "") else _clean_path(typed)
+        if path:
+            folders[key] = path
+    return DeckSettings(
+        template=template, language=language, footer_text=footer_text,
+        output_folders=folders, appendix_toc=appendix_toc, open_pdf=open_pdf,
+        footer_hide=tuple(e for e in FOOTER_ELEMENTS if e in footer_hide),
+        deck_labels=_clean_labels(original.deck_labels if deck_labels is None else deck_labels),
+        mode=mode,
+        view_themes=dict(original.view_themes if view_themes is None else view_themes))
+
+
+def _clean_labels(labels: dict[str, str]) -> dict[str, str]:
+    """The labels a deck sets: empty ones and the defaults left out (both mean no line); LaTeX specials refused."""
+    cleaned = {}
+    for version, label in labels.items():
+        label = " ".join(label.split())
+        if version not in DECK_LABELS or not label or label == DECK_LABELS[version][1]:
+            continue
+        if any(ch in label for ch in "{}%#\\"):
+            raise ValueError("A deck version's footer word may not contain { } % # or a backslash.")
+        cleaned[version] = label
+    return cleaned
+
+
+_MODES_LINE_RE = re.compile(r"^%+\s*SlideMage modes:\s*(.+?)\s*$", re.MULTILINE | re.IGNORECASE)
+_MODE_ID_RE = re.compile(r"[A-Za-z0-9_]+")
+
+
+def template_modes(root: Path, key: str) -> list[tuple[str, str]]:
+    """[(mode id, label)] a template offers, the first being its base mode: `% SlideMage modes: light, dark=Dark slides, gray`
+    in its first 30 lines (a label after "="; without one the id, capitalised). [] when the template has no modes; the
+    older `% SlideMage dark mode: true` means nothing since v0.16.0. A template declares the same modes to the framework
+    with \\SMDeclareMode (latex/SlideMage_setup.tex)."""
+    from . import slide_templates
+
+    try:
+        text = slide_templates.preamble_file(key, root).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    head = "\n".join(text.splitlines()[:30])
+    found = _MODES_LINE_RE.search(head)
+    if found:
+        modes: list[tuple[str, str]] = []
+        for item in found.group(1).split(","):
+            mode_id, _, label = item.strip().partition("=")
+            mode_id, label = mode_id.strip(), label.strip()
+            if _MODE_ID_RE.fullmatch(mode_id) and all(mode_id != known for known, _ in modes):
+                modes.append((mode_id, label or mode_id.capitalize()))
+        return modes
+    return []
+
+
+def template_supports_dark_mode(root: Path, key: str) -> bool:
+    """Whether the template has a dark mode (see template_modes)."""
+    return any(mode_id == "dark" for mode_id, _ in template_modes(root, key))
+
+
+def mode_to_settings(modes: list[tuple[str, str]], choice: str) -> str:
+    """The `mode` setting that writes the mode `choice` of a template with `modes`: "" for its base mode."""
+    if not choice or (modes and choice == modes[0][0]):
+        return ""
+    return choice
+
+
+def settings_mode(modes: list[tuple[str, str]], mode: str) -> str:
+    """The mode id the setting `mode` stands for ("" when the template has no modes)."""
+    return mode or (modes[0][0] if modes else "")
+
+
+def template_choices(root: Path) -> list[tuple[str, str]]:
+    """[(key, label)] of every template the project's decks can \\input: the
+    SlideMage_template_<name>.tex in the project folder or the framework."""
+    from . import slide_templates
+
+    return [(key, slide_templates.template_label(key, root)) for key in slide_templates.available_templates(root)]
+
+
+# ---- reading -------------------------------------------------------------
+
+def read_settings(text: str) -> DeckSettings:
+    settings = DeckSettings()
+    template = _live(text, TEMPLATE_INPUT_RE)
+    if template:
+        settings.template = template[0].group(1)
+    from . import view_themes
+    settings.view_themes = view_themes.parse(text)
+    for match in _live(text, MODE_RE):
+        if not template or match.end() <= template[0].start():
+            settings.mode = match.group(1)
+            break
+    for match in _live(text, LANGUAGE_RE):
+        code = match.group(1).strip()
+        if code and not code.startswith("\\"):
+            settings.language = code
+            break
+    footer = _live(text, FOOTER_RE)
+    if footer:
+        settings.footer_text = braced_argument(text, footer[0].end())[0]
+    hide = _live(text, FOOTER_HIDE_RE)
+    if hide:
+        listed = {item.strip() for item in hide[-1].group(1).split(",")}
+        settings.footer_hide = tuple(e for e in FOOTER_ELEMENTS if e in listed)
+    for match in _live(text, DECK_LABEL_RE):        # the last line of a macro counts, as in TeX
+        settings.deck_labels[_VERSION_OF_LABEL[match.group(1)]] = match.group(2).strip()
+    begin = DOCUMENT_BEGIN_LINE_RE.search(text)
+    preamble = text[:begin.start()] if begin else text
+    settings.open_pdf = parse_open_pdf(text) or "instructor"
+    for match in _live(text, OUTPUT_FOLDER_RE):
+        key = (match.group(1) or "").strip() or None
+        settings.output_folders[key] = match.group(2).strip()
+    settings.appendix_toc = any(
+        not is_commented(preamble, m.start()) for m in DECKAPPENDIXTOC_RE.finditer(preamble))
+    return settings
+
+
+# ---- writing -------------------------------------------------------------
+
+def set_template(text: str, template: str) -> str:
+    matches = _live(text, TEMPLATE_INPUT_RE)
+    if not matches:
+        raise ValueError("This deck has no \\input{SlideMage_template_...} line to change.")
+    name = template.strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", name):
+        raise ValueError(f"'{template}' is not a template name.")
+    group = matches[0].span(1)
+    return text[:group[0]] + name + text[group[1]:]
+
+
+
+def set_mode(text: str, mode: str) -> str:
+    """Set the color mode (`\\SMModeOverride`) before the template input; "" (the base mode) removes it. Other commands on its
+    line stay."""
+    mode = mode.strip()
+    if mode and not re.fullmatch(r"[A-Za-z0-9_]+", mode):
+        raise ValueError(f"'{mode}' is not a mode name.")
+    templates = _live(text, TEMPLATE_INPUT_RE)
+    if mode and not templates:
+        raise ValueError("This deck has no institution template input for a color mode.")
+    live = _live(text, MODE_RE)
+    if mode and len(live) == 1 and live[0].group(1) == mode and live[0].end() <= templates[0].start():
+        return text
+    for match in reversed(live):
+        text = _remove(text, match)
+    if not mode:
+        return text
+    template = _live(text, TEMPLATE_INPUT_RE)[0]
+    at = template.start()
+    start, _ = _line_bounds(text, at)
+    if not text[start:at].strip():
+        at = start
+    newline = deck_editor.eol(text)
+    return text[:at] + "\\newcommand{\\SMModeOverride}{" + mode + "}" + newline + text[at:]
+
+
+def set_language(text: str, code: str) -> str:
+    code = code.strip().lower()
+    if not re.fullmatch(r"[a-z]{2,3}", code):
+        raise ValueError(f"'{code}' is not a language code such as en or de.")
+    literal = [m for m in _live(text, LANGUAGE_RE)
+               if m.group(1).strip() and not m.group(1).strip().startswith("\\")]
+    if not literal:
+        return _insert_line(text, f"\\decklanguage[{code}]")
+    for match in reversed(literal):
+        span = match.span(1)
+        text = text[:span[0]] + code + text[span[1]:]
+    return text
+
+
+def set_footer_text(text: str, value: str) -> str:
+    footer = _live(text, FOOTER_RE)
+    if footer:
+        start = footer[0].end()
+        after = braced_argument(text, start)[1]
+        if after == start:
+            raise ValueError("The \\FooterText line in this deck has unbalanced braces.")
+        return text[:start] + "{" + value + "}" + text[after:]
+    if not value:
+        return text
+    return _insert_line(text, "\\newcommand{\\FooterText}{" + value + "}")
+
+
+def set_footer_hide(text: str, hidden: tuple[str, ...]) -> str:
+    """Write (or, for nothing hidden, remove) the deck's \\def\\SMFooterHide line."""
+    live = _live(text, FOOTER_HIDE_RE)
+    value = ",".join(e for e in FOOTER_ELEMENTS if e in hidden)
+    if not value:
+        for match in reversed(live):
+            text = _remove(text, match)
+        return text
+    if live:
+        span = live[-1].span(1)
+        return text[:span[0]] + value + text[span[1]:]
+    footer = _live(text, FOOTER_RE)
+    return _insert_line(text, "\\def\\SMFooterHide{" + value + "}", after=footer[-1] if footer else None)
+
+
+def set_deck_label(text: str, version: str, label: str) -> str:
+    """Write (or, for an empty label, remove) the deck's \\def\\SMDeckLabel... line of `version`."""
+    macro = DECK_LABELS[version][0]
+    live = [m for m in _live(text, DECK_LABEL_RE) if m.group(1) == macro]
+    if not label:
+        for match in reversed(live):
+            text = _remove(text, match)
+        return text
+    if live:
+        span = live[-1].span(2)
+        return text[:span[0]] + label + text[span[1]:]
+    anchor = _live(text, DECK_LABEL_RE) or _live(text, FOOTER_HIDE_RE) or _live(text, FOOTER_RE)
+    return _insert_line(text, "\\def\\" + macro + "{" + label + "}", after=anchor[-1] if anchor else None)
+
+
+def set_output_folder(text: str, key: str | None, path: str) -> str:
+    """Set (or, for an empty `path`, remove) the \\deckoutputfolder of `key`."""
+    path = _clean_path(path)
+    same = [m for m in _live(text, OUTPUT_FOLDER_RE)
+            if ((m.group(1) or "").strip() or None) == key]
+    if not path:
+        for match in reversed(same):
+            text = _remove(text, match)
+        return text
+    if same:
+        span = same[-1].span(2)  # the last declaration is the one that counts
+        return text[:span[0]] + path + text[span[1]:]
+    line = "\\deckoutputfolder" + (f"[{key}]" if key else "") + "{" + path + "}"
+    others = _live(text, OUTPUT_FOLDER_RE) or _live(text, TEMPLATE_INPUT_RE)
+    return _insert_line(text, line, after=others[-1] if others else None)
+
+
+def set_appendix_toc(text: str, on: bool) -> str:
+    live = [m for m in _live(text, DECKAPPENDIXTOC_RE)]
+    if on:
+        return text if live else _insert_line(text, "\\deckappendixtoc")
+    for match in reversed(live):
+        text = _remove(text, match)
+    return text
+
+
+def apply_settings(text: str, old: DeckSettings, new: DeckSettings, deck_name: str = "the deck") -> str:
+    """`text` with every setting that differs between `old` and `new` written."""
+    if new.template != old.template:
+        text = set_template(text, new.template)
+    if new.mode != old.mode:
+        text = set_mode(text, new.mode)
+    if new.view_themes != old.view_themes:
+        from . import view_themes
+        text = view_themes.set_entries(text, new.view_themes)
+    if new.language != old.language:
+        text = set_language(text, new.language)
+    if new.footer_text != old.footer_text:
+        text = set_footer_text(text, new.footer_text)
+    for key in OUTPUT_KEYS:
+        before, after = old.output_folders.get(key, ""), new.output_folders.get(key, "")
+        if after != before:
+            text = set_output_folder(text, key, after)
+    if new.appendix_toc != old.appendix_toc:
+        text = set_appendix_toc(text, new.appendix_toc)
+    if new.footer_hide != old.footer_hide:
+        text = set_footer_hide(text, new.footer_hide)
+    for version in DECK_LABELS:
+        if new.deck_labels.get(version, "") != old.deck_labels.get(version, ""):
+            text = set_deck_label(text, version, new.deck_labels.get(version, ""))
+    if new.open_pdf != old.open_pdf:
+        text = set_open_pdf(text, new.open_pdf)
+    return text
+
+
+def save_settings(deck_path: Path, expected_text: str, old: DeckSettings, new: DeckSettings) -> str:
+    """Write the changes in one stale-checked write; returns the new text."""
+    return deck_editor.apply(
+        deck_path, expected_text,
+        lambda text: apply_settings(text, old, new, deck_path.name))

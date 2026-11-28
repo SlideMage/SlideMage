@@ -1,0 +1,29 @@
+%% Included in decks: slidemage-manual, slidemage-manual-copy
+%%
+
+% SlideMage manual, chapter "Frame types": highlightframe, plus the source of
+% the standout frame that follows it (slide 1xf has no room for its own).
+\setSlideVersion{1-0-0}
+\begin{highlightframe}{Presenter attention: \SMCode{highlightframe}}
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.48\linewidth}
+			\small
+			A \SMCode{highlightframe} is a standard frame with its title bar and
+			footer in a signal color, so you cannot click past it without
+			noticing. Use it where you stop presenting and do something with the
+			audience.
+			\par\medskip
+			\shrinklists{1}
+			\begin{itemize}
+				\item A poll, an exercise, a break, a question to the room
+				\item The color is \SMCode{SMHighlightColor}; a deck can set another
+				\item For one statement in large letters: the \SMCode{standout} frame (next slide)
+			\end{itemize}
+		\end{column}
+		\begin{column}{0.48\linewidth}
+			\SMCodeFile{snippets/1mb-1.tex}\par\bigskip
+			\SMLink{1xf}{\textbf{Next slide}}: a \SMCode{standout} frame\par\smallskip
+			\SMCodeFile{snippets/1mb-2.tex}
+		\end{column}
+	\end{columns}
+\end{highlightframe}

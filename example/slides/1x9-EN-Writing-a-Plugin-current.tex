@@ -1,0 +1,18 @@
+%% Included in decks: slidemage-manual
+%%
+
+% SlideMage manual, chapter "Plugins": template and the public plugin API.
+\setSlideVersion{1-0-0}
+\begin{standardframe}{Writing a plugin}
+	\small
+	Start from \href{https://github.com/stpalan/slidemage-plugin-template}{\SMCode{github.com/stpalan/slidemage-plugin-template}}.
+	\par\medskip
+	\shrinklists{1}
+	\begin{itemize}
+		\item \textbf{One folder}: \SMCode{plugin.toml} plus a Python package named after the plugin id (hyphens become underscores). Declare compatibility, summary, \SMCode{needs} and \SMCode{network}
+		\item \textbf{Public API}: \SMCode{slidemage.plugin\_api}, version 1. \SMCode{activate(host)} receives the \SMCode{Host}; registration calls work only inside \SMCode{activate()}
+		\item \textbf{Pure Python}: import only that API, the standard library, PySide6 and your own package
+		\item \textbf{Quick start-up}: no network in \SMCode{activate()}; use \SMCode{run\_in\_background(work, done)}. Callbacks run on the UI thread; a \SMCode{Deck} is a snapshot
+		\item The docstrings in \SMCode{plugin\_api.py} describe registration, settings, caches, editing and widgets
+	\end{itemize}
+\end{standardframe}

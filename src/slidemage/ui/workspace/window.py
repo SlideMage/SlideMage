@@ -1,0 +1,1052 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""The main window of the redesigned UI (docs/UI_REDESIGN_PLAN.md, step 3).
+
+A top bar (topbar.py) over three columns -- slide list, centre, side panels --
+with the compile log underneath. The shared WorkspaceState (state.py) holds
+the current deck, view and language; the top bar and the columns read and
+write it instead of each other.
+
+The left column is the slide
+list (slide_list.py), the centre the Preview / Source / Split / Details views
+of the focused slide (centre.py), or the Images page (pages/images.py), which
+takes the width of all three columns while it is shown. The window's other
+duties are plain functions next to it: compile flows (compile_actions.py), deck
+actions (deck_actions.py) and project maintenance (maintenance.py). Builds belong to
+the compile controller (compile_controller.py); the window shows them (compile_display.py).
+"""
+from __future__ import annotations
+
+from ..kit.tokens import SPACE
+
+import os
+import sys
+from pathlib import Path
+from typing import Callable, Optional
+
+from PySide6.QtCore import QByteArray, QEvent, QSize, QTimer, Qt, Signal
+from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtWidgets import (
+    QApplication,
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QMenu,
+    QMessageBox,
+    QSplitter,
+    QSplitterHandle,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
+)
+
+from ... import background_renders, power_status, preview_build, timing
+from ...stall_monitor import StallMonitor
+from ... import (app_settings, bibliography, deck_headers, deck_outline, latex_edit, latex_help, project,
+                 readability_check, slide_language, slide_templates, themes, updater)
+from ... import version as version_mod
+from ...ai import ai_profile, resolver, routes
+from ...deck_groups import DEFAULT_GROUPS, DeckGroup, load as load_deck_groups
+from ...deck_scan import Deck, scan_decks
+from .. import layout_settings, plugin_ui, polling
+from ..dialogs.add_slide import AddSlideSheet
+from ..dialogs.import_presentation import ImportPresentationSheet
+from ..dialogs.open_project import OpenProjectSheet
+from ..dialogs.settings import DECK_GROUPS, GENERAL, PLUGIN_LIST, PLUGINS, PROJECT, SettingsSheet
+from ..ai_models import LocalModelList
+from ..background import run_in_background
+from ..kit.kit_qss import WARNING_LABEL
+from ..kit.theme import ThemeManager
+from ..kit.widgets import Toast
+from ..pages.images import ImagesPage
+from ..pages.library.page import LibraryPage
+from ..pages.no_decks import NoDecksPage
+from ..text import plural
+from . import compile_actions, side_panels, slide_list, source_file
+from .actions import build_registry
+from .ai_fix import AiFixPanel
+from .ai_route import AiRoute
+from .ai_work import RunningWork
+from .centre import RESUME_TABS_SETTING, CentreColumn
+from .chat.view import ChatView
+from . import maintenance
+from .build_options import BuildOptionsDialog
+from .compile_controller import CompileController
+from .background_previews import BackgroundPreviews
+from .compile_display import CompileDisplay
+from . import debug_log_ui
+from .autosave_switch import AutoSaveSwitch
+from .menus import build_menu_bar
+from .palette import CommandPalette
+from .panels.base import PanelActions
+from .side_panels import SidePanels
+from .slide_list import DeckUndo, SlideList
+from .state import WorkspaceState
+from .topbar import TopBar
+
+# Settings key of the deck that was open when the app was last closed.
+LAST_DECK_KEY = "last_deck"
+THEME_RECOMPILE_MS = 2000       # quiet time after a write of a personal theme's file before the decks that use it render again
+AFTER_WRITE_REFRESH_MS = 3000   # quiet time after an autosave before the slide list and side panels are refreshed
+
+
+class _ColumnHandle(QSplitterHandle):
+    def mouseDoubleClickEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            splitter = self.splitter()
+            splitter.reset_column.emit(splitter.indexOf(self))
+            event.accept()
+        else:
+            super().mouseDoubleClickEvent(event)
+
+
+class _ColumnSplitter(QSplitter):
+    reset_column = Signal(int)
+
+    def createHandle(self) -> QSplitterHandle:
+        return _ColumnHandle(self.orientation(), self)
+
+
+class _CurrentPageStack(QStackedWidget):
+    """Let the shown page, rather than the widest hidden page, size the centre."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.currentChanged.connect(self.updateGeometry)
+
+    def minimumSizeHint(self) -> QSize:
+        page = self.currentWidget()
+        return page.minimumSizeHint() if page is not None else super().minimumSizeHint()
+
+    def sizeHint(self) -> QSize:
+        page = self.currentWidget()
+        return page.sizeHint() if page is not None else super().sizeHint()
+
+
+class WorkspaceWindow(QMainWindow):
+    model_choices_changed = Signal(str)
+    plugin_offer_fetched = Signal(object)   # the catalogue for the first-start sheet, or the Exception
+    plugin_updates_done = Signal(object)   # maintenance.PluginUpdates, or the Exception that ended the check
+    update_check_done = Signal(object)   # the startup update check's result (updater.UpdatePlan or UpdateError)
+    citation_updates_done = Signal(object)  # citation_sources.check_updates's (offers, errors), or the Exception
+    theme_updates_done = Signal(object)  # theme_sources.check_updates's (offers, errors), or the Exception
+    project_access_checked = Signal(object)  # project_access.problems(): (folder, reason) of those that refuse new files
+    deck_groups: tuple[DeckGroup, ...] = DEFAULT_GROUPS   # the project's, read by reload_decks
+
+    def __init__(self, theme: ThemeManager, project_context: project.ProjectContext) -> None:
+        super().__init__()
+        self.theme = theme
+        self.project = project_context
+        self.compile = CompileController(project_context, self)
+        self.readability_known = readability_check.KnownFindings()    # what the readability checks found, per slide text
+        self.setWindowTitle(f"SlideMage — {version_mod.VERSION}")
+        self.setMinimumSize(1024, 640)
+        if updater.can_self_update():
+            updater.remove_leftover_binary(Path(sys.executable))
+            if updater.install_flavour() == updater.FOLDER:
+                kept = updater.remove_leftover_folder(Path(sys.executable).parent)
+                # Installed by SlideMage-Setup.exe: "Installed apps" shows this version, not the one the setup put in.
+                updater.sync_setup_version(Path(sys.executable).parent, version_mod.VERSION_NUMBER)
+                if kept:
+                    QTimer.singleShot(0, lambda: QMessageBox.warning(
+                        self, "Projects found in the old program folder",
+                        "An earlier update moved these projects along with the old program folder:\n\n"
+                        + "\n".join(f"  {path}" for path in kept)
+                        + "\n\nThe folder was kept. Move the projects out of it and open them from there; "
+                        "SlideMage then removes the old folder at a later start."))
+
+        # Open Project... relaunches the process only after the same dirty
+        # editor resolution used by closeEvent. That path has already
+        # recorded the user's Save/Discard choice, so the subsequent close
+        # must not ask a second time.
+        self._dirty_edits_resolved_for_close = False
+        self.decks: list[Deck] = []
+        # One reservation per route, shared by core work and plugins.
+        self._route_tasks: dict[str, tuple[str, object]] = {}
+
+        self.state = WorkspaceState(self.project, self)
+        self.local_models = LocalModelList(self.project, self)     # the installed Ollama models, for the pickers
+        self.commands = build_registry()
+        plugin_ui.HOST_UI.attach(self)
+        plugin_ui.add_commands(self.commands)
+        self.left_column_hidden = layout_settings.get("left_column_hidden", False) is True
+        self.right_column_hidden = layout_settings.get("right_column_hidden", False) is True
+        self.build_options = BuildOptionsDialog(self, self.state)
+
+        central = QWidget()
+        outer = QVBoxLayout(central)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        self.topbar = TopBar(self)
+        self.topbar.set_dark(theme.dark)
+        outer.addWidget(self.topbar)
+        snapshot_banner = self._build_snapshot_banner()
+        if snapshot_banner is not None:
+            outer.addWidget(snapshot_banner)
+
+        # Left: the slide list, right: side panels with the assistant card below them.
+        self.splitter = _ColumnSplitter(Qt.Orientation.Horizontal)
+        self.splitter.setChildrenCollapsible(True)
+        self.toast = Toast(central)
+        self.toast.action_triggered.connect(compile_actions.on_toast_action)
+        self.slide_list = SlideList(self, self.state, theme, self.toast)
+        self.side_panels = SidePanels(self, self.state, PanelActions(
+            slide_text=lambda path: self.centre.slide_text(path), is_dirty=lambda path: self.centre.unsaved(path),
+            edit_slide_text=lambda path, change, **kw: self.centre.edit_slide_text(path, change, **kw),
+            save_source=lambda: self.centre.save(),
+            restore_version=lambda path: self.centre.revise("restore", [path]),
+            freeze_version=lambda path, level: self.centre.revise(level, [path]),
+            edit_deck=self.slide_list.edit, add_slide=self.slide_list.add_slide,
+            translate=lambda language=None: self.assistant.translate_slide(language),
+            add_reference=lambda key: self.centre.source.add_reference(key),
+            # The panels follow the slide file tab on show (D9); SidePanels refreshes before the centre is built.
+            tab_slide=lambda: self.centre.tab_slide() if getattr(self, "centre", None) is not None else None,
+            slide_renamed=lambda old, new: self.centre.retarget_slide(old, new)))
+        self.assistant = self.side_panels.assistant
+        # Centre: the views of the focused slide, or the Images page. Its first scan reads every
+        # slide that includes an image, hashes those images' bytes (~1s) and syncs the store --
+        # deferred to the first time the page is shown (_on_page_changed) rather than paid on every
+        # launch, and deliberately not a launch-time *write* to media/alt-text.json.
+        self.stack = _CurrentPageStack()
+        self.centre = CentreColumn(self, self.state)
+        self.centre.preview.edit_deck = self.slide_list.edit       # the ticks of the Preview's step bar edit the deck
+        self.centre.preview.compile_requested.connect(lambda view: compile_actions.compile_current(self, view))
+        self.centre.duplicate_requested.connect(lambda id_slug: self.slide_list.add_slide("duplicate", id_slug))
+        self.stack.addWidget(self.centre)
+        self.images_page = ImagesPage(self, self.state, self.centre)
+        self.images_page.closed.connect(self._toggle_images)
+        self.stack.addWidget(self.images_page)
+        self.library_page = LibraryPage(self)
+        self.library_page.closed.connect(self._toggle_library)
+        self.stack.addWidget(self.library_page)
+        self.stack.currentChanged.connect(self._on_page_changed)
+        for column in (self.slide_list, self.stack, self.side_panels):
+            self.splitter.addWidget(column)
+        self.splitter.setStretchFactor(1, 1)
+        self.splitter.setCollapsible(1, False)
+        self.splitter.splitterMoved.connect(self._on_splitter_moved)
+        self.splitter.reset_column.connect(self._reset_column_width)
+        self._columns_sized = False
+        self._apply_column_visibility()
+        workspace = QWidget()
+        workspace_layout = QHBoxLayout(workspace)
+        workspace_layout.setContentsMargins(SPACE.xl, SPACE.xl, SPACE.xl, SPACE.xl)
+        workspace_layout.addWidget(self.splitter)
+        self.no_decks = NoDecksPage(self)
+        self.body = QStackedWidget()      # the workspace, or the page for a project without decks
+        self.body.addWidget(workspace)
+        self.body.addWidget(self.no_decks)
+        outer.addWidget(self.body, 1)
+        self.setCentralWidget(central)
+        self.compile_display = CompileDisplay(self, central)
+        self.update_check_done.connect(
+            lambda result: maintenance.on_startup_update_check_done(self, result))
+        self.plugin_offer_fetched.connect(lambda result: maintenance.on_plugin_offer_fetched(self, result))
+        self.plugin_updates_done.connect(lambda result: maintenance.on_plugin_updates_done(self, result))
+        self.theme_updates_done.connect(lambda result: maintenance.on_theme_updates_done(self, result))
+        self.citation_updates_done.connect(lambda result: maintenance.on_citation_updates_done(self, result))
+        self.toast.action_triggered.connect(lambda key: maintenance.on_plugin_toast_action(self, key))
+
+        self.palette = CommandPalette(self)
+        self.commands.bind_shortcuts(self)
+        menu_bar = build_menu_bar(self, self)
+        self.setMenuBar(menu_bar)
+        self.autosave_switch = AutoSaveSwitch(self.set_autosave)
+        self.debug_chip = debug_log_ui.DebugChip(self)
+        self.autosave_switch.add_trailing(self.debug_chip)
+        if menu_bar.isNativeMenuBar():
+            self.topbar.host_autosave(self.autosave_switch)     # macOS: the menu bar is not in the window
+        else:
+            self.autosave_switch.attach_to(menu_bar)
+        # The AI switch is the first row of the assistant card (assistant_header.py), with every other AI control.
+        self.ai_switch = self.assistant.header.ai_switch
+        self.ai_route = AiRoute(self)
+        self.ai_switch.requested.connect(self.ai_route.request)
+        self.ai_switch.setup_requested.connect(self.ai_route.open_setup)
+        self.ai_switch.install_requested.connect(self.open_plugins)
+        self.state.ai_route_changed.connect(self._on_ai_route_changed)
+        self.local_models.changed.connect(lambda: self.model_choices_changed.emit(ai_profile.OLLAMA))
+        self.model_choices_changed.connect(lambda _route: self.refresh_ai_models())
+        self.topbar.command.connect(self._on_command)
+        self.topbar.mode_clicked.connect(lambda: self.stack.setCurrentWidget(self.centre))   # leaves the Images page
+        debug_log_ui.log_state_changes(self.state)
+        # freezes of the window itself, in the debug log (not in a test: a window that outlives its test would
+        # write `stall` lines into the timeline of the next one)
+        self._stall_monitor = None if os.environ.get("SLIDEMAGE_NO_STALL_MONITOR") else StallMonitor(self)
+        self.state.deck_changed.connect(self._remember_deck)
+        self.project_access_problems: list = []     # what maintenance.check_project_access last found
+        self.state.dirty_changed.connect(self._on_dirty_changed)
+        # An autosave changes lint errors, stale previews and versions, but a rebuild per write while
+        # typing is wasted work: the refresh waits for a pause (Ctrl+S and a file switch are writes too).
+        self._after_write = QTimer(self)
+        self._after_write.setSingleShot(True)
+        self._after_write.setInterval(AFTER_WRITE_REFRESH_MS)
+        self._after_write.timeout.connect(self._refresh_after_write)
+        # A personal theme (a template file in the project folder) written in a tab: after a pause the previews of the
+        # decks that use its key are rendered again (maintenance.on_theme_installed), whichever way its tab was opened.
+        self._themes_written: set[str] = set()
+        self._theme_recompile = QTimer(self)
+        self._theme_recompile.setSingleShot(True)
+        self._theme_recompile.setInterval(THEME_RECOMPILE_MS)
+        self._theme_recompile.timeout.connect(self._recompile_written_themes)
+        self.centre.source.written.connect(self._theme_written)
+        self.centre.source.written.connect(lambda _path: (timing.event(self.project.root, "after_write.armed",
+                                                                       ms=AFTER_WRITE_REFRESH_MS),
+                                                          self._after_write.start()))
+        self.centre.source.written.connect(self._live_render)
+        self.centre.source.preview_requested.connect(lambda path: self._live_render(path, typing=True))
+        self.centre.source.saved.connect(lambda _path: self._refresh_after_write())
+        self.centre.preview.rendered_target.connect(self.slide_list.preview_source_changed)
+        self.centre.source.file_closed.connect(self._on_source_closed)
+        self.centre.source_only_changed.connect(self.topbar.set_source_only)
+        self.centre.context_changed.connect(self._on_tab_context)
+        self.state.before_switch = self._leaving_deck       # the centre keeps the deck's work; the list's part is added here
+        self.slide_list.back_requested.connect(self.centre.show_slide_tab)
+        self.slide_list.open_in_requested.connect(self._open_in_deck)
+        self.topbar.leave_source_only.connect(self._leave_source_only)
+        self.centre.source.buffer_changed.connect(lambda _path: self.assistant.header.on_typing())
+        self.centre.source.buffer_changed.connect(self.slide_list.preview_source_changed)
+        self.centre.versions_changed.connect(self.side_panels.refresh)
+        # Another tab on show is another slide for the panels: a pending edit is saved against its own slide first.
+        self.centre.tabs.active_changed.connect(lambda _tab: self.side_panels.follow_tab())
+        self.centre.source.reference_added.connect(self.side_panels.refresh)
+        # Ctrl+S writes the file open in the Source view now and renders it, whichever view has the focus.
+        QShortcut(QKeySequence("Ctrl+S"), self).activated.connect(self.centre.save)
+        # Ctrl+Enter renders the editor's buffer, saved or not, and shows the page (Ctrl+R in the Source view too).
+        for sequence in ("Ctrl+Return", "Ctrl+Enter"):
+            QShortcut(QKeySequence(sequence), self).activated.connect(self.centre.render_buffer)
+        # Ctrl+Shift+F, the old project-wide text search, opens the palette, where that search is now.
+        QShortcut(QKeySequence("Ctrl+Shift+F"), self).activated.connect(self.palette.toggle)
+
+        self.background = BackgroundPreviews(self, central)     # idle-time rendering of every deck's slides
+        polling.set_battery_setting(lambda: bool(app_settings.get(self.project, background_renders.ONLY_MAINS_KEY, True)))
+        # A deck compile's pages reach the store after the compile ended: the thumbnails take them then.
+        self.background.ingested.connect(self.slide_list._refresh_all_preview_rows)
+        self.reload_decks()
+        if layout_settings.get(RESUME_TABS_SETTING, True):
+            self.centre.restore_tabs()  # once, at startup (D7 of centre-tabs.md): reload_decks() alone may run again
+        self._restore_window_geometry()
+
+    def _restore_window_geometry(self) -> None:
+        saved = layout_settings.get("window_geometry")
+        if isinstance(saved, str) and self.restoreGeometry(QByteArray.fromBase64(saved.encode("utf-8"))):
+            if any(self.frameGeometry().intersects(screen.availableGeometry()) for screen in QApplication.screens()):
+                return
+        self.setWindowState(Qt.WindowState.WindowNoState)
+        available = QApplication.primaryScreen().availableGeometry()
+        self.resize(available.size() * 0.9)
+        frame = self.frameGeometry()
+        frame.moveCenter(available.center())
+        self.move(frame.topLeft())
+
+    # -- column widths and visibility ------------------------------------------
+
+    def changeEvent(self, event) -> None:
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.ActivationChange and hasattr(self, 'centre'):
+            target, _row, _title, language = self.centre._preview_context()
+            focus = (target, self.state.view, language or self.state.language) if target and self.isActiveWindow() else None
+            preview_build.set_focus(self.project, focus)
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        if not self._columns_sized:
+            self._columns_sized = True
+            self.set_column_widths(left=slide_list.remembered_width(), right=side_panels.remembered_width(self.project))
+
+    def set_column_widths(self, *, left: Optional[int] = None, right: Optional[int] = None) -> None:
+        """Size either column within its limits, taking the difference from the centre."""
+        sizes = self.splitter.sizes()
+        left = min(max(sizes[0] if left is None else left, slide_list.MIN_WIDTH), slide_list.MAX_WIDTH)
+        right = min(max(sizes[2] if right is None else right, side_panels.MIN_WIDTH), side_panels.MAX_WIDTH)
+        if self.slide_list.isHidden():
+            left = 0
+        if self.side_panels.isHidden():
+            right = 0
+        self.splitter.setSizes([left, max(sum(sizes) - left - right, 1), right])
+
+    def _toggle_column(self, side: str) -> None:
+        self._set_column_hidden(side, not getattr(self, side + "_column_hidden"))
+
+    def _set_column_hidden(self, side: str, hidden: bool) -> None:
+        column, index, settings = (self.slide_list, 0, slide_list) if side == "left" else (
+            self.side_panels, 2, side_panels)
+        width = self.splitter.sizes()[index]
+        if hidden and not column.isHidden() and width > 0:
+            layout_settings.set(settings.WIDTH_SETTING, width)
+        key = side + "_column_hidden"
+        setattr(self, key, hidden)
+        layout_settings.set(key, hidden)
+        self._apply_column_visibility()
+
+    def _apply_column_visibility(self) -> None:
+        # Pages temporarily use both columns' room without changing the user's preferences.
+        is_workspace = self.stack.currentWidget() is self.centre
+        self.slide_list.setVisible(is_workspace and not self.left_column_hidden)
+        self.side_panels.setVisible(is_workspace and not self.right_column_hidden)
+        if self._columns_sized:
+            self.set_column_widths(left=slide_list.remembered_width(), right=side_panels.remembered_width(self.project))
+        self.topbar.refresh_column_toggles()
+
+    def _reset_column_width(self, index: int) -> None:
+        self.set_column_widths(left=slide_list.WIDTH if index == 1 else None,
+                               right=side_panels.WIDTH if index == 2 else None)
+        self._on_splitter_moved(0, index)
+
+    def about_to_change_context(self) -> bool:
+        """Before the deck on show changes under a tab switch (tab-contexts.md R4): everything typed lands in the context
+        it was typed in. The side panels' pending edits are saved, the slide list's inline edit is finished, and the files
+        of the Source view are written. Whether all of it was saved (a file in conflict with the disk is not)."""
+        self.side_panels.flush()
+        self.slide_list.commit_editors()
+        return self.centre.source.flush_all()
+
+    def _leaving_deck(self) -> None:
+        """Another deck is about to replace the deck on show, whichever way it was asked for: what was typed lands in this
+        deck, and its working tab keeps it as it is, the list's scroll, closed sections and Find text included."""
+        self.about_to_change_context()
+        self.centre._keep_work(self.slide_list.work())
+
+    def _on_tab_context(self, tab) -> None:
+        """The tab on show has a deck or none: the left column shows its slide list or a placeholder of the same size."""
+        placeholder = self.centre.list_placeholder(tab)
+        self.slide_list.show_placeholder(*placeholder) if placeholder else self.slide_list.show_placeholder(None)
+
+    def _open_in_deck(self, deck) -> None:
+        """The placeholder's "Open in <deck>": the tab on show gets that deck (CentreColumn.adopt_deck), and the side
+        panels show its slide as that deck calls it."""
+        self.centre.adopt_deck(deck)
+        self.side_panels.refresh()
+
+    def _on_splitter_moved(self, _pos: int, _index: int) -> None:
+        # The Images page hides the columns: not the user's choice.
+        sizes = self.splitter.sizes()
+        collapsed = []
+        for side, index, column, settings in (("left", 0, self.slide_list, slide_list),
+                                              ("right", 2, self.side_panels, side_panels)):
+            if column.isVisible():
+                if sizes[index] == 0:
+                    collapsed.append(side)
+                else:
+                    layout_settings.set(settings.WIDTH_SETTING, sizes[index])
+        for side in collapsed:
+            self._set_column_hidden(side, True)
+
+    # -- commands --------------------------------------------------------------
+
+    def _on_command(self, command_id: str) -> None:
+        self.commands.run(command_id, self)
+
+    # -- decks -----------------------------------------------------------------
+
+    @slide_language.shared_links()
+    def reload_decks(self, closing: frozenset = frozenset()) -> None:
+        """Rescans the decks. The current deck stays (a fresh object for the
+        same file), follows its file when archived, or falls back to the one
+        that was open last time, else the first active deck. The decks named in
+        `closing` (just archived by the user) are not followed: their tabs close."""
+        old_names = {deck.path: deck.name for deck in self.decks}
+        with timing.span("reload_decks.scan"):
+            self.deck_groups = load_deck_groups(self.project)
+            self.decks = scan_decks(self.project)
+        self.centre.decks_rescanned(old_names, self.decks, closing)      # each working tab follows its deck, or closes with it
+        self.topbar.set_decks(self.decks, self.deck_groups)
+        self.body.setCurrentWidget(self.no_decks if not self.decks and self.stack.currentWidget() is not self.library_page
+                                   else self.body.widget(0))
+        if not self.decks:
+            self.no_decks.refresh()
+        timing.caller("reload_decks")
+        current = self.state.deck
+        remembered = app_settings.get(self.project, LAST_DECK_KEY)
+        if current is not None and current.name in closing:
+            current = None
+        by_path = next((d for d in self.decks if current and d.path == current.path), None)
+        by_name = next((d for d in self.decks if current and d.name == current.name), None)
+        last = next((d for d in self.decks if d.name == remembered and d.name not in closing), None)
+        first_active = next((d for d in self.decks if not d.archived), None)
+        switched = self.state.set_deck(by_path or by_name or last or first_active or next(iter(self.decks), None))
+        if not switched:   # a fresh scan of the open deck is no switch (state.set_deck): nothing told the views
+            self.centre.rescanning = True
+            try:
+                with timing.span("reload_decks.slide_list"):
+                    self.slide_list.rebuild()
+            finally:
+                self.centre.rescanning = False
+            with timing.span("reload_decks.centre"):
+                self.centre.refresh()
+            with timing.span("reload_decks.side_panels"):
+                self.side_panels.refresh()
+
+    def _remember_deck(self, deck: Optional[Deck]) -> None:
+        if deck is not None:
+            app_settings.set(self.project, LAST_DECK_KEY, deck.name)
+
+    def _on_refresh_decks_clicked(self) -> None:
+        """⌘K "Refresh decks": a wait cursor for the duration of the rescan,
+        so a scan slow enough to notice (every deck file re-read and
+        re-parsed) has some visible sign it's working rather than looking
+        like the click did nothing. A thin wrapper around reload_decks()
+        itself, so its many *other* callers (after_deck_edit() and friends,
+        already fast/frequent enough that a cursor flash on each one would
+        just be noise) are unaffected."""
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            deck_outline.forget_lint()   # the bibliography or an image may have changed on disk
+            self.reload_decks()
+        finally:
+            QApplication.restoreOverrideCursor()
+
+    # -- the centre column's pages ---------------------------------------------
+
+    def _on_page_changed(self, index: int) -> None:
+        """Full-width pages load on first opening. Images shares its store with the side panels:
+        save pending edits when switching pages so the other view sees them."""
+        is_images = self.stack.widget(index) is self.images_page
+        is_library = self.stack.widget(index) is self.library_page
+        self.topbar.set_images_open(is_images)
+        self.topbar.set_library_open(is_library)
+        self.body.setCurrentWidget(self.body.widget(0) if is_library or self.decks else self.no_decks)
+        self._apply_column_visibility()
+        if is_images:
+            self.side_panels.flush()
+            self.images_page.ensure_loaded()
+        else:
+            try:
+                self.images_page.flush()
+            except Exception as exc:  # noqa: BLE001 -- the edits stay in the page (and in the close prompt)
+                QMessageBox.critical(self, "Save failed", f"Could not save image edits: {exc}")
+            self.side_panels.refresh()
+        if is_library:
+            self.library_page.ensure_loaded()
+
+    def _toggle_images(self) -> None:
+        self.stack.setCurrentWidget(self.centre if self.stack.currentWidget() is self.images_page else self.images_page)
+
+    def show_library(self, *, block: str | None = None) -> None:
+        self.stack.setCurrentWidget(self.library_page)
+        if block is not None:
+            self.library_page.show_block(block)
+
+    def _toggle_library(self) -> None:
+        self.stack.setCurrentWidget(self.centre if self.stack.currentWidget() is self.library_page else self.library_page)
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() == Qt.Key.Key_Escape and self.stack.currentWidget() is self.library_page:
+            self.stack.setCurrentWidget(self.centre)
+            event.accept()
+        else:
+            super().keyPressEvent(event)
+
+    def open_images_for_slide(self, id_slug: str) -> None:
+        """The slide list's "Images" entry: opens the Images page and lands on that slide's images."""
+        self.stack.setCurrentWidget(self.images_page)
+        self.images_page.show_slide(id_slug)
+
+    def _show_chat(self) -> Optional[ChatView]:
+        """The chat, with the right column in view; None (and the reason shown) on Cloud · Claude Code, where the
+        conversation is the terminal."""
+        self.stack.setCurrentWidget(self.centre)   # the Images page hides the right column
+        if self.assistant.surface_for(self.state.ai_route) is not None:
+            self.toast.show_message(resolver.problem(self.project, ai_profile.Route(self.state.ai_route, ai_profile.CHAT))
+                                   or resolver.CHAT_IN_TERMINAL)
+            return None
+        return self.assistant.chat
+
+    def ask_chat(self, text: str) -> None:
+        """Put `text` to the chat as a question about the focused slide (the command palette)."""
+        if (chat := self._show_chat()) is not None:
+            chat.ask(text, "slide")
+
+    def focus_chat(self) -> None:
+        """Open the chat on the focused slide with the cursor in the message box (the Source view's Tools menu)."""
+        if (chat := self._show_chat()) is not None:
+            chat.focus_composer("slide")
+
+    def open_slide_editor(
+        self, path: Path, on_saved: Optional[Callable[[tuple[str, str]], None]] = None, line: Optional[int] = None,
+        *, keep_mode: bool = False, tab: bool = False, occurrence: Optional[tuple] = None,
+    ) -> None:
+        """Show a file in the Source view: a slide, a deck's own source or SlideMage.bib.
+        `on_saved((before, after))` runs after each save; `line` puts the cursor there; `keep_mode` leaves
+        the Preview on show instead of switching to the Source view. `tab` asks for a tab of its own: a file
+        that is no slide always gets one (the deck source, SlideMage.bib and test-slides.tex say so too), a
+        slide's file gets one if asked (search, the slide list's Open in new tab, a frozen version from Details), else
+        it is the slide tab's; `occurrence` is the deck row (SlideRow.key) the slide was opened from."""
+        returning = self.stack.currentWidget() is not self.centre
+        self.stack.setCurrentWidget(self.centre)
+        self.centre.open_file(path, on_saved, line, keep_mode=keep_mode, tab=tab, occurrence=occurrence)
+        if returning:
+            self.centre.refresh()   # open_file skips it when the focus click already did; the views were not on show
+
+    def _on_source_closed(self, path: Path) -> None:
+        """Close-side half of the open-side sort in _on_edit_bib(): the file on disk
+        already holds whatever the user meant to keep, so sorting it now catches
+        any entry added or reordered during the session without a manual
+        sort_bib.py run."""
+        if path == self.project.bibliography_path:
+            bibliography.sort_entries(path)
+
+    def _on_dirty_changed(self, dirty: bool) -> None:
+        if not dirty:
+            self._refresh_after_write()
+
+    def _live_render(self, path: Path, *, typing: bool = False) -> None:
+        # Only typing-pause renders add TeX runs; writes still render on battery (2026-11-10).
+        from ..dialogs.settings import LIVE_RENDER_SETTING_KEY
+        if self.state.mode not in ("preview", "split") or not app_settings.get(self.project, LIVE_RENDER_SETTING_KEY, False):
+            return
+        if typing and app_settings.get(self.project, background_renders.ONLY_MAINS_KEY, True) and power_status.on_battery():
+            return
+        target = self.centre.preview._target
+        if target is not None and target.source_path == path and not self.compiling:
+            self.centre.preview.render_after_save()
+
+    def adopt_deck_revisions(self, edits) -> None:
+        from ...deck_scan import deck_from_text
+
+        for i, deck in enumerate(self.decks):
+            if deck.path in edits:
+                revised = deck_from_text(deck.path, edits[deck.path][1], deck.archived, self.deck_groups)
+                self.decks[i] = revised
+                if self.state.deck and self.state.deck.path == deck.path:
+                    self.state.set_deck(revised)
+        self.topbar.set_decks(self.decks, self.deck_groups)
+
+    def after_version_updates(self, paths) -> None:
+        """Notify once after a batch of version writes, retaining reusable pinned previews.
+
+        Source hashes and independently resolved calls determine freshness; do not
+        delete caches for an entire slide id, which also owns unchanged frozen calls.
+        """
+        paths = tuple(dict.fromkeys(Path(path).resolve() for path in paths))
+        if not paths:
+            return
+        timing.caller("after_version_updates", files=len(paths))
+        self._after_write.stop()
+        with slide_language.shared_links():
+            self.slide_list.rebuild(preserve_focus=True)
+            self.centre.refresh()
+            self.side_panels.refresh()
+        for path in paths:
+            self._live_render(path)
+
+    def _refresh_after_write(self) -> None:
+        timing.caller("after_write.fired")
+        self._after_write.stop()
+        self.slide_list.rebuild()   # a save changes lint errors and stale previews
+        self.side_panels.refresh()  # and the slide's versions
+
+    # -- deck resync after edits -----------------------------------------------
+
+    def resync_deck(self, deck_path: Path) -> Optional[Deck]:
+        """Re-scans every deck (like Refresh decks) and returns this one's
+        fresh Deck snapshot -- called after any edit made through the slide
+        list, so the current deck never goes stale."""
+        self.reload_decks()
+        return next((deck for deck in self.decks if deck.path == deck_path), None)
+
+    @property
+    def compiling(self) -> bool:
+        return self.compile.running
+
+    def log(self, line: str) -> None:
+        """Append to the Log drawer, from any thread."""
+        self.compile.log.emit(line)
+
+    def closeEvent(self, event) -> None:
+        """Resolve unsaved source and image edits before application exit; a compile run is stopped."""
+        if self.compiling and QMessageBox.question(
+                self, "Compile running", "A compile run is in progress. Stop it and quit?"
+        ) != QMessageBox.StandardButton.Yes:
+            event.ignore()
+            return
+        if not self._dirty_edits_resolved_for_close and not self._resolve_dirty_edits():
+            event.ignore()
+            return
+        if not plugin_ui.HOST_UI.close_plugin_windows():
+            event.ignore()
+            return
+        preview_build.set_focus(self.project, None)
+        self.centre.source.stop_ai_checks()   # no worker thread outlives the window
+        self.assistant.shutdown()
+        self.images_page.shutdown()
+        self.library_page.shutdown()
+        self.palette.stop_search(5000)
+        self.compile.shutdown()
+        self.background.stop()
+        self.centre.save_tabs()
+        layout_settings.set("window_geometry", self.saveGeometry().toBase64().data().decode("ascii"))
+        super().closeEvent(event)
+
+    def _resolve_dirty_edits(self) -> bool:
+        """Return False when the user cancels or any requested save fails."""
+        self.centre.source.flush_all()      # saved as you type: only what could not be written is left to ask about
+        dirty_files = self.centre.source.dirty_files()
+        panels = self.side_panels.dirty_panels() + ([self.images_page] if self.images_page.dirty else [])
+        if dirty_files or panels:
+            unsaved = [plural(len(dirty_files), "file that could not be saved")] if dirty_files else []
+            if panels:
+                unsaved.append("edits in the " + " and ".join(p.title for p in panels) + " panel"
+                               + ("s" if len(panels) > 1 else ""))
+            choice = QMessageBox.question(
+                self,
+                "Edits that could not be saved",
+                f"Save changes in {' and '.join(unsaved)} before closing?",
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.No
+                | QMessageBox.StandardButton.Cancel,
+            )
+            if choice == QMessageBox.StandardButton.Cancel:
+                return False
+            if choice == QMessageBox.StandardButton.Yes:
+                self.side_panels.flush()   # speaker notes go into their file's buffer, saved below
+                try:
+                    self.images_page.flush()
+                except Exception as exc:  # noqa: BLE001 -- keep app open on save failure
+                    QMessageBox.critical(self, "Save failed", f"Could not save image edits: {exc}")
+                    return False
+                for file in self.centre.source.dirty_files():
+                    try:
+                        saved = file.write_now(explicit=True)
+                    except Exception as exc:  # noqa: BLE001 -- keep app open on save failure
+                        QMessageBox.critical(
+                            self, "Save failed",
+                            f"Could not save {file.path.name}: {exc}",
+                        )
+                        return False
+                    # write_now() returns False on stale disk content (the conflict
+                    # bar), a read-only buffer, or any other handled save failure.
+                    if not saved or file.dirty:
+                        return False
+        # Ending leaves every slide edited on this visit, the one on show too: the Update version question of
+        # leaving a changed slide, with its setting on (2026-10-26, direct request).
+        self.centre.offer_versions_on_close()
+        return True
+
+    def _on_open_project(self) -> None:
+        """⋮ → "Open project…": the project picker (recent projects, any folder, a new project).
+
+        Restarts the whole application rather than switching in place (see
+        project.relaunch_with_project): the window, its caches and its jobs
+        all hold the ProjectContext they were built with."""
+        if self.compiling:
+            QMessageBox.information(
+                self, "Busy",
+                "Can't switch projects while a compile run is in progress -- "
+                "wait for it to finish first.",
+            )
+            return
+        sheet = OpenProjectSheet(self, current=self.project.root, needs_check=maintenance.project_needs_check)
+        sheet.exec()
+        chosen_path = sheet.chosen
+        if chosen_path is None or chosen_path == self.project.root:
+            return  # cancelled, or already open -- nothing to restart for
+        self.relaunch_with_project(chosen_path)
+
+    def relaunch_with_project(self, root: Path) -> None:
+        """Restart SlideMage on the project at `root` and close this window, unless the user keeps
+        their unsaved edits."""
+        if not self._resolve_dirty_edits() or not plugin_ui.HOST_UI.close_plugin_windows():
+            return      # before the new process starts: after it, a window that refuses would leave two running
+        project.relaunch_with_project(root)
+        self._dirty_edits_resolved_for_close = True
+        self.close()
+
+    def restart_after_update(self) -> bool:
+        """Close this window so that the update helper (updater.spawn_folder_swap), already started, can install the
+        new version and start it; False when the user keeps their unsaved edits (the helper then waits for the
+        next time SlideMage ends and starts nothing)."""
+        if not self._resolve_dirty_edits() or not plugin_ui.HOST_UI.close_plugin_windows():
+            return False
+        project.save_last_project(self.project.root)
+        self._dirty_edits_resolved_for_close = True
+        self.close()
+        return True
+
+    def _on_import_presentation(self) -> None:
+        ImportPresentationSheet(self, self.state.deck).exec()
+
+    def _on_open_settings(self) -> None:
+        self.open_settings()
+
+    def open_deck_groups(self) -> None:
+        """Settings → Project at the project's deck groups (Deck → Tags… links here)."""
+        self.open_settings(PROJECT, focus=DECK_GROUPS)
+
+    def theme_installed(self, key: str) -> None:
+        """A theme package was installed or updated: re-render the previews of the decks that use its key."""
+        maintenance.on_theme_installed(self, key)
+
+    def citation_installed(self, key: str) -> None:
+        """A citation package was installed or updated: re-render the previews."""
+        maintenance.on_citation_installed(self, key)
+
+    def open_extensions(self) -> None:
+        """Help → Extensions…: Settings on its Extensions tab."""
+        self.open_settings(PLUGINS)
+
+    def open_plugins(self) -> None:
+        """Settings on its Extensions tab, at the plugins (a plugin to install, a plugin update)."""
+        self.open_settings(PLUGINS, focus=PLUGIN_LIST)
+
+    def open_settings(self, tab: int = GENERAL, *, focus: str | None = None) -> None:
+        sheet = SettingsSheet(self, tab, focus=focus)
+        sheet.exec()
+        if sheet.loaded:        # the model pickers that are open follow what Settings found
+            self.local_models.fill(sheet.installed)
+        else:
+            self.refresh_ai_models()
+        if sheet.after is not None:
+            sheet.after()
+
+    # -- the AI route ------------------------------------------------------------------------
+
+    def _on_ai_route_changed(self, route: str) -> None:
+        if route == ai_profile.OLLAMA:
+            self.local_models.refresh()      # the pickers fill again when Ollama has answered
+        self.refresh_ai_models()
+
+    def refresh_ai_models(self) -> None:
+        """The route, a default model or a list of models changed: every picker and model label shows the models
+        of the route in use (the conversations follow `state.ai_route_changed` themselves)."""
+        models = self.local_models
+        self.images_page.refresh_model_preferences(models.models, models.vision)
+        self.centre.refresh_model_preferences(models.models)
+        self.assistant.refresh_models()
+        for menu in self.menuBar().findChildren(QMenu):
+            if menu.objectName() == "menu:ai":
+                menu.menuAction().setVisible(bool(routes.all()))
+
+    def running_ai_work(self) -> list[RunningWork]:
+        """Every AI request that is under way, each with the route it captured (the AI switch's busy popover; the
+        sources are listed in ai_work.py)."""
+        work = [*self.assistant.chat.running_work(), *self.assistant.tasks.running_work(),
+                *self.images_page.running_work(),
+                *(w for panel in self.centre.findChildren(AiFixPanel) for w in panel.running_work())]
+        if (entry := self._route_tasks.get(ai_profile.OLLAMA)) is not None and not any(w.local for w in work):
+            work.append(RunningWork(entry[0].capitalize(), "Local · Ollama", True, None))
+        return work
+
+    def set_dark_mode(self, checked: bool) -> None:
+        """Called from the Settings sheet's Dark mode checkbox; theme.set_dark() also
+        persists the choice (QSettings, per-machine -- see ui/kit/theme.py)."""
+        self.theme.set_dark(checked)
+        self.topbar.set_dark(checked)
+        self.assistant.refresh_colors()
+        # QSS covers every ordinary widget automatically, but a
+        # QSyntaxHighlighter's own tag colors live on the text document,
+        # outside the stylesheet mechanism entirely -- each open editor's
+        # highlighter needs an explicit nudge to pick up the new palette and re-run.
+        self.centre.refresh_colors()
+
+    def set_autosave(self, on: bool) -> None:
+        """The AutoSave switch after the menu bar's Help, Settings -> General, File and Ctrl+K: this user's choice
+        (layout_settings). Switched on, edits waiting in open files are saved shortly; off, they stay until Ctrl+S."""
+        layout_settings.set(source_file.AUTOSAVE_KEY, bool(on))
+        self.centre.source.autosave_changed()
+        self.autosave_switch.refresh()
+        self.log(f"AutoSave {'on' if on else 'off: Ctrl+S saves'}")
+
+    def set_tab_width_chars(self, chars: int) -> None:
+        """Called from the Settings sheet's tab-width spinbox, like set_dark_mode() above: persist
+        the choice (app_settings.py), then nudge every already-open slide/deck-source editor to pick
+        it up immediately rather than only on next open."""
+        app_settings.set(self.project, latex_edit.TAB_WIDTH_SETTING_KEY, chars)
+        self.centre.set_tab_width(chars)
+
+    def set_hover_help(self, on: bool) -> None:
+        """Settings -> General's "Show help for LaTeX commands on hover" (latex_help.py): persist it and switch
+        every open source editor at once. Shift+F1 shows the help either way."""
+        app_settings.set(self.project, latex_help.HOVER_HELP_SETTING_KEY, bool(on))
+        self.centre.set_hover_help(bool(on))
+
+    def set_spelling_variant(self, language: str, variant: str) -> None:
+        """Settings -> General's "English spelling" and "German spelling" (spelling/settings.py, per user): every
+        open slide checks again against that dictionary."""
+        from ...spelling import settings as spelling_settings
+        spelling_settings.set_variant(language, variant)
+        self.centre.source.recheck_spelling()
+
+    def spelling_session(self):
+        """The window's SpellingSession (the Source view's): one set of dictionaries, word lists and ignored words
+        for the editor, the deck's spelling list and the Images page."""
+        return self.centre.source.spelling_session()
+
+    def after_deck_edit(
+        self, deck_path: Path, summary: str, previous_text: DeckUndo | str | None = None
+    ) -> None:
+        """Shared post-edit sequence for every deck edit through the slide list
+        or a dialog -- header-sync in the background, rescan (which redraws the
+        list), then log a summary line and tell the list, which keeps
+        the committed edit for Undo."""
+        with timing.span("after_deck_edit", summary=summary):
+            run_in_background(self._regenerate_headers_bg, self._headers_regenerated, parent=self)
+            with timing.span("after_deck_edit.resync"):
+                self.resync_deck(deck_path)
+            with timing.span("after_deck_edit.slide_list"):
+                self.slide_list.deck_edited(deck_path, summary, previous_text if isinstance(previous_text, DeckUndo) else None)
+            self.log(summary)
+
+    def refresh_ai_review(self) -> None:
+        self.slide_list.rebuild(preserve_focus=True)
+        if self.state.mode == "details":
+            self.centre.refresh()
+
+    def refresh_open_deck_editors(self) -> None:
+        """Re-scans the decks and redraws the slide list from current disk state
+        (2026-08-25) -- for an edit that can touch more than one deck at once and
+        has no single deck_path to hand after_deck_edit()
+        (slide_rename.set_slide_language() rewrites every deck reference
+        to a renamed slide, across however many decks reference it).
+        Without this, the list kept showing a slide under its old id-slug
+        after a rename. Doesn't re-run deck_headers.regenerate_headers(self.project) itself
+        -- a caller that needs that has already run it (set_slide_language()
+        always does, as its own last step)."""
+        self.reload_decks()
+
+    def acquire_route_task(self, route_id: str, label: str):
+        """Reserve a route using the same lease as the plugin host."""
+        from ...plugins.host import acquire_route_task
+        return acquire_route_task(self, route_id, label)
+
+    def try_start_route_task(self, route_id: str, label: str, owner: object | None) -> bool:
+        """Reserve a route for a job; another owner cannot release this reservation."""
+        if route_id in self._route_tasks:
+            previous, _ = self._route_tasks[route_id]
+            from ...ai import routes
+            found = routes.get(route_id)
+            service = found.service if found else route_id
+            QMessageBox.warning(self, f"{service} busy",
+                                f"{previous.capitalize()} is already running. Wait for it to finish, "
+                                f"or stop it, before starting {label}.")
+            return False
+        self._route_tasks[route_id] = (label, owner)
+        return True
+
+    def end_route_task(self, route_id: str, owner: object | None) -> None:
+        current = self._route_tasks.get(route_id)
+        if current is not None and current[1] is owner:
+            del self._route_tasks[route_id]
+
+    def _regenerate_headers_bg(self):
+        """The header sync (a worker's job): (slide files changed, decks), told by `_headers_regenerated`."""
+        with timing.span("header_sync"):
+            return deck_headers.regenerate_headers(self.project)
+
+    def _headers_regenerated(self, result, error) -> None:
+        if error is not None:
+            self.log(f"Header sync failed: {error}")
+        elif result is not None:
+            changed, n_decks = result
+            self.log(f"==== Header sync: {changed} slide file(s) updated across {n_decks} deck(s) ====")
+
+    def _leave_source_only(self, mode: str) -> None:
+        """A click on Preview, Split or Details in a tab that has the Source view alone: back to the slide tab, in
+        the view that was clicked (the tab keeps the mode it was last shown in until then)."""
+        self.centre.show_slide_tab()
+        self.state.set_mode(mode)
+
+    def open_deck_source_editor(self, deck: Deck) -> None:
+        """Deck → "Source" ("Edit deck source" until v9.2.0) -- opens the deck's raw .tex file in the same
+        editor used for a slide's own source. A save is routed through the same
+        after_deck_edit() pipeline every list action already uses, so a hand-edit
+        gets header-sync, the slide list redrawn, and an Undo entry exactly like
+        any other deck edit."""
+        summary = f"Edited {deck.name}'s source directly"
+        self.open_slide_editor(deck.path, on_saved=lambda pair: self.after_deck_edit(
+            deck.path, summary, DeckUndo("Undo", {deck.path: pair})), tab=True)
+
+    def open_theme_editor(self, path: Path) -> None:
+        """Settings → Extensions → a personal theme's Edit: its .tex in a tab of the centre column, like a deck's
+        source (the source view alone). Saving it renders what uses it again (_theme_written)."""
+        self.open_slide_editor(path, tab=True)
+
+    def copy_theme_to_project(self, key: str) -> None:
+        """An installed theme's "Copy to my project and edit": its files go into the project folder (what is there
+        stays) and the copy's template opens in a tab. The copy wins over the installed theme of the key."""
+        try:
+            path = themes.copy_to_project(key, self.project.root)
+        except themes.ThemeError as exc:
+            QMessageBox.warning(self, "Copy theme to the project", str(exc))
+            return
+        self.log(f"Copied the theme {key} into the project: {path.name}")
+        self.open_theme_editor(path)
+        self.reload_decks()     # the project's template list has a file more
+
+    def new_theme(self, key: str, name: str, start: str = "slidemage") -> None:
+        """Settings → Themes → "New theme…": a shipped template copied into the project under `key` with `name`, then
+        opened with the theme form beside it."""
+        try:
+            path = themes.new_theme(key, name, self.project.root, start)
+        except themes.ThemeError as exc:
+            QMessageBox.warning(self, "New theme", str(exc))
+            return
+        self.log(f"Made the theme {key} from the {start} template: {path.name}")
+        self.open_theme_editor(path)
+        self.reload_decks()     # the project's template list has a file more
+
+    def _theme_written(self, path: Path) -> None:
+        """A file was written in the Source view: if it is a template of the project folder, its decks render again
+        after a pause."""
+        name = path.name
+        if (path.parent == self.project.root and name.startswith(slide_templates.TEMPLATE_PREFIX)
+                and name.endswith(".tex")):
+            self._themes_written.add(name[len(slide_templates.TEMPLATE_PREFIX):-len(".tex")])
+            self._theme_recompile.start()
+
+    def _recompile_written_themes(self) -> None:
+        keys, self._themes_written = sorted(self._themes_written), set()
+        for key in keys:
+            self.theme_installed(key)
+
+    def _on_edit_bib(self) -> None:
+        """"⋮ -> "Edit .bib" (a plain toolbar button until
+        2026-08-25) -- opens SlideMage.bib in the same editor used
+        for a slide's/deck's own .tex source. That editor
+        already degrades gracefully for a non-slide path, so no separate
+        editor was needed just for this.
+
+        Sorted on disk *before* opening (2026-08-18, direct instruction:
+        keep SlideMage.bib sorted automatically on open/close of this tab
+        rather than needing a manual sort_bib.py run) -- only when actually
+        creating a new tab, not when this just re-focuses an already-open
+        one, so a mid-edit buffer is never silently reloaded out from under
+        the user. The matching close-side sort lives in
+        _on_source_closed()."""
+        if self.centre.source.file_for(self.project.bibliography_path) is None:
+            bibliography.sort_entries(self.project.bibliography_path)
+        self.open_slide_editor(self.project.bibliography_path, tab=True)
+
+    def _on_edit_test_slides(self) -> None:
+        """"Tabs -> Edit test-slides.tex" -- opens decks/test-slides.tex in
+        source mode, like "Edit .bib" does for SlideMage.bib."""
+        path = self.project.test_slides_path
+        if not path.is_file():
+            QMessageBox.warning(self, "Edit test-slides.tex", f"{path} does not exist.")
+            return
+        self.open_slide_editor(path, tab=True)
+
+    def open_add_slide_dialog(self, deck: Deck, insert_at: int, indent: str, **start) -> None:
+        """The Add slide sheet for a place in `deck`; `start`: where, source, slide, target
+        (AddSlideSheet)."""
+        AddSlideSheet(self, deck, insert_at, indent, is_dirty=self.centre.is_dirty, **start).exec()
+
+    def _build_snapshot_banner(self) -> Optional[QLabel]:
+        """A line above the tabs when the open project is a deck snapshot:
+        what it is, and that SlideMage leaves it as it was (no compatibility
+        migrations, no framework updates; compiles use the snapshot's own
+        framework, PDF dates)."""
+        info = project.snapshot_info(self.project.root)
+        if info is None:
+            return None
+        manifest = project.snapshot_manifest(self.project.root)
+        made_with = manifest.get("slidemage", {}).get("version", "?")
+        when = str(info.get("created", ""))[:16].replace("T", " ")
+        label = QLabel(
+            f"Deck snapshot of {info.get('deck_name', '?')}, taken {when} with SlideMage "
+            f"{made_with}. SlideMage doesn't update it, and compiles reproduce it as it "
+            "was -- but anything you edit here changes the snapshot.")
+        label.setObjectName(WARNING_LABEL)
+        label.setWordWrap(True)
+        return label
+

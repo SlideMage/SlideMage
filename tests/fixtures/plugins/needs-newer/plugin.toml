@@ -1,0 +1,11 @@
+id = "needs-newer"
+name = "needs-newer fixture"
+version = "0.1.0"
+api_version = 1
+requires_slidemage = ">=99"
+summary = "Fixture plugin needs-newer."
+author = "Test"
+homepage = "https://example.org/needs-newer"
+license = "GPL-3.0-or-later"
+needs = []
+network = []

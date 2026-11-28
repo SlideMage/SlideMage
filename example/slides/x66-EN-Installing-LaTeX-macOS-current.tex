@@ -1,0 +1,34 @@
+%% Included in decks: (none)
+%%
+
+\begin{standardframe}{Installing LaTeX in macOS}
+	\small
+	SlideMage compiles every deck with LuaLaTeX through latexmk, so it needs a
+	TeX distribution. On macOS that is MacTeX, TeX Live for the Mac.
+	\par\medskip
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.56\linewidth}
+			\shrinklists{1}
+			\textbf{MacTeX} (\SMCode{tug.org/mactex})
+			\begin{itemize}
+				\item Download \SMCode{MacTeX.pkg} (about 6\,GB) and run it with the default options
+				\item Needs an administrator password; installs into \SMCode{/Library/TeX}
+				\item Includes latexmk and Perl, nothing else to install
+				\item Updates later: TeX Live Utility, or \SMCode{sudo tlmgr update --self --all}
+			\end{itemize}
+		\end{column}
+		\begin{column}{0.4\linewidth}
+			\shrinklists{1}
+			\textbf{Homebrew} (\SMCode{brew.sh})
+			\begin{itemize}
+				\item \SMCode{brew install --cask mactex-no-gui}
+				\item Same TeX Live, no GUI apps
+			\end{itemize}
+			\medskip
+			\textbf{Either way}
+			\begin{itemize}
+				\item In a new terminal: \SMCode{lualatex --version}, \SMCode{latexmk -v}
+			\end{itemize}
+		\end{column}
+	\end{columns}
+\end{standardframe}

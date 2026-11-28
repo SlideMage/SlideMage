@@ -1,0 +1,231 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Keyboard and live-region support of the assistant (workspace v6, step 7): the Tab order of its header, the task
+card's initial focus, focus kept on a phase's buttons and given back when the card closes, the announcements of its
+phases and of an image batch's end, and the accessible names of the icons. The tasks use a scripted fake route on a throwaway project."""
+from __future__ import annotations
+
+import pytest
+from PySide6.QtCore import Qt
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication
+from assistant_accessibility_helpers import buttons, click, env as assistant_env, fake, pump, wait_until  # noqa: F401
+from slidemage.batch_result import BatchResult, DRAFT, ItemOutcome
+from slidemage.ai.ai_profile import Route
+
+from slidemage.ai import ai_profile
+from slidemage.ai.agent_types import EDIT_ASK
+from slidemage.batch_result import CANCELLED, DONE, FAILED
+from slidemage.ui.pages import image_results
+from slidemage.ui.pages.image_results import BatchResultView
+from slidemage.ui.workspace import task_card as task_card_module
+from slidemage.ui.workspace import task_card_model as model
+
+def result_of(**kinds):
+    return BatchResult(DRAFT, Route("fake_local", ai_profile.IMAGE_DESCRIPTION, "fake-1"),
+                       tuple((f"media/{name}.png", ItemOutcome(outcome)) for name, outcome in kinds.items()))
+
+
+
+@pytest.fixture(name="env")
+def _env(assistant_env):  # noqa: F811
+    return assistant_env
+
+
+def area(env):
+    return env.window.assistant
+
+
+def card(env):
+    return area(env).tasks.card
+
+
+def activate(env):
+    env.window.activateWindow()
+    pump(0.1)                                   # the window is active a moment later
+
+
+def focus_on(env, widget):
+    activate(env)
+    widget.setFocus(Qt.FocusReason.TabFocusReason)
+    assert QApplication.focusWidget() is widget
+    return widget
+
+
+def tab(times: int = 1) -> list:
+    reached = []
+    for _ in range(times):
+        QTest.keyClick(QApplication.focusWidget(), Qt.Key.Key_Tab)
+        reached.append(QApplication.focusWidget())
+    return reached
+
+
+def action_buttons(env):
+    layout = area(env).task_card._buttons
+    return [layout.itemAt(i).widget() for i in range(layout.count())]
+
+
+@pytest.fixture
+def asked(fake):  # noqa: F811
+    fake.env.window.assistant.chat.session.set_mode(EDIT_ASK)
+    return fake
+
+
+# -- the header -----------------------------------------------------------------------------------------------------
+
+def test_the_headers_tab_order_is_focus_new_conversation_scope_tasks_all_actions_then_the_pill(fake):  # noqa: F811
+    env = fake.env
+    head = area(env).header
+    wait_until(lambda: len(buttons(env)) >= 2)
+    head.refresh_content()
+    fake.reply({"answer": {"title": "T"}, "delay": 60})
+    task_buttons = [w for w in (head._actions.itemAt(i).widget() for i in range(head._actions.count()))
+                    if w is not head.all_actions]
+    assert task_buttons                                                      # two contextual tasks on this slide
+    scope = list(head.scope._buttons.values())
+    first = focus_on(env, head.focus_button)
+    expected = [head.new_button, scope[0], *task_buttons, head.all_actions]
+    assert tab(len(expected)) == expected
+    assert first is head.focus_button
+    click(env, "Better title")                                               # its card, then Back: the pill
+    area(env).task_card.back.click()
+    wait_until(lambda: head.pill.isVisibleTo(head))
+    assert head.pill.open_button.focusPolicy() == Qt.FocusPolicy.TabFocus
+    assert head.pill.open_button.accessibleName() == f"Open: {head.pill.label.full_text()}"
+    focus_on(env, head.all_actions)
+    assert tab() == [head.pill.open_button]                                  # the pill comes after All actions…
+    head.pill.open_button.click()                                            # the keyboard's Open
+    assert area(env)._stack.currentWidget() is area(env).task_card
+    area(env).task_card.back.click()
+    area(env).tasks.stop()
+    wait_until(lambda: card(env).phase == model.STOPPED)
+
+
+# -- the task card --------------------------------------------------------------------------------------------------
+
+def test_a_task_card_that_opens_takes_the_focus_on_its_first_action_and_keeps_it_across_phases(asked):
+    env = asked.env
+    activate(env)
+    asked.reply({"answer": {"title": "A new title"}, "delay": 0.2})
+    click(env, "Better title")
+    view = area(env).task_card
+    wait_until(lambda: card(env).phase == model.REVIEW)
+    assert [b.text() for b in action_buttons(env)][:1] == ["Apply"]
+    assert QApplication.focusWidget() is action_buttons(env)[0]              # the primary action of the phase
+    assert view.route_icon.accessibleName() == "Cloud"                       # the icons say in words what they show
+    assert view.steps_toggle.accessibleName() == "Steps · 1 of 4 done" and view.steps_toggle.accessibleDescription() == "Collapsed"
+    view.steps_toggle.click()
+    assert view.steps_toggle.accessibleDescription() == "Expanded"
+    rows = view._steps
+    assert [rows.itemAt(i).layout().itemAt(0).widget().accessibleName() for i in range(rows.count())] == [
+        "done", "in progress", "not started", "not started"]
+    action_buttons(env)[0].setFocus()
+    QTest.keyClick(QApplication.focusWidget(), Qt.Key.Key_Return)            # Apply, with the keyboard
+    wait_until(lambda: card(env).phase == model.DONE)
+    focused = QApplication.focusWidget()
+    assert focused is action_buttons(env)[0] and view.isAncestorOf(focused)  # kept on the new phase's first button
+    assert view.steps_toggle.focusPolicy() == Qt.FocusPolicy.TabFocus and view.back.focusPolicy() == Qt.FocusPolicy.TabFocus
+
+
+def test_closing_the_card_gives_the_keyboard_back_to_the_conversation(fake):  # noqa: F811
+    env = fake.env
+    activate(env)
+    fake.reply({"answer": {"title": "T"}, "delay": 60})
+    click(env, "Better title")
+    assert QApplication.focusWidget() is action_buttons(env)[0]                  # Stop
+    area(env).task_card.back.click()                                             # Back to conversation: the route surface
+    assert not area(env).task_card.isAncestorOf(QApplication.focusWidget())
+    area(env).tasks.show_card()
+    area(env).tasks.stop()
+    wait_until(lambda: card(env).phase == model.STOPPED)
+    focus_on(env, action_buttons(env)[-1])                                       # Close
+    action_buttons(env)[-1].click()
+    assert card(env) is None and area(env)._stack.currentWidget() is area(env).surface_for("fake_cloud")
+    ai_profile.mark_cloud_seen(env.window.project)                               # on the chat route it is the message box
+    env.window.state.set_ai_route(ai_profile.LOCAL)
+    pump(0.05)
+    env.routes.local.problem_text = "Fake route unavailable"
+    click(env, "Better title")                                                   # Setup needed
+    assert card(env).phase == model.SETUP and area(env)._stack.currentWidget() is area(env).task_card
+    close = focus_on(env, action_buttons(env)[-1])
+    assert close.text() == "Close"
+    close.click()
+    assert area(env)._stack.currentWidget() is area(env).chat
+    assert QApplication.focusWidget() is area(env).chat.composer
+
+
+def test_the_state_line_is_announced_when_the_phase_changes_not_on_every_tick(asked, monkeypatch):
+    env = asked.env
+    told = []
+    monkeypatch.setattr(task_card_module, "announce", lambda widget, text: told.append((widget, text)))
+    asked.reply({"answer": {"title": "A new title"}, "delay": 1})
+    click(env, "Better title")
+    view = area(env).task_card
+    generating = model.state_text(card(env))
+    assert told == [(view.state, generating)]
+    card(env).t0 -= 3
+    area(env).tasks._tick()
+    area(env).tasks._tick()
+    assert len(told) == 1                                                        # the seconds are not announced
+    wait_until(lambda: card(env).phase == model.REVIEW)
+    assert told[-1] == (view.state, model.state_text(card(env))) and len(told) == 2
+    action_buttons(env)[1].click()                                               # Reject
+    assert card(env) is None
+
+
+def test_every_icon_of_a_step_has_a_word():
+    for icon in {step.icon for phase in (model.GENERATE, model.REVIEW, model.CONFLICT, model.PREVIEW_FAILED, model.STOPPED,
+                                          model.SETUP, model.DONE)
+                 for step in model.steps(SimpleCard(phase))}:
+        assert icon in model.STEP_WORDS
+
+
+class SimpleCard:
+    """The few things `model.steps` reads of a card."""
+
+    def __init__(self, phase):
+        self.phase, self.skipped, self.auto, self.preview_skipped = phase, (), False, False
+
+
+# -- the image results ----------------------------------------------------------------------------------------------
+
+def test_the_results_panel_announces_its_end_and_closing_it_does_not_lose_the_keyboard(qapp, monkeypatch, fake_routes):
+    from PySide6.QtWidgets import QVBoxLayout, QWidget
+
+    told = []
+    monkeypatch.setattr(image_results, "announce", lambda widget, text: told.append((widget, text)))
+    host = QWidget()
+    layout = QVBoxLayout(host)
+    panel = BatchResultView()
+    after = QWidget()
+    after.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+    layout.addWidget(panel)
+    layout.addWidget(after)
+    host.show()
+    panel.closed.connect(panel.clear)
+    result = result_of(a=DONE, b=FAILED, c=CANCELLED)
+    panel.show_result(result)
+    assert told == [(panel.title, f"{result.title}. {result.summary}")] and panel.route_icon.accessibleName() == "Local"
+    host.activateWindow()
+    qapp.processEvents()
+    assert [panel.retry.focusPolicy(), panel.close_button.focusPolicy()] == [Qt.FocusPolicy.TabFocus] * 2
+    panel.close_button.setFocus(Qt.FocusReason.TabFocusReason)
+    QTest.keyClick(panel.close_button, Qt.Key.Key_Return)                        # Close with the keyboard
+    assert not panel.isVisible()
+    assert QApplication.focusWidget() is after
+    host.deleteLater()
+
+
+def test_the_assistants_results_panel_hands_the_keyboard_back_to_the_conversation(fake):  # noqa: F811
+    env = fake.env
+    ai_profile.mark_cloud_seen(env.window.project)
+    env.window.state.set_ai_route(ai_profile.LOCAL)
+    pump(0.05)
+    tasks = area(env).tasks
+    tasks.result = result_of(a=DONE, b=FAILED)
+    tasks.result_changed.emit()
+    assert area(env)._stack.currentWidget() is area(env)._results_page
+    focus_on(env, area(env).image_results.close_button)
+    QTest.keyClick(area(env).image_results.close_button, Qt.Key.Key_Space)
+    assert area(env)._stack.currentWidget() is area(env).chat and tasks.result is None
+    assert QApplication.focusWidget() is area(env).chat.composer

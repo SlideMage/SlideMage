@@ -1,0 +1,29 @@
+%% Included in decks: slidemage-manual, slidemage-manual-copy
+%%
+
+% SlideMage manual, chapter "Slides": versions, with SlideMage's save dialog
+% (media/screenshot-slidemage-save-dialog.png, tools/manual/make_screenshots.py).
+\setSlideVersion{1-0-0}
+\begin{standardframe}{Slide versions}
+	\small
+	A slide used in several courses changes over the years, but last year's deck
+	should still compile as it was. So SlideMage keeps old versions: the file
+	\SMCode{...-current.tex} is the live slide, and every \SMCode{...-v1-2-0.tex}
+	beside it is a frozen copy that is never edited again. Each \emph{Save} in the
+	slide editor asks how big the change is:
+	\par\medskip
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.5\linewidth}
+			{\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=\dimexpr\linewidth-0.8pt\relax]{media/screenshot-slidemage-save-dialog.png}}}
+		\end{column}
+		\begin{column}{0.46\linewidth}
+			\shrinklists{1}
+			\begin{itemize}
+				\item \emph{Major}, \emph{Minor}, \emph{Patch}: the old content is frozen first, then the new one gets the higher number
+				\item \emph{Overwrite}: just save, for a typo
+				\item A change to reveal steps only is a patch
+				\item A deck can keep using an old version with \SMCmd{slideversion} (see \emph{Six ways to put a slide into a deck})
+			\end{itemize}
+		\end{column}
+	\end{columns}
+\end{standardframe}

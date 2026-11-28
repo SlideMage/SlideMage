@@ -1,0 +1,9 @@
+%% Calibration deck: the section frame with a side figure and a footnote in the side strip.
+%% layout-check: skip right, bottom -- the side figure is flush with the page edge and the footer by design (direct instruction)
+\setSlideVersion{1-0-0}
+\begin{sectionframe}{A section frame with a title long enough to wrap onto a second line}
+	\begin{minipage}[t]{0.7\linewidth}\small
+		Text under the bar, and a footnote\footnote{A side footnote of the section frame.} that goes to the strip beside the figure.
+	\end{minipage}
+	\sectionfigure{media/illustration-slide-stack-portrait.pdf}
+\end{sectionframe}

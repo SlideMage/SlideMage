@@ -1,0 +1,743 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""The flows around a build: what the Compile menu, Export PPTX, preview renders and deck snapshots
+ask and check before a run, and the work each hands to the compile controller (compile_controller.py).
+
+Plain functions of the window (window.py), which provides `project`, `state`, `decks`, `compile` (the
+controller), `build_options` and `log()`.
+"""
+from __future__ import annotations
+
+import threading
+from datetime import datetime
+from pathlib import Path
+from typing import Callable, Optional
+
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication, QFileDialog, QInputDialog, QMessageBox
+
+from ... import app_settings, compile_log, compile_progress, compiler, deck_snapshot, latex_export, latex_lint, open_path, partial_compile
+from ... import background_renders, batch_render, slide_language, slide_versioning, timing
+from ...compile_status import job_title
+from ...compiler import PDF_MOVE_RETRY_TOTAL_SECONDS, CompileJob, order_jobs, resolve_output_location, run_job, run_jobs
+from ...deck_scan import Deck, appendix_toc_for
+from ...partial_compile import PartialError, parse_page_spec
+from ...project import ProjectContext
+from ..dialogs import saved_versions as saved_versions_sheet
+from ..dialogs import snapshot as snapshot_sheets
+from ..kit.widgets import BusySheet
+from . import deck_actions, render_check
+from .multi_compile import MultiCompileSheet
+
+
+def _busy(window, message: str = "A compile run is already in progress.") -> bool:
+    """Whether the compile slot is already in use."""
+    if window.compile.running:
+        QMessageBox.information(window, "Busy", message)
+        return True
+    return False
+
+
+def _flush(window):
+    centre = getattr(window, "centre", None)
+    if centre is not None:
+        centre.source.flush_all()
+
+
+# -- stopping --------------------------------------------------------------------------
+
+def ask_to_stop(window) -> None:
+    if not window.compile.running:
+        return
+    reply = QMessageBox.question(
+        window,
+        "Stop creation",
+        "Stop the compile run? The job currently compiling will be "
+        "killed immediately (including latexmk's own lualatex/biber "
+        "children); anything still queued after it will be skipped.",
+    )
+    if reply == QMessageBox.StandardButton.Yes:
+        stop_now(window)
+
+
+def stop_now(window) -> None:
+    """Stop the run without asking (the chat's Stop does; the job panel's asks first)."""
+    if window.compile.running:
+        window.log(compile_log.stop_requested())
+        window.compile.stop()
+
+
+# -- the Compile menu --------------------------------------------------------------------
+
+def compile_current(window, kind: str, pages: Optional[list[int]] = None, mode: Optional[str] = None) -> None:
+    """A Compile menu entry for the current deck: `kind` is a view,
+    "chapters" or "presenter" (compiler.build_jobs); `mode` a one-off color mode (CompileJob.mode)."""
+    deck = window.state.deck
+    if deck is not None:
+        jobs = compiler.build_jobs(deck, kind, pages)
+        for job in jobs:
+            job.language = window.state.language
+            job.mode = mode
+        compile_jobs(window, jobs)
+
+
+_ALL_VIEWS_KEY = "all_views_selection"
+
+
+def compile_all_views(window) -> None:
+    """Compile -> "All views of this deck": a small dialog with every PDF and transcript of the deck ticked (or the
+    ones ticked last time for this deck, kept in the project's app settings); the ticked PDFs go to one compile
+    run, then the ticked transcripts are written."""
+    from PySide6.QtWidgets import QCheckBox, QDialog, QDialogButtonBox, QLabel, QVBoxLayout
+    from ...transcript import STUDENT_VERSIONS
+    from .menus import VIEW_LABELS
+    deck = window.state.deck
+    if deck is None or _busy(window):
+        return
+    if deck.supports_version:
+        entries = [(view, VIEW_LABELS.get(view, view)) for view in compiler.VIEWS]
+        entries.append(("presenter", "Presenter (speaker notes)"))
+        entries += [(f"transcript:{v}", f"Transcript, {VIEW_LABELS.get(v, v)}") for v in STUDENT_VERSIONS]
+    else:
+        entries = [("instructor", "PDF"), ("presenter", "Presenter (speaker notes)")]
+    remembered = (app_settings.get(window.project, _ALL_VIEWS_KEY, {}) or {}).get(deck.name)
+    dialog = QDialog(window)
+    dialog.setWindowTitle("Compile all views")
+    layout = QVBoxLayout(dialog)
+    layout.addWidget(QLabel(f"What to create for {deck.name}:"))
+    boxes = {}
+    for key, label in entries:
+        box = QCheckBox(label)
+        box.setChecked(key in remembered if isinstance(remembered, list) else True)
+        layout.addWidget(box)
+        boxes[key] = box
+    buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+    ok = buttons.button(QDialogButtonBox.StandardButton.Ok)
+    ok.setText("Compile")
+
+    def refresh() -> None:
+        ok.setEnabled(any(box.isChecked() for box in boxes.values()))
+    for box in boxes.values():
+        box.toggled.connect(refresh)
+    refresh()
+    buttons.accepted.connect(dialog.accept)
+    buttons.rejected.connect(dialog.reject)
+    layout.addWidget(buttons)
+    if not dialog.exec():
+        return
+    chosen = [key for key, box in boxes.items() if box.isChecked()]
+    stored = dict(app_settings.get(window.project, _ALL_VIEWS_KEY, {}) or {})
+    stored[deck.name] = chosen
+    app_settings.set(window.project, _ALL_VIEWS_KEY, stored)
+    jobs = [job for key in chosen if not key.startswith("transcript:") for job in compiler.build_jobs(deck, key)]
+    for job in jobs:
+        job.language = window.state.language
+    transcripts = [key.removeprefix("transcript:") for key in chosen if key.startswith("transcript:")]
+    if jobs and not compile_jobs(window, jobs):
+        return
+    if transcripts:
+        if not jobs:
+            _flush(window)
+        failures = sum(not deck_actions.generate_deck_transcript(window, deck, v, quiet=True) for v in transcripts)
+        window.log(f"==== Create Transcript: {len(transcripts) - failures} of {len(transcripts)} transcript(s) generated ====")
+
+
+def shown_view(window) -> Optional[str]:
+    """The view a current-view compile builds: the one shown, the instructor one where the deck has no versions."""
+    deck = window.state.deck
+    return window.state.view if deck is not None and deck.supports_version else "instructor"
+
+
+def other_modes(window) -> list[tuple[str, str]]:
+    """The color modes the current view's template offers besides the one the view compiles in."""
+    deck = window.state.deck
+    project = getattr(window, "project", None)
+    return compiler.other_modes(project, deck, shown_view(window)) if deck is not None and project else []
+
+
+def compile_in_mode(window) -> None:
+    """Compile -> "Current view in another color mode" (v0.16.4): the same view once in another mode of its
+    template, for instance a light handout of a dark projection, into its own PDF ("<deck>-<view>-<mode>.pdf");
+    the deck and its views keep their modes. With one other mode it is used at once; with several, asked."""
+    modes = other_modes(window)
+    if not modes:
+        return
+    mode_id = modes[0][0]
+    if len(modes) > 1:
+        labels = [label for _, label in modes]
+        label, ok = QInputDialog.getItem(window, "Compile in another color mode",
+                                         "Color mode for this PDF (the deck keeps its own):", labels, 0, False)
+        if not ok:
+            return
+        mode_id = modes[labels.index(label)][0]
+    compile_current(window, shown_view(window), mode=mode_id)
+
+
+def compile_several(window) -> None:
+    """Compile -> "Several decks…": the PDFs and transcripts ticked in
+    MultiCompileSheet, on one compile run."""
+    sheet = MultiCompileSheet(window, [deck for deck in window.decks if not deck.archived], window.deck_groups)
+    if not sheet.exec():
+        return
+    chosen = sheet.chosen()
+    jobs = [job for deck, kind in chosen if not kind.startswith("transcript:")
+            for job in compiler.build_jobs(deck, kind)]
+    transcripts = [(deck, kind.removeprefix("transcript:")) for deck, kind in chosen
+                   if kind.startswith("transcript:")]
+    if jobs and not compile_jobs(window, jobs):
+        return
+    if transcripts:
+        failures = sum(not deck_actions.generate_deck_transcript(window, deck, version, quiet=True)
+                       for deck, version in transcripts)
+        window.log(f"==== Create Transcript: {len(transcripts) - failures} of "
+                   f"{len(transcripts)} transcript(s) generated ====")
+
+
+def compile_everything(window) -> None:
+    """Compile -> "All decks except archive": every view of every active deck."""
+    decks = [deck for deck in window.decks if not deck.archived]
+    jobs = [job for deck in decks for job in compiler.build_jobs(deck, "all")]
+    if jobs and QMessageBox.question(
+            window, "Compile all decks",
+            f"Compile {len(jobs)} PDF(s) of {len(decks)} deck(s), every view of each? "
+            "The archive is left out.") == QMessageBox.StandardButton.Yes:
+        compile_jobs(window, jobs)
+
+
+def compile_pages(window) -> None:
+    """Compile menu -> "Selected pages…": the Pages field of the old deck
+    table. Takes the pages of the current view."""
+    text, ok = QInputDialog.getText(
+        window, "Selected pages",
+        "Slides of the current view to compile, numbered as in the footers\n"
+        "(e.g. 4, 5, 7-10, 15):")
+    if not ok or not text.strip():
+        return
+    try:
+        pages = parse_page_spec(text)
+    except PartialError as exc:
+        QMessageBox.warning(window, "Pages", str(exc))
+        return
+    compile_current(window, window.state.view, pages)
+
+
+def compile_slides(window, slide_ids: list[str]) -> None:
+    """The slide list's "Compile these pages": the frames the slides have in
+    the current view's last whole-deck PDF, then the same path as Selected pages."""
+    deck = window.state.deck
+    if deck is None:
+        return
+    job = compiler.build_jobs(deck, window.state.view)[0]
+    job.language = window.state.language
+    try:
+        pages = partial_compile.frames_for_slides(window.project, job, slide_ids)
+    except PartialError as exc:
+        QMessageBox.warning(window, "Compile pages", str(exc))
+        return
+    if not pages:
+        QMessageBox.information(
+            window, "Compile pages",
+            "None of these slides is in the last whole-deck PDF of this view "
+            "(not typeset there, or added since). Compile the whole deck first.")
+        return
+    compile_current(window, window.state.view, pages)
+
+
+# -- compiling jobs ----------------------------------------------------------------------
+
+def compile_jobs(window, jobs: list[CompileJob]) -> bool:
+    """Compile `jobs` through the whole flow (prompts, job panel, Log drawer). False when the run
+    did not start: busy, nothing to typeset, a cancelled prompt, or a failed version update."""
+    if _busy(window):
+        return False
+    options = window.build_options
+    run_id = datetime.now().isoformat(timespec="seconds")   # one id for everything this click compiles (PDF info /SlideMageRun)
+    outputs: dict[str, Path] = {}   # jobname -> where its PDF lands (the deck's own \deckoutputfolder, or pdf/)
+    for job in jobs:
+        # \deckappendixtoc in the deck: always, checkbox or not
+        job.appendix_toc = options.appendix_toc_checkbox.isChecked() or appendix_toc_for(job.deck, job.version)
+        job.replace_pages = options.replace_pages_checkbox.isChecked()
+        job.run_id = run_id
+        output_dir, output_stem = resolve_output_location(window.project, job)
+        outputs[job.jobname] = output_dir / f"{output_stem}.pdf"
+    jobs = order_jobs(jobs, window.deck_groups)   # version by version, then deck by deck
+    jobs, empty_descriptions = _drop_empty_jobs(window.project, jobs)
+    if not jobs:
+        QMessageBox.critical(
+            window, "Nothing to compile",
+            "No slides to typeset -- every checked job is empty:\n\n"
+            + "\n".join(f"  • {d}" for d in empty_descriptions),
+        )
+        return False
+    if empty_descriptions:
+        QMessageBox.warning(
+            window, "Some jobs skipped",
+            "Skipped (no slides to typeset):\n\n"
+            + "\n".join(f"  • {d}" for d in empty_descriptions)
+            + "\n\nCompiling the rest.",
+        )
+    try:
+        if not _confirm_saved_versions(window, jobs):
+            return False
+    except (OSError, ValueError) as exc:
+        QMessageBox.warning(window, "Cannot check versions", str(exc))
+        return False
+    jobs = _confirm_unchanged_jobs(window, jobs, outputs)
+    if not jobs:
+        return False
+    # Pre-render syntax check (2026-09-26), scoped to exactly what these
+    # jobs read: the deck files plus the slides their versions/chapters
+    # actually include.
+    if not _confirm_build(window, latex_lint.check_jobs(window.project, jobs), ", ".join(sorted({job.deck.name for job in jobs}))):
+        return False
+
+    def work(log: Callable[[str], None], cancel: compiler.CancelToken) -> None:
+        results = run_jobs(window.project, jobs, log, cancel=cancel,
+                           resolver=window.centre.preview._renders.renderer(window.project).resolver)
+        passed = sum(1 for ok in results.values() if ok)
+        log(f"==== Done: {passed} passed, {len(results) - passed} failed ====")
+
+    window.compile.start(
+        {job.jobname: job_title(job) for job in jobs},
+        {job.jobname: compile_progress.spec_for_job(window.project, job) for job in jobs}, work,
+        verb="Compiling", jobs=jobs, pdfs={job.jobname: outputs[job.jobname] for job in jobs})
+    return True
+
+
+def _confirm_build(window, result: latex_lint.CheckResult, what: str) -> bool:
+    """The pre-render syntax check of a build: False when it found errors and the user cancelled."""
+    return render_check.confirm_render(
+        window, window, result, what, verb="Build",
+        show_in_editor=lambda issue: render_check.open_issue_in_editor(window, issue))
+
+
+def _saved_versions(ctx: ProjectContext, jobs: list[CompileJob], pending) -> dict[str, list[str]]:
+    """{deck name: the id-slugs it typesets from their last version} for the decks of `jobs`
+    (compiler.uses_saved_versions, slide_versioning.saved_versions), in the order of the jobs."""
+    from ... import deck_language
+    found: dict[str, dict[str, None]] = {}
+    for job in jobs:
+        if compiler.uses_saved_versions(ctx, job):
+            slugs = slide_versioning.saved_versions(ctx, job.deck, deck_language.language_for_job(job), pending=pending)
+            found.setdefault(job.deck.name, {}).update(dict.fromkeys(slugs))
+    return {name: list(slugs) for name, slugs in found.items() if slugs}
+
+
+def _slide_list(slugs: list[str]) -> str:
+    """The first 8 ids of `slugs`, then "…"."""
+    return ", ".join(slide_language.bare_id(slug) for slug in slugs[:8]) + (", …" if len(slugs) > 8 else "")
+
+
+def _confirm_saved_versions(window, jobs: list[CompileJob]) -> bool:
+    """Issue #97: with Settings → General not compiling the changes, a deck compile typesets each slide with a "+"
+    from its last version, while the slide's Preview shows the edits. Say so before the run: Compile last versions,
+    Compile with edits (this run: CompileJob.current_edits), Update versions first (then compile), or Cancel. The
+    checkbox makes the compile choice the setting (issue comment: switch it in the dialog): with edits turns
+    RENDER_CHANGES_SETTING_KEY on, last versions keeps it off and stops asking (ASK_SAVED_VERSIONS_SETTING_KEY;
+    the Log still names the slides). False when the user cancelled or a version update failed."""
+    ctx = window.project
+    pending = {f.path: f.editor.text() for f in window.centre.source.dirty_files() if not f.unsaved}
+    found = _saved_versions(ctx, jobs, pending)
+    if not found or not app_settings.get(ctx, slide_versioning.ASK_SAVED_VERSIONS_SETTING_KEY, True):
+        _flush(window)
+        _log_saved_versions(window, found)
+        return True
+    sheet = saved_versions_sheet.SavedVersionsSheet(
+        window, {name: [slide_language.bare_id(slug) for slug in slugs] for name, slugs in found.items()})
+    sheet.exec()
+    if sheet.choice == saved_versions_sheet.EDITS:
+        if sheet.remember:
+            app_settings.set(ctx, slide_versioning.RENDER_CHANGES_SETTING_KEY, True)
+        for job in jobs:
+            job.current_edits = True
+        _flush(window)
+        return True
+    if sheet.choice == saved_versions_sheet.UPDATE:
+        slugs = list(dict.fromkeys(slug for slugs in found.values() for slug in slugs))
+        paths = [ctx.slides_dir / slide_language.current_name(slug) for slug in slugs]
+        return window.centre.revise("compile", paths, jobs=jobs, title="Update version of all changed slides",
+                                    label="before compiling")
+    elif sheet.choice == saved_versions_sheet.LAST:
+        if sheet.remember:
+            app_settings.set(ctx, slide_versioning.ASK_SAVED_VERSIONS_SETTING_KEY, False)
+    else:
+        return False
+    _flush(window)
+    _log_saved_versions(window, found)
+    return True
+
+
+def _log_saved_versions(window, found: dict[str, list[str]]) -> None:
+    for name, slugs in found.items():
+        window.log(f"{name}: {len(slugs)} slide(s) compiled from their last version, without their newer edits "
+                   f"({_slide_list(slugs)})")
+
+
+def _confirm_changed_slides(window, decks: list[Deck], what: str) -> bool:
+    """A snapshot or an export is a record: warn when a slide a deck calls has changes since its last
+    version (a "+" on its version line), so no version stands for what is being recorded. False when the
+    user cancelled; "Update Version of all changed slides" in the ⋮ menu makes them versions first. Only when
+    Settings → General compiles decks with those changes: by default the compile takes each slide's last version."""
+    if not app_settings.get(window.project, slide_versioning.RENDER_CHANGES_SETTING_KEY, False):
+        return True
+    lines = []
+    for deck in decks:
+        changed = slide_versioning.changed_slides(window.project, deck, window.state.language)
+        if changed:
+            lines.append(f"  • {deck.name}: {len(changed)} slide(s) ({_slide_list(changed)})")
+    if not lines:
+        return True
+    box = QMessageBox(window)
+    box.setIcon(QMessageBox.Icon.Warning)
+    box.setWindowTitle("Slides changed since their last version")
+    box.setText(f"Some slides have edits that are not a version yet (the \"+\" after the version number):\n\n"
+                + "\n".join(lines)
+                + f"\n\n{what} records them as they are now. To have a version for each first, cancel and use "
+                "⋮ → This deck → Update version of all changed slides.")
+    go = box.addButton(f"{what} anyway", QMessageBox.ButtonRole.AcceptRole)
+    box.addButton(QMessageBox.StandardButton.Cancel)
+    box.setDefaultButton(go)
+    box.exec()
+    return box.clickedButton() is go
+
+
+def _confirm_unchanged_jobs(window, jobs: list[CompileJob], outputs: dict[str, Path]) -> list[CompileJob]:
+    """Versions that haven't changed since their last compile
+    (compiler.unchanged_jobs) are only compiled again after asking
+    (2026-10-08, direct instruction): Compile anyway / Skip unchanged /
+    Cancel. Returns the jobs to compile ([] = nothing)."""
+    QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+    try:
+        with timing.span("compile.unchanged_jobs", jobs=len(jobs)):
+            unchanged = compiler.unchanged_jobs(
+                window.project, jobs, outputs, resolver=window.centre.preview._renders.renderer(window.project).resolver)
+    finally:
+        QApplication.restoreOverrideCursor()
+    if not unchanged:
+        return jobs
+    box = QMessageBox(window)
+    box.setIcon(QMessageBox.Icon.Question)
+    box.setWindowTitle("Nothing changed")
+    lines = [f"  • {job.jobname} (compiled {created[:16].replace('T', ' ')})"
+             for job, created in unchanged]
+    box.setText("Nothing these PDFs are made from has changed since they were last "
+                "compiled:\n\n" + "\n".join(lines) + "\n\nCompile them anyway?")
+    box.setInformativeText("SlideMage compares every file the last compile read "
+                           "(slides, media, template, framework, packages) and the PDF itself.")
+    anyway = box.addButton("Compile anyway", QMessageBox.ButtonRole.AcceptRole)
+    skip = box.addButton("Skip unchanged", QMessageBox.ButtonRole.AcceptRole)
+    box.addButton(QMessageBox.StandardButton.Cancel)
+    box.setDefaultButton(skip)
+    box.exec()
+    clicked = box.clickedButton()
+    if clicked is anyway:
+        return jobs
+    if clicked is not skip:
+        return []
+    skipped = {job.jobname for job, _created in unchanged}
+    remaining = [job for job in jobs if job.jobname not in skipped]
+    if not remaining:
+        window.log(f"Nothing compiled: {', '.join(sorted(skipped))} unchanged.")
+    return remaining
+
+
+def _drop_empty_jobs(ctx: ProjectContext, jobs: list[CompileJob]) -> tuple[list[CompileJob], list[str]]:
+    """Filters out any job that would typeset zero slides (2026-09-28,
+    direct instruction: "SlideMage should give an error message instead
+    of trying to compile it" for an empty deck) -- clicking "Create
+    PDF" on a deck with no \\slide{}-family calls of its own (e.g.
+    #workdeck-mini right after being cleared out, or a brand-new empty
+    deck) used to run a real latexmk compile for a PDF with nothing on
+    it, the same pointless-but-not-obviously-wrong result whether the
+    compile "succeeded" or not.
+
+    compile_progress.count_job_slides() (built for the progress bar's
+    own sizing) is reused here rather than a fresh check, since it
+    already resolves a job's real slide count correctly for every case
+    that matters: version/chapter filtering (\\conditionalslide/
+    \\slidestep), and \\input{}-ed fragments like test-slides.tex --
+    so a wrapper deck that only \\input{}s a shared slide list is
+    correctly NOT flagged as empty, only a deck (or, for a per-chapter
+    job, a chapter) that genuinely has nothing to typeset is.
+
+    Returns (surviving jobs, one human-readable description per
+    dropped job)."""
+    surviving: list[CompileJob] = []
+    descriptions: list[str] = []
+    for job in jobs:
+        if compile_progress.count_job_slides(ctx, job.deck, job.version, job.chapter, job.language) > 0:
+            surviving.append(job)
+            continue
+        where = job.deck.name
+        if job.chapter is not None:
+            where += f", chapter {job.chapter.order} ({job.chapter.title})"
+        if job.version:
+            where += f" ({job.version})"
+        descriptions.append(where)
+    return surviving, descriptions
+
+
+# -- deck snapshots ----------------------------------------------------------------------
+
+def start_snapshots(
+    window, decks: list[Deck], options: deck_snapshot.SnapshotOptions,
+    after: Optional[Callable[[list], None]] = None,
+) -> bool:
+    """Ask about older snapshots, then run deck_snapshot.snapshot_decks()
+    on the compile slot. `after(results)` replaces the summary dialog (the
+    archive flow). False when nothing was started."""
+    if _busy(window):
+        return False
+    _flush(window)
+    if not _confirm_changed_slides(window, decks, "The snapshot"):
+        return False
+    existing = deck_snapshot.find_snapshots([d.name for d in decks], root=window.project.root)
+    delete_old: list = []
+    if existing:
+        answer = snapshot_sheets.ask_about_old_snapshots(window, existing)
+        if answer == snapshot_sheets.CANCEL_RUN:
+            return False
+        if answer == snapshot_sheets.DELETE_OLD:
+            delete_old = existing
+    # Same appendix choice as a compile from the toolbar.
+    options.appendix_toc = True if window.build_options.appendix_toc_checkbox.isChecked() else None
+
+    specs: dict[str, compile_progress.JobSpec] = {}
+    texts: dict[str, str] = {}
+    for i, deck in enumerate(decks, 1):
+        for job in deck_snapshot.snapshot_jobs(deck, options):
+            spec = compile_progress.spec_for_job(window.project, job)
+            prefix = f"Snapshot {i}/{len(decks)}, {deck.name}"
+            key = deck_snapshot.progress_key(job.jobname)
+            specs[key], texts[key] = spec, f"{prefix}: compiling {job.jobname}"
+            if options.verify:
+                key = deck_snapshot.progress_key(job.jobname, verify=True)
+                specs[key], texts[key] = spec, f"{prefix}: checking {job.jobname}"
+
+    def work(log: Callable[[str], None], cancel: compiler.CancelToken) -> list:
+        try:
+            results = deck_snapshot.snapshot_decks(
+                decks, options, log, cancel=cancel, delete_old=delete_old, ctx=window.project,
+                resolver=window.centre.preview._renders.renderer(window.project).resolver)
+        except Exception as exc:  # noqa: BLE001 -- reported, the slot must still be freed
+            log(f"*** Deck snapshots failed: {exc} ***")
+            results = [deck_snapshot.SnapshotResult(d.name, ok=False, error=str(exc)) for d in decks]
+        log(f"==== Done: {sum(1 for r in results if r.ok)} of {len(results)} snapshot(s) created ====")
+        return results
+
+    window.compile.start(texts, specs, work, on_done=after or (
+        lambda results: snapshot_sheets.show_summary(window, window.project, results)))
+    return True
+
+
+# -- Export LaTeX ------------------------------------------------------------------------
+
+OPEN_FOLDER = "folder:"     # the toast action that opens a folder; its key carries the path
+
+
+def on_toast_action(key: str) -> None:
+    """The window toast's "Open folder" action (export_latex)."""
+    if key.startswith(OPEN_FOLDER):
+        open_path.open_in_default_app(key[len(OPEN_FOLDER):])
+
+
+def export_latex(window, deck: Deck) -> None:
+    """Writes `deck` as a folder that compiles on its own (latex_export.py) into a folder the user picks,
+    asking before it replaces an earlier export. The copy runs on a worker behind a BusySheet: it reads the
+    project's files, which must not change meanwhile."""
+    chosen = QFileDialog.getExistingDirectory(window, f"Export {deck.name} as LaTeX to", str(window.project.root))
+    if not chosen:
+        return
+    target = Path(chosen) / f"{deck.name}{latex_export.FOLDER_SUFFIX}"
+    if target.exists() and QMessageBox.question(
+            window, "Replace folder", f"{target.name} already exists in {chosen}. Replace it?",
+    ) != QMessageBox.StandardButton.Yes:
+        return
+    window.centre.source.flush_all()
+    lines: list[str] = []       # the widget log is written in done, on the GUI thread
+
+    def done(result, error) -> None:
+        for line in lines:
+            window.log(line)
+        if error is not None:
+            window.log(f"*** Export LaTeX failed: {error} ***")
+            QMessageBox.critical(window, "Export LaTeX", f"Couldn't export {deck.name}: {error}")
+            return
+        text = f"Exported to {result.folder}"
+        if result.missing:
+            text += f" · {len(result.missing)} referenced file(s) not found, see the Log"
+        window.toast.show_message(text, [(OPEN_FOLDER + str(result.folder), "Open folder")], timeout_ms=12000)
+
+    BusySheet.run(window, "Exporting LaTeX…",
+                  lambda report: latex_export.export_deck(window.project, deck, Path(chosen), lines.append, report),
+                  done, busy_reason="exporting LaTeX")
+
+
+# -- Export PPTX -------------------------------------------------------------------------
+
+def export_pptx(window, deck: Deck) -> None:
+    """Compiles `deck` (instructor version, direct instruction -- the
+    fullest-content version) and exports the result as a .pptx with one full-page
+    image per PDF page -- see pptx_export.py's own docstring for why
+    one PDF page per pptx slide (every beamer overlay/reveal as its
+    own slide) rather than one pptx slide per \\slide{} call, and why
+    python-pptx rather than a hand-rolled OOXML package.
+
+    The compile slot is the same single-flight guard a real "Create PDF"
+    batch checks -- this runs a real latexmk invocation of its own, which
+    can't safely run alongside another one."""
+    if _busy(window, "Can't export to PowerPoint while a compile run is in progress -- wait for it to finish first."):
+        return
+    _flush(window)
+    if compile_progress.count_job_slides(window.project, deck, "instructor", None) == 0:
+        QMessageBox.critical(window, "Nothing to export", f"{deck.name} has no slides to typeset.")
+        return
+    if not _confirm_changed_slides(window, [deck], "The export"):
+        return
+    job = CompileJob(deck, version="instructor", chapter=None)
+    if not _confirm_build(window, latex_lint.check_jobs(window.project, [job]), deck.name):
+        return
+    window.compile.start(
+        {job.jobname: f"Export {deck.name} to PowerPoint"}, {job.jobname: compile_progress.spec_for_job(window.project, job)},
+        lambda log, cancel: _export_pptx(window.project, job, log, cancel), failure="PowerPoint export")
+
+
+def _export_pptx(context: ProjectContext, job: CompileJob, log: Callable[[str], None], cancel: compiler.CancelToken) -> None:
+    deck = job.deck
+    log(f"==== Exporting {deck.name} to PowerPoint (instructor version) ====")
+    # run_job() itself already logs its own "==== PASS/FAIL: ... ====" lines (picked up by the same
+    # log handler every other compile goes through, auto-opening the compiled PDF too if that
+    # checkbox is on) -- nothing extra needed here for the compile step itself, only for what happens
+    # after it.
+    #
+    # run_job() doesn't wait for the PDF's move into pdf/ (it backgrounds that so one job's stuck
+    # sync client can't block the rest of a batch's queue -- see its own docstring), so reading
+    # .build/<jobname>.pdf right after it returns races that same background thread, which copies
+    # the PDF out and then deletes every .build/<jobname>.* file, this PDF included -- there's
+    # nothing else queued behind a one-off export, so waiting here for on_relocated costs nothing
+    # and avoids reading a file that thread may have already removed.
+    relocated = threading.Event()
+    outcome: dict[str, object] = {"ok": False, "dest_pdf": None}
+
+    def on_relocated(ok: bool, dest_pdf: Path) -> None:
+        outcome["ok"] = ok
+        outcome["dest_pdf"] = dest_pdf
+        relocated.set()
+
+    if not run_job(context, job, log, cancel=cancel, on_relocated=on_relocated):
+        log(f"*** FAIL: PowerPoint export of {deck.name} -- compile failed, see above ***")
+        return
+    # Generous margin over the retry loop's own total budget -- this thread has nothing else to do
+    # but wait for it anyway.
+    relocated.wait(PDF_MOVE_RETRY_TOTAL_SECONDS + 30)
+    if not outcome["ok"]:
+        log(f"*** FAIL: PowerPoint export of {deck.name} -- couldn't move the compiled PDF into place, see above ***")
+        return
+    out_path = context.pdf_dir / f"{job.jobname}.pptx"
+    from ... import pptx_export         # here, not at the top: python-pptx took 1 to 2 s of every start (2026-10-29)
+    try:
+        pptx_export.export_deck_to_pptx(outcome["dest_pdf"], out_path, log=log)
+    except Exception as exc:  # noqa: BLE001 -- surfaced, not swallowed
+        log(f"*** FAIL: PowerPoint export of {deck.name} -- {exc!r} ***")
+        return
+    log(f"==== PASS: {out_path.relative_to(context.root)} ====")
+    # Always opened, unlike the auto-open-PDF checkbox -- this is a single, deliberate export the
+    # user just asked for, not a batch that could pop open many windows unattended.
+    try:
+        open_path.open_in_default_app(out_path)
+    except OSError as exc:
+        log(f"*** couldn't auto-open {out_path.name}: {exc} ***")
+
+
+# -- Bulk previews -----------------------------------------------------------------------
+
+def update_previews(window) -> None:
+    """Render the sweep's project-wide scope now, with progress and cancellation."""
+    if _busy(window):
+        return
+    _flush(window)
+    renderer = window.background.renderer
+    with timing.span("update_previews.needed_slides"):
+        requests = batch_render.plan_project(renderer)
+    if not requests:
+        QMessageBox.information(window, "Nothing to do", "No deck references any slides right now.")
+        return
+    if QMessageBox.question(window, "Render all previews now",
+                            f"Render {len(requests)} previews across all prepared decks and views?") != QMessageBox.StandardButton.Yes:
+        return
+    if not _confirm_previews_lint(window, requests):
+        return
+    workspace = window.assistant.chat.workspace
+    ticket = window.centre.preview._generation
+
+    def work(log, cancel):
+        return batch_render.render_batch(
+            renderer.renders, requests, cancel=cancel, progress=window.compile.preview_progress.emit,
+            publish=lambda result: workspace.publish_preview_result(result, ticket), log=log,
+            batch_size=background_renders.batch_size(window.project))
+
+    window.compile.start({"all_previews": "Render all previews now"}, {}, work, opens_pdfs=False,
+                         on_done=lambda _: window.slide_list._refresh_all_preview_rows(), failure="Preview render")
+
+
+def rerender_deck_previews(window) -> None:
+    """Refresh the current deck's exact cached previews, with an explicit view scope."""
+    deck = window.state.deck
+    if deck is None or _busy(window):
+        return
+    _flush(window)
+    labels = ["All course views", "Selected course view"]
+    choice, accepted = QInputDialog.getItem(window, "Refresh previews", "Views to refresh", labels, 0, False)
+    if not accepted:
+        return
+    scope = 'all' if choice == labels[0] else 'selected'
+    requests = batch_render.plan_deck(window.project, deck, scope=scope,
+                                      selected_view=window.state.view, language=window.state.language, force=True)
+    if not requests:
+        QMessageBox.information(window, "Nothing to do", f"{deck.name} has no slides to render.")
+        return
+    if _confirm_previews_lint(window, requests):
+        start_deck_previews(window, deck, requests, scope=scope)
+
+
+def start_deck_previews(window, deck: Deck, requests,
+                        on_done: Optional[Callable[[object], None]] = None, *, scope='all') -> None:
+    """Refresh exact requests using the pane's shared scheduler on the compile slot."""
+    pane = window.centre.preview
+    service, generation = pane._renders, pane._generation
+    language = window.state.language
+    # Workers may only publish to Qt through the GUI dispatcher.
+    workspace = window.assistant.chat.workspace
+
+    def run(log, cancel):
+        results = batch_render.render_batch(
+            service, requests, cancel=cancel, log=log, progress=window.compile.preview_progress.emit,
+            batch_size=background_renders.batch_size(window.project),
+            publish=lambda result: workspace.publish_preview_result(result, generation))
+        return batch_render.DeckResult.from_results(results, scope, language)
+
+    def done(result):
+        from ...compile_status import DONE, FAILED, STOPPED
+        row = window.compile.row('deck_previews')
+        cancelled = result is not None and result.details is not None and result.details.count('cancelled')
+        row.state = STOPPED if cancelled else (DONE if result is not None and result else FAILED)
+        window.compile.changed.emit()
+        window.slide_list._refresh_all_preview_rows()
+        if result is not None:
+            window.log(f"{deck.name}: {len(result.refreshed)} refreshed, {len(result.failed)} failed")
+            if result.details is not None:
+                for item in result.details.failed:
+                    spec = item.request
+                    window.log(f"*** Frame {spec.target.frame_number} ({spec.view}, "
+                               f"{spec.target.id_slug}): {item.error or item.publication_status} ***")
+        if on_done is not None:
+            on_done(result)
+
+    window.compile.start({"deck_previews": f"Rerender previews of {deck.name}"}, {},
+                         run,
+                         opens_pdfs=False, on_done=done, failure="Preview refresh")
+
+
+def _confirm_previews_lint(window, requests) -> bool:
+    sources = sorted({spec.target.source_path for spec in requests})
+    return _confirm_build(window, latex_lint.check_slide_files(window.project, sources), f"{len(sources)} slides")

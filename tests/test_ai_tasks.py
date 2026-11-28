@@ -1,0 +1,108 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""AI task prompts, response validation and errors through a fake provider."""
+from __future__ import annotations
+
+import pytest
+
+from slidemage import alt_draft, alt_images, syntax_check
+from slidemage.ai.providers import Cancelled, ChatReply, ProviderError
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"fake"
+
+
+class FakeProvider:
+    """Answers with queued replies (or raises queued errors) and records calls."""
+
+    is_local = True
+    model = "fake"
+    label = "fake"
+
+    def __init__(self, *replies):
+        self.replies = list(replies)
+        self.calls: list[dict] = []
+        self.aborted = False
+
+    def chat(self, messages, **kwargs):
+        self.calls.append({"messages": messages, **kwargs})
+        reply = self.replies.pop(0)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply if isinstance(reply, ChatReply) else ChatReply(text=reply)
+
+    def list_models(self):
+        return ["fake"]
+
+    def abort(self):
+        self.aborted = True
+
+
+ISSUES = ('{"issues": [{"line": 2, "problem": "unbalanced", '
+          '"original": "\\\\textbf{a", "suggested_fix": "\\\\textbf{a}"}]}')
+
+
+def test_syntax_check_parses_issues_and_verifies_fixes_against_the_buffer():
+    provider = FakeProvider("Here you go:\n```json\n" + ISSUES + "\n```")
+    checker = syntax_check.SyntaxChecker(provider)
+    result = checker.check("ok\n\\textbf{a\nend")
+    assert provider.calls[0]["schema"] == syntax_check.RESPONSE_SCHEMA
+    assert "2: \\textbf{a" in provider.calls[0]["messages"][0]["content"]
+    assert result.ok and len(result.issues) == 1
+    checker.abort()
+    assert provider.aborted
+    issue, = result.issues
+    assert issue.fix_is_safe(["ok", "\\textbf{a", "end"])
+    assert not issue.fix_is_safe(["ok", "something else", "end"])  # buffer moved on
+
+
+def test_syntax_check_error_paths():
+    assert not syntax_check.SyntaxChecker(FakeProvider("no json")).check("x").ok
+    assert syntax_check.SyntaxChecker(FakeProvider("")).check("x").error == \
+        "Model returned an empty response"
+    failed = syntax_check.SyntaxChecker(FakeProvider(ProviderError("boom"))).check("x")
+    assert failed.error == "boom" and not failed.cancelled
+    cancelled = syntax_check.SyntaxChecker(FakeProvider(Cancelled("Aborted."))).check("x")
+    assert cancelled.cancelled
+
+
+DESCRIPTION = ('{"short": " A bar chart ", "long": "Three bars.", "takeaway": "Up.", '
+               '"role_suggestion": "informative"}')
+
+
+@pytest.fixture
+def image_context(tmp_path):
+    image = tmp_path / "x.png"
+    image.write_bytes(PNG)
+    return image, alt_draft.SlideContext(
+        slide_id="abc", title="Title", body="Body", source="", image="media/x.png")
+
+
+def test_image_description_retries_truncated_thinking_and_sends_image_and_schema(ctx, image_context):
+    image, context = image_context
+    provider = FakeProvider(ChatReply(text="", thinking="still reasoning", truncated=True), DESCRIPTION)
+    result = alt_draft.ModelBackend(ctx, provider).draft(image, context)
+    call = provider.calls[0]
+    assert call["images"] == [PNG]
+    assert call["schema"] == alt_draft.RESPONSE_SCHEMA
+    assert result.ok and result.short == "A bar chart" and result.long == "Three bars."
+    assert result.model == "fake"
+    assert [c["max_tokens"] for c in provider.calls] == [2048, alt_draft.MAX_TOKENS_RETRY]
+
+
+@pytest.mark.parametrize("reply, error", [(ProviderError("down"), "down"), ("prose", "non-JSON")])
+def test_image_description_errors_stay_errors(ctx, image_context, reply, error):
+    image, context = image_context
+    assert error in alt_draft.ModelBackend(ctx, FakeProvider(reply)).draft(image, context).error
+
+
+def test_translation_translates_each_field_and_reports_provider_errors(ctx):
+    provider = FakeProvider("kurz", "lang", "fazit")
+    entry = alt_images.ImageEntry(
+        image="media/x.png", short="short", long="long", takeaway_default="take")
+    result = alt_draft.ModelTranslationBackend(ctx, provider).translate(entry)
+    assert (result.short_de, result.long_de, result.takeaway_de) == ("kurz", "lang", "fazit")
+    assert result.error is None and result.source_hash == alt_images.en_text_hash(entry)
+    assert all(call["messages"][0]["role"] == "user" and "system" not in call
+               for call in provider.calls)
+    provider.replies.append(ProviderError("rate limited"))
+    assert alt_draft.ModelTranslationBackend(ctx, provider).translate_text("hello") == ("", "rate limited")

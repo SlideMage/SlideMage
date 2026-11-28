@@ -1,0 +1,93 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Qt-side theme manager: the light/dark choice, and the one application
+stylesheet (kit_qss.py) built from the design tokens (tokens.py) for it.
+
+Every Qt widget picks up `QApplication.setStyleSheet()` changes automatically,
+cascading through the whole widget tree with no registration step: toggling
+dark/light is "rebuild the QSS string, reapply it".
+
+The tokens also supply the source editor's per-character syntax colors,
+which QSS cannot express.
+"""
+from __future__ import annotations
+
+import logging
+import tempfile
+from collections.abc import Callable
+from pathlib import Path
+
+from PySide6.QtWidgets import QApplication
+
+from ... import app_settings
+from ...project import ProjectContext
+from .kit_qss import KIT_ICONS, build_kit_qss
+from .tokens import Tokens, tokens_for
+from .widgets import draw_glyph
+
+
+def _icon_files(t: Tokens) -> dict[str, str]:
+    """The images of KIT_ICONS in the theme's colors, drawn once from the Material Icons font into the
+    temp folder (QSS `image: url(...)` takes files only, not glyphs or data: URIs), with the `@2x`
+    file Qt picks on a high-resolution screen."""
+    folder = Path(tempfile.gettempdir()) / "slidemage-kit-icons"
+    folder.mkdir(exist_ok=True)
+    files = {}
+    for name, (glyph, token, glyph_px, size) in KIT_ICONS.items():
+        color = getattr(t, token)
+        path = folder / f"{name}-{color.lstrip('#')}-{glyph_px}-{size}.png"
+        if not path.exists():
+            draw_glyph(glyph, color, glyph_px, size, 2).save(str(path.with_name(f"{path.stem}@2x.png")))
+            draw_glyph(glyph, color, glyph_px, size, 1).save(str(path))
+        files[name] = path.as_posix()
+    return files
+
+
+class ThemeManager:
+    def __init__(self, dark: bool | None = None, project: ProjectContext | None = None) -> None:
+        """`dark` is for the project picker, which runs before there is a project. With a
+        `project` the choice is read from its settings (the JSON file inside the project folder, so
+        it travels with it; dark the first time) and written back by set_dark()."""
+        self.project = project
+        if dark is None:
+            dark = project is None or bool(app_settings.get(project, "dark_mode", True))
+        self.dark = dark
+        self._listeners: list[Callable[[], None]] = []
+
+    def add_listener(self, listener: Callable[[], None]) -> Callable[[], None]:
+        """Call `listener` after each set_dark() has applied its stylesheet; returns the function that removes it."""
+        self._listeners.append(listener)
+        return lambda: self._listeners.remove(listener) if listener in self._listeners else None
+
+    @property
+    def tokens(self) -> Tokens:
+        return tokens_for(self.dark)
+
+    def syntax_colors(self) -> dict[str, str]:
+        """For a QSyntaxHighlighter's QTextCharFormat colors -- not QSS-expressible, since they're
+        per-character-range formats inside a text document, not widget chrome."""
+        t = self.tokens
+        names = ("comment", "command", "brace", "env", "math", "todo")
+        return {**{name: getattr(t, f"syntax_{name}") for name in names}, "brace_match_bg": t.selection}
+
+    def toggle(self) -> None:
+        self.set_dark(not self.dark)
+
+    def set_dark(self, dark: bool) -> None:
+        self.dark = dark
+        if self.project is not None:
+            app_settings.set(self.project, "dark_mode", dark)
+        self.apply()
+        for listener in list(self._listeners):
+            try:
+                listener()
+            except Exception:
+                logging.getLogger(__name__).exception("a theme listener raised")
+
+    def apply(self) -> None:
+        app = QApplication.instance()
+        if app is not None:
+            app.setStyleSheet(self._build_qss())
+
+    def _build_qss(self) -> str:
+        return build_kit_qss(self.tokens, _icon_files(self.tokens))

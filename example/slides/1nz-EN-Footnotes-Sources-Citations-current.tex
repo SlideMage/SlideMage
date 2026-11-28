@@ -1,0 +1,27 @@
+%% Included in decks: slidemage-manual, slidemage-manual-copy
+%%
+
+% SlideMage manual, chapter "Content and layout": footnotes, sources and
+% citations, all live on this slide (the deck loads biblatex for \fullcite).
+\setSlideVersion{1-0-0+}
+\begin{standardframe}{Footnotes, sources, citations}
+	\small
+	Teaching slides need their sources, but sources should not crowd the slide.
+	Footnotes, source lines and image sources all go to the bottom right, in
+	small print, and references are formatted from your bibliography. Everything
+	below is live on this slide.
+	\par\medskip
+	\shrinklists{2}
+	\begin{itemize}
+		\item Footnote markers are currency signs\footnote{The first marker on every slide.}, starting afresh on every slide\footnote{The second.}
+		\begin{itemize}
+			\item \SMCode{\textbackslash setfootnotesymbols\{\textdagger,\textdaggerdbl,\S\}} chooses others, a template may number them -- see the \SMLink{2rg}{appendix}
+			\item \SMCode{\textbackslash SMSetFootnoteMarkers\{dice\}} (or \SMCode{boxed}) numbers them instead -- see the \SMLink{2mk}{appendix}
+		\end{itemize}
+		\item \SMCode{\textbackslash fullcite\{key\}} formats a reference from \SMCode{SlideMage.bib}, in the deck's own style\footnote{\fullcite{markowitz1952}}
+		\item \SMCode{\textbackslash source\{...\}}: a source line without a marker, written out in full (below)
+		\item An image's source is entered once, on SlideMage's Images page, and appears as an automatic \emph{Image source:} line
+		\item Links look like \href{https://ctan.org/pkg/beamer}{this one}
+	\end{itemize}
+	\source{Source: SlideMage README, sections ``Footnote markers'' and ``Source citations''.}
+\end{standardframe}

@@ -1,0 +1,9 @@
+# A clean Ubuntu 24.04 for tests/installer/run.py: a user with passwordless sudo and nothing else (not even curl).
+FROM ubuntu:24.04
+RUN apt-get update -q && DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends sudo \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -f /etc/apt/apt.conf.d/docker-clean \
+    && echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache \
+    && useradd -m -s /bin/bash tester && echo 'tester ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/tester
+USER tester
+WORKDIR /home/tester

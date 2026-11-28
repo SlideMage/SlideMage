@@ -1,0 +1,257 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""The scheduler behind background renders: classes, preemption, the idle gate, the rest between jobs."""
+from __future__ import annotations
+
+import threading
+import time
+
+from slidemage.render_scheduler import P_FOREGROUND, P_IDLE, RenderScheduler
+
+
+class Cancelled(RuntimeError):
+    pass
+
+
+def make(**kwargs):
+    ran = []
+    errors = []
+    box = {}
+
+    def work(job, cancel):
+        ran.append((job.key, job.priority))
+        step = box.get("during", {}).get(job.key)
+        if step:
+            step(job)
+        if cancel.is_set():
+            raise Cancelled("Preview canceled")
+        if job.key in box.get("fail", ()):
+            raise RuntimeError("boom")
+
+    scheduler = RenderScheduler(work, on_error=lambda job, exc: errors.append((job.key, str(exc))), **kwargs)
+    scheduler.box, scheduler.ran, scheduler.errors = box, ran, errors
+    return scheduler
+
+
+def drain(scheduler):
+    while scheduler.run_next():
+        pass
+
+
+def test_idle_jobs_wait_for_the_gate_but_the_others_do_not():
+    gate = {"open": False}
+    s = make(can_start=lambda job: gate["open"])
+    s.submit("idle", None, P_IDLE)
+    s.submit("slider", None, P_FOREGROUND)
+    drain(s)
+    assert [k for k, _ in s.ran] == ["slider"] and s.pending(P_IDLE) == 1
+    gate["open"] = True
+    drain(s)
+    assert [k for k, _ in s.ran] == ["slider", "idle"]
+
+
+def test_a_better_class_cancels_the_running_idle_job_which_is_put_back():
+    s = make()
+
+    def preempt(job):
+        del s.box["during"][job.key]
+        s.submit("slider-1", None, P_FOREGROUND)
+
+    s.box["during"] = {"idle-1": preempt}
+    s.submit("idle-1", None, P_IDLE)
+    s.submit("idle-2", None, P_IDLE, (5,))
+    s.submit("idle-3", None, P_IDLE, (1,))
+    assert s.run_next()                         # idle-1 starts, the slider asks for a slot, idle-1 is cancelled
+    assert s.failed == 0 and not s.errors       # not a failure
+    drain(s)
+    assert [k for k, _ in s.ran] == ["idle-1", "slider-1", "idle-1", "idle-3", "idle-2"]
+
+
+def test_the_slider_does_not_wait_for_an_idle_job_of_the_same_key():
+    s = make()
+    s.box["during"] = {"unit": lambda job: s.submit("unit", None, P_FOREGROUND) if job.priority == P_IDLE else None}
+    s.submit("unit", None, P_IDLE)
+    drain(s)
+    assert s.ran == [("unit", P_IDLE), ("unit", P_FOREGROUND)]
+    assert s.pending() == 0
+
+
+def test_a_request_as_urgent_as_the_running_job_joins_it():
+    s = make()
+    s.box["during"] = {"unit": lambda job: s.submit("unit", None, P_IDLE)}
+    s.submit("unit", None, P_IDLE)
+    drain(s)
+    assert s.ran == [("unit", P_IDLE)]
+
+
+def test_cancel_group_drops_queued_and_stops_running_jobs():
+    s = make()
+
+    def cancel_then_interrupt(job):
+        assert s.cancel_group(job.group) == 2
+        assert s.interrupt(P_IDLE) == 0
+
+    s.box["during"] = {"u0": cancel_then_interrupt}
+    for n in range(3):
+        s.submit(f"u{n}", None, P_IDLE, (n,), group="deck-a")
+    s.submit("other", None, P_IDLE, (9,), group="deck-b")
+    drain(s)
+    assert [k for k, _ in s.ran] == ["u0", "other"] and not s.errors
+
+
+def test_a_failing_job_is_reported_once_and_not_repeated():
+    s = make()
+    s.box["fail"] = {"bad"}
+    s.submit("bad", None, P_IDLE)
+    s.submit("good", None, P_IDLE, (1,))
+    drain(s)
+    assert s.errors == [("bad", "boom")] and s.failed == 1 and s.completed == 1
+    assert [k for k, _ in s.ran] == ["bad", "good"]
+
+
+def test_promoted_and_kept_jobs_survive_dropping_other_idle_jobs():
+    s = make()
+    s.submit("x", None, P_IDLE, (5,))
+    s.submit("x", None, P_FOREGROUND, (0,))
+    s.submit("y", None, P_IDLE, (1,))
+    assert s.pending() == 2
+    s.submit("drop", None, P_IDLE)
+    assert s.drop_queued(P_IDLE, lambda job: job.key == "y") == 1
+    drain(s)
+    assert s.ran == [("x", P_FOREGROUND), ("y", P_IDLE)]
+
+
+def test_the_worker_rests_after_idle_jobs_only():
+    rests = []
+    s = make(duty=0.25, sleep=rests.append, clock=iter([0, 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0]).__next__)
+    s.submit("idle", None, P_IDLE)
+    s.run_next()
+    assert rests == [1.0]
+    s.submit("slider", None, P_FOREGROUND)
+    s.run_next()
+    assert rests == [1.0]
+
+
+def test_worker_threads_run_jobs_and_stop():
+    done = threading.Event()
+    s = RenderScheduler(lambda job, cancel: done.set())
+    s.start()
+    s.submit("a", None, P_IDLE)
+    assert done.wait(5)
+    deadline = time.time() + 5
+    while s.pending() and time.time() < deadline:
+        time.sleep(0.01)
+    s.stop()
+    assert s.pending() == 0
+
+
+def run_in_threads(scheduler, count):
+    """`count` workers at once, each running jobs until none can start; returns the largest number seen running."""
+    seen = []
+    release = threading.Event()
+
+    def hold(_job):
+        seen.append(len(scheduler.running_jobs()))
+        release.wait(2)
+
+    scheduler.box["during"] = {job.key: hold for job in scheduler.jobs(P_IDLE)}
+    threads = [threading.Thread(target=lambda: drain(scheduler)) for _ in range(count)]
+    for thread in threads:
+        thread.start()
+    time.sleep(0.3)                       # every worker that may start has started
+    release.set()
+    for thread in threads:
+        thread.join(5)
+    return max(seen)
+
+
+def test_the_cpu_throttle_and_worker_cap_limit_parallel_jobs():
+    room = {"ok": False}
+    s = make(workers=3, may_add=lambda: room["ok"])
+    for expected in (1, 3):
+        s.ran.clear()
+        for i in range(6):
+            s.submit(f"idle-{i}", None, P_IDLE, (i,))
+        assert run_in_threads(s, 6) == expected
+        assert len(s.ran) == 6
+        room["ok"] = True
+
+
+def test_the_users_own_render_starts_beside_others_whatever_the_cpu():
+    s = make(workers=2, may_add=lambda: False)
+    started = threading.Event()
+    s.box["during"] = {"idle": lambda job: started.wait(2)}
+    s.submit("idle", None, P_IDLE)
+    worker = threading.Thread(target=s.run_next)
+    worker.start()
+    time.sleep(0.1)
+    s.submit("mine", None, P_FOREGROUND)      # the user waits for this one
+    assert s.run_next() and ("mine", P_FOREGROUND) in s.ran
+    started.set()
+    worker.join(5)
+
+
+def test_the_shared_budget_counts_renders_from_elsewhere_too():
+    from slidemage.parallel_runs import RenderBudget
+    budget = RenderBudget(3)
+    budget.take()
+    budget.take()                             # a user's batch runs two renders
+    s = make(workers=4, budget=budget)
+    for i in range(4):
+        s.submit(f"idle-{i}", None, P_IDLE, (i,))
+    assert run_in_threads(s, 4) == 1          # one place left in the budget
+    assert len(s.ran) == 4 and budget.in_use() == 2
+
+
+def test_idle_renders_stand_back_while_a_batch_waits_but_the_users_own_does_not():
+    from slidemage.parallel_runs import RenderBudget
+    budget = RenderBudget(3)
+    budget.take()
+    budget.want(1)                            # a batch is running and wants more places
+    s = make(workers=4, budget=budget)
+    s.submit("idle", None, P_IDLE)
+    assert not s.run_next()
+    s.submit("mine", None, P_FOREGROUND)
+    assert s.run_next() and s.ran == [("mine", P_FOREGROUND)]
+    budget.want(-1)
+    assert s.run_next() and ("idle", P_IDLE) in s.ran
+    assert budget.in_use() == 1               # every render gave its place back
+
+
+def test_interrupting_a_class_puts_its_running_jobs_back_and_leaves_the_others_running():
+    s = make()
+
+    def interrupt(job):
+        del s.box["during"][job.key]
+        assert s.interrupt(P_IDLE) == 1 and s.interrupt(P_FOREGROUND) == 0
+
+    s.box["during"] = {"idle-1": interrupt}
+    s.submit("idle-1", None, P_IDLE)
+    assert s.run_next()                         # the window comes to the front while idle-1 renders
+    assert s.failed == 0 and not s.errors and s.completed == 0
+    assert [job.key for job in s.jobs(P_IDLE)] == ["idle-1"]        # put back, it renders again later
+    drain(s)
+    assert [k for k, _ in s.ran] == ["idle-1", "idle-1"] and s.completed == 1
+
+
+def test_a_stop_from_the_window_does_not_wait_for_the_process_to_be_killed(monkeypatch):
+    # The GUI stopped ten renders one after the other, each waiting for taskkill, under the queue's lock: the window
+    # froze for seconds when the user came back (v8.52.5).
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+    from slidemage.compiler import CancelToken
+    killed = threading.Event()
+
+    def slow_kill(proc):
+        time.sleep(0.5)
+        killed.set()
+
+    monkeypatch.setattr(CancelToken, "_kill", staticmethod(slow_kill))
+    s = make()
+    token = CancelToken()
+    token._set_process(Mock(poll=lambda: None))
+    s._running["idle-1"] = SimpleNamespace(key="idle-1", priority=P_IDLE, cancelled_for_requeue=False, cancel=token)
+    started = time.monotonic()
+    assert s.interrupt(P_IDLE) == 1
+    assert time.monotonic() - started < 0.2 and token.is_set() and not killed.is_set()
+    assert killed.wait(2)                                         # the kill still happens, on a thread of its own

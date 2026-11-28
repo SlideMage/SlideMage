@@ -1,0 +1,32 @@
+% !TeX program = lualatex
+% The stress deck: a few slides with the stress-test template and its optional theme features switched on
+% (mini frames, progress bar, divider frames, watermark), which the calibration deck leaves off so that
+% tools/check_layout.py has the ordinary chrome to measure. It only has to compile, in all three deck versions.
+\documentclass[aspectratio=169]{beamer}
+
+\makeatletter
+\def\input@path{{../}}
+\makeatother
+\graphicspath{{../}}
+
+\def\StressOptionalFeatures{}
+\input{SlideMage_template_stress-test}
+
+\newcommand{\FooterText}{Stress deck}
+
+\ifdefined\deckversionoverride
+	\deckversion[\deckversionoverride]
+\else
+	\deckversion[instructor]           % options: instructor, during-course, after-course
+\fi
+\decklanguage[en]
+
+\begin{document}
+
+	\slide{ZS1-EN-Stress-Title}
+	\section{First section}
+	\slide{ZS2-EN-Stress-List}
+	\section{Second section}
+	\slide{ZS3-EN-Stress-Reveal}
+
+\end{document}

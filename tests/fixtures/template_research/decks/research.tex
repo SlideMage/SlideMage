@@ -1,0 +1,28 @@
+% !TeX program = lualatex
+% The deck of tests/test_research_hooks.py: one frame of each kind the research hooks treat differently.
+\documentclass[aspectratio=169]{beamer}
+
+\makeatletter
+\def\input@path{{../}}
+\makeatother
+\graphicspath{{../}}
+
+\input{SlideMage_template_research-test}
+
+\newcommand{\FooterText}{Research hooks deck}
+
+\ifdefined\deckversionoverride
+	\deckversion[\deckversionoverride]
+\else
+	\deckversion[instructor]
+\fi
+\decklanguage[en]
+
+\begin{document}
+	\slide{ZR1-EN-Title}
+	\slide{ZR2-EN-Left-Title}
+	\slide{ZR3-EN-Centred-Title}
+	\slide{ZR4-EN-Section}
+	\slide{ZR5-EN-Standout}
+	\slide{ZR6-EN-Quote}
+\end{document}

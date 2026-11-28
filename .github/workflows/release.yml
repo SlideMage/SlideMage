@@ -1,0 +1,558 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # The GPL/AGPL/LGPL terms of the executable: whoever gets it can get the complete corresponding source of the
+  # same release (THIRD_PARTY_NOTICES.md says so).
+  source:
+    name: Source archive
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Archive
+        shell: bash
+        run: |
+          mkdir -p out
+          name="${GITHUB_REF_NAME//\//-}"      # a run by hand on a branch: fix/x would be a folder in the file name
+          git archive --format=tar.gz --prefix="SlideMage-${name}/" -o "out/SlideMage-${name}-source.tar.gz" HEAD
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/SlideMage-${{ github.ref_name }}-source.tar.gz
+          fail_on_unmatched_files: true
+          # A beta tag (vX.Y.Z-beta.N, version.BETA_SUFFIX) is a pre-release: only installations with beta versions on get it.
+          prerelease: ${{ contains(github.ref_name, '-beta.') }}
+          generate_release_notes: false
+
+  build:
+    name: Build (${{ matrix.os }})
+    # Code signing (docs/CODE_SIGNING.md): with the repository variable SLIDEMAGE_CODE_SIGNING = "on", the Windows
+    # build runs on the self-hosted runner labelled "certum", where SimplySign Desktop holds the Certum certificate,
+    # and signs every program it makes. Off (the variable unset): GitHub's runner, nothing signed, as before.
+    # release.yml runs only for tags and manual starts, never for pull requests, so no outside code reaches that runner.
+    runs-on: ${{ (matrix.os == 'windows-latest' && vars.SLIDEMAGE_CODE_SIGNING == 'on') && fromJSON('["self-hosted", "Windows", "certum"]') || matrix.os }}
+    env:
+      CODE_SIGNING: ${{ matrix.os == 'windows-latest' && vars.SLIDEMAGE_CODE_SIGNING == 'on' }}
+      SLIDEMAGE_SIGNING_CERT_SHA1: ${{ vars.SLIDEMAGE_SIGNING_CERT_SHA1 }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Ubuntu 24.04, not ubuntu-latest: the build needs the build machine's glibc (2.39) or newer, so the runner
+          # sets SlideMage's minimum Linux (packaging/install-slidemage.sh, MIN_GLIBC). Change both together.
+          - os: ubuntu-24.04
+            asset_name: SlideMage-linux
+            binary_path: dist/SlideMage
+          - os: windows-latest
+            asset_name: SlideMage-windows
+            binary_path: dist/SlideMage.exe
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # release_notes.py needs the previous tag
+      # First on the signing runner: every later `shell: bash` step needs Git Bash, and on a person's Windows the first
+      # bash on PATH is often WSL's (System32\bash.exe), which cannot run them. GitHub's runners have Git Bash first.
+      # (v0.18.6's first run failed here: the tag-only bash checks ran before Git Bash was put in front.)
+      - name: Git Bash first (signing runner)
+        if: env.CODE_SIGNING == 'true'
+        shell: pwsh
+        run: |
+          # Git for Windows' bin\bash.exe sits in an ancestor of whichever git.exe is on PATH (Git\cmd or Git\mingw64\bin).
+          $folder = Split-Path (Get-Command git.exe).Source
+          while ($folder -and -not (Test-Path (Join-Path $folder 'bin\bash.exe'))) { $folder = Split-Path $folder }
+          if (-not $folder) { throw 'No Git Bash (bin\bash.exe) above git.exe: install Git for Windows' }
+          Join-Path $folder 'bin' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      # Every zip is signed (packaging/sign_release.py, src/slidemage/release_signing.py): installations refuse a
+      # release without a valid signature. Fail now, before the long build, when the secret is missing.
+      - name: Signing key present
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          SLIDEMAGE_RELEASE_SIGNING_KEY: ${{ secrets.SLIDEMAGE_RELEASE_SIGNING_KEY }}
+        run: |
+          if [ -z "$SLIDEMAGE_RELEASE_SIGNING_KEY" ]; then
+            echo "::error::The repository secret SLIDEMAGE_RELEASE_SIGNING_KEY is missing: no unsigned release goes out (packaging/make_signing_key.py explains the setup)"
+            exit 1
+          fi
+      # Before the long build: signtool, the certificate's thumbprint, and SimplySign Desktop logged in.
+      - name: Code signing ready (Windows)
+        if: env.CODE_SIGNING == 'true'
+        shell: pwsh
+        run: packaging/sign_windows.ps1 -Check
+      # Info -> "Check for updates…" compares the release tag with the
+      # running build's VERSION_NUMBER, so the two must be the same.
+      - name: Tag matches VERSION_NUMBER
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          expected=$(sed -n 's/^VERSION_NUMBER = "\(v[^"]*\)".*/\1/p' src/slidemage/version.py)
+          if [ "$GITHUB_REF_NAME" != "$expected" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match VERSION_NUMBER $expected"
+            exit 1
+          fi
+      # packaging/make_release.py (issue #247) folds every fragment of changes/ into CHANGELOG.md and writes the
+      # version over since="NEXT": a tag with either left over was not made by it, and its notes would miss changes.
+      - name: Nothing left unreleased
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          left=$(find changes -name '*.md' ! -name README.md 2>/dev/null)
+          if [ -n "$left" ]; then
+            echo "::error::Unreleased fragments at the tag (run packaging/make_release.py): $left"
+            exit 1
+          fi
+          if grep -nE "since\s*=\s*[\"']NEXT[\"']" src/slidemage/compat*.py; then
+            echo "::error::since=\"NEXT\" left in compat at the tag (run packaging/make_release.py)"
+            exit 1
+          fi
+      - uses: actions/setup-python@v5
+        if: env.CODE_SIGNING != 'true'
+        with:
+          python-version: "3.12"
+      # On the signing runner (a person's computer) actions/setup-python's installer does not run (2026-11-28: blocked
+      # script policy, then an installer it could not find), so the job uses the Python 3.12 installed there for the
+      # user (docs/CODE_SIGNING.md, "Tools"), in a fresh virtual environment of its own: nothing it installs stays.
+      - name: Python 3.12 (signing runner)
+        if: env.CODE_SIGNING == 'true'
+        shell: pwsh
+        run: |
+          $python = Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312\python.exe'
+          if (-not (Test-Path $python)) { throw "No Python 3.12 at ${python}: install it for this user (docs/CODE_SIGNING.md)" }
+          $venv = Join-Path $env:RUNNER_TEMP 'venv'
+          & $python -m venv --clear $venv
+          if ($LASTEXITCODE -ne 0) { throw "python -m venv failed" }
+          Join-Path $venv 'Scripts' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          & (Join-Path $venv 'Scripts\python.exe') --version
+      - name: Qt runtime libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1
+      - run: pip install -e ".[build]"
+      # The release notes are this version's history entry in version.py. When the release carries SlideMage
+      # Presenter's zips (the presenter job attaches them, by the same packaging/presenter_changed.py) they also
+      # say what the Presenter is and how to open the unsigned macOS app.
+      # Fails the release when the major number goes up without a
+      # "BREAKING:" paragraph there -- the updater relies on that marker to
+      # ask before installing a release that breaks with the past.
+      - name: Release notes
+        shell: bash
+        run: |
+          tag="$GITHUB_REF_NAME"
+          if [[ "$GITHUB_REF" != refs/tags/* ]]; then
+            tag=$(sed -n 's/^VERSION_NUMBER = "\(v[^"]*\)".*/\1/p' src/slidemage/version.py)
+          fi
+          presenter=""
+          if [ "$(python packaging/presenter_changed.py | tr -d '\r')" = "true" ]; then
+            presenter="--presenter"
+          fi
+          python packaging/release_notes.py "$tag" $presenter > release_notes.md
+      # The folder first: it is what installations update to (the updater of a folder installation fetches
+      # SlideMage-<os>-folder.zip), so it is built, tested and published before the single file (Linux only) is built.
+      - name: Build the folder
+        env:
+          SLIDEMAGE_BUILD: folder
+        run: pyinstaller --noconfirm packaging/slidemage.spec
+      # Before the zip and its .sig: the updater checks the .sig against the zip's bytes, signed program included.
+      - name: Sign the folder's program (Windows)
+        if: env.CODE_SIGNING == 'true'
+        shell: pwsh
+        run: packaging/sign_windows.ps1 dist/SlideMage-folder/SlideMage.exe
+      # Start every build once before it is published: --self-test imports every module the window needs and
+      # exits 0. v8.33.0's Windows build stopped at startup (PyMuPDF 2.0 wanted model files the bundle lacked)
+      # and was published anyway; a build like that fails here instead.
+      - name: Self-test the folder (Linux)
+        if: runner.os != 'Windows'
+        timeout-minutes: 5
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: dist/SlideMage-folder/SlideMage --self-test
+      # The self-test runs offscreen, so it passes without the plugin that opens the window on a Linux desktop.
+      # PyInstaller's Qt hook leaves every Qt plugin out when PySide6 cannot start on the build machine (a missing
+      # system library; found in a bare Docker build, 2026-11-27).
+      - name: The folder has Qt's xcb plugin (Linux)
+        if: runner.os == 'Linux'
+        run: test -n "$(find dist/SlideMage-folder -name libqxcb.so)" || { echo "::error::no platforms/libqxcb.so in the build"; exit 1; }
+      - name: Self-test the folder (Windows)
+        if: runner.os == 'Windows'
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          $run = Start-Process -FilePath 'dist/SlideMage-folder/SlideMage.exe' -ArgumentList '--self-test' -Wait -PassThru -NoNewWindow -RedirectStandardOutput selftest-out.txt -RedirectStandardError selftest-err.txt
+          Get-Content selftest-out.txt, selftest-err.txt -ErrorAction SilentlyContinue      # the program has no console of its own
+          if ($run.ExitCode -ne 0) { throw "SlideMage-folder --self-test exited with $($run.ExitCode)" }
+          # The Claude Code terminal's programs start through these; up to v8.58.0 they were missing.
+          foreach ($helper in 'OpenConsole.exe', 'winpty-agent.exe') {
+            if (-not (Get-ChildItem 'dist/SlideMage-folder' -Recurse -Filter $helper)) { throw "$helper is not in the build" }
+          }
+      # The plugin host's check: the standard-library modules a plugin may import, and a plugin loaded through the loader.
+      - name: Self-test the folder's plugin host (Linux)
+        if: runner.os != 'Windows'
+        timeout-minutes: 5
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: dist/SlideMage-folder/SlideMage --self-test --plugins
+      - name: Self-test the folder's plugin host (Windows)
+        if: runner.os == 'Windows'
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          $run = Start-Process -FilePath 'dist/SlideMage-folder/SlideMage.exe' -ArgumentList '--self-test', '--plugins' -Wait -PassThru -NoNewWindow -RedirectStandardOutput selftest-out.txt -RedirectStandardError selftest-err.txt
+          Get-Content selftest-out.txt, selftest-err.txt -ErrorAction SilentlyContinue      # the program has no console of its own
+          if ($run.ExitCode -ne 0) { throw "SlideMage-folder --self-test --plugins exited with $($run.ExitCode)" }
+      # A zip with one top-level folder, which the updater of a folder installation unpacks.
+      - name: Package the folder
+        run: |
+          python -c "import os, shutil; os.makedirs('out', exist_ok=True); shutil.make_archive('out/${{ matrix.asset_name }}-folder', 'zip', 'dist', 'SlideMage-folder')"
+      - name: Sign
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          SLIDEMAGE_RELEASE_SIGNING_KEY: ${{ secrets.SLIDEMAGE_RELEASE_SIGNING_KEY }}
+        run: python packaging/sign_release.py "out/${{ matrix.asset_name }}-folder.zip"
+      - name: Attach the folder to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            out/${{ matrix.asset_name }}-folder.zip
+            out/${{ matrix.asset_name }}-folder.zip.sig
+          fail_on_unmatched_files: true
+          # A beta tag (vX.Y.Z-beta.N, version.BETA_SUFFIX) is a pre-release: only installations with beta versions on get it.
+          prerelease: ${{ contains(github.ref_name, '-beta.') }}
+          body_path: release_notes.md
+          # release_notes.py writes the changelog link itself, under a
+          # heading of its own -- GitHub's appended "Full Changelog" line
+          # would otherwise sit inside a "## Breaking changes" section
+          generate_release_notes: false
+
+      # The installers (packaging/slidemage.iss, packaging/install-slidemage.sh), attached under fixed names so
+      # releases/latest/download/<name> always works; slidemage.org/download links them first.
+      - name: Build the setup program (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
+          # Program Files (GitHub's runner, choco) or the user's own programs (winget's install on the signing runner).
+          if (-not $iscc) { $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1 }
+          if (-not $iscc) { choco install innosetup -y --no-progress; $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
+          $version = (Select-String -Path src/slidemage/version.py -Pattern '^VERSION_NUMBER = "v([^"]+)"').Matches[0].Groups[1].Value
+          $arguments = @("/DAppVersion=$version", "/DSourceDir=..\dist\SlideMage-folder")
+          if ($env:CODE_SIGNING -eq 'true') {
+            # Inno Setup signs the setup and its uninstaller through this command; it puts the quoted file for $f and a
+            # quote for $q (a literal " would reach ISCC mangled by PowerShell's argument passing).
+            $script = Join-Path (Get-Location) 'packaging\sign_windows.ps1'
+            $arguments += '/DSignToolName=certum', "/Scertum=pwsh.exe -NoProfile -ExecutionPolicy Bypass -File `$q$script`$q `$f"
+          }
+          & $iscc @arguments packaging\slidemage.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC exited with $LASTEXITCODE" }
+      # Installs without the TeX and Perl tasks (the runner has neither; their downloads are not tested here), then
+      # checks the program, the uninstall entry's location outside the app folder, and a clean uninstall. Not on the
+      # signing runner: that is a person's computer, where it would install and uninstall SlideMage for its user (the
+      # same setup, unsigned, is smoke-tested by every run on GitHub's runner).
+      - name: Smoke-test the setup program (Windows)
+        if: runner.os == 'Windows' && env.CODE_SIGNING != 'true'
+        timeout-minutes: 15
+        shell: pwsh
+        run: |
+          $setup = Start-Process -FilePath out\SlideMage-Setup.exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/TASKS=""', '/LOG=setup.log' -Wait -PassThru
+          if ($setup.ExitCode -ne 0) { Get-Content setup.log -Tail 40; throw "the setup exited with $($setup.ExitCode)" }
+          $app = "$env:LOCALAPPDATA\Programs\SlideMage"
+          if (-not (Test-Path "$app\SlideMage.exe")) { throw "no SlideMage.exe in $app" }
+          if (Test-Path "$app\unins000.exe") { throw "the uninstaller is inside the app folder, which self-update replaces" }
+          $run = Start-Process -FilePath "$app\SlideMage.exe" -ArgumentList '--self-test' -Wait -PassThru -NoNewWindow -RedirectStandardOutput installed-out.txt
+          Get-Content installed-out.txt
+          if ($run.ExitCode -ne 0) { throw "the installed SlideMage --self-test exited with $($run.ExitCode)" }
+          $uninstaller = Get-ChildItem "$env:LOCALAPPDATA\Programs\SlideMage-setup\unins*.exe" | Select-Object -First 1
+          Start-Process -FilePath $uninstaller.FullName -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES' -Wait
+          Start-Sleep -Seconds 5      # the uninstaller finishes in a copy of itself
+          if (Test-Path $app) { throw "$app is still there after the uninstall" }
+      - name: Attach the setup program (Windows)
+        if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/SlideMage-Setup.exe
+          fail_on_unmatched_files: true
+          # A beta tag (vX.Y.Z-beta.N, version.BETA_SUFFIX) is a pre-release: only installations with beta versions on get it.
+          prerelease: ${{ contains(github.ref_name, '-beta.') }}
+          body_path: release_notes.md
+          generate_release_notes: false
+      - name: Attach the install script (Linux)
+        if: runner.os == 'Linux' && startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: packaging/install-slidemage.sh
+          fail_on_unmatched_files: true
+          # A beta tag (vX.Y.Z-beta.N, version.BETA_SUFFIX) is a pre-release: only installations with beta versions on get it.
+          prerelease: ${{ contains(github.ref_name, '-beta.') }}
+          body_path: release_notes.md
+          generate_release_notes: false
+
+      # The single file only on Linux: Windows has the setup and the folder (user, 2026-11-28: the Windows single
+      # file took ~4.5 min of the release; copies of it keep their version and take the setup by hand).
+      - name: Build the single file
+        if: runner.os != 'Windows'
+        env:
+          SLIDEMAGE_BUILD: onefile
+        run: pyinstaller --noconfirm packaging/slidemage.spec
+      - name: Self-test the single file (Linux)
+        if: runner.os != 'Windows'
+        timeout-minutes: 5
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: dist/SlideMage --self-test
+      - name: Self-test the single file's plugin host (Linux)
+        if: runner.os != 'Windows'
+        timeout-minutes: 5
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: dist/SlideMage --self-test --plugins
+      - name: Package the single file (Linux)
+        if: runner.os != 'Windows'
+        run: |
+          zip -j "out/${{ matrix.asset_name }}.zip"             "${{ matrix.binary_path }}"             src/slidemage/assets/icon.svg             packaging/slidemage.desktop.template
+      - name: Sign
+        if: runner.os != 'Windows' && startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          SLIDEMAGE_RELEASE_SIGNING_KEY: ${{ secrets.SLIDEMAGE_RELEASE_SIGNING_KEY }}
+        run: python packaging/sign_release.py "out/${{ matrix.asset_name }}.zip"
+      - name: Attach the single file to the release
+        if: runner.os != 'Windows' && startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            out/${{ matrix.asset_name }}.zip
+            out/${{ matrix.asset_name }}.zip.sig
+          fail_on_unmatched_files: true
+          # A beta tag (vX.Y.Z-beta.N, version.BETA_SUFFIX) is a pre-release: only installations with beta versions on get it.
+          prerelease: ${{ contains(github.ref_name, '-beta.') }}
+          body_path: release_notes.md
+          generate_release_notes: false
+
+  # SlideMage Presenter (docs/plans/presenter-app.md, step 4): a small program that presents a PDF, built from the same
+  # source on its own spec. packaging/presenter_paths.txt lists the files it is built from (its modules, its spec,
+  # pyproject.toml and uv.lock); packaging/presenter_changed.py compares them with the previous release tag. Built and
+  # self-tested only when one of them, or this workflow, changed (presenter-check, user 2026-11-28: a signed release
+  # runs the Windows jobs one after the other on the laptop, and an unchanged Presenter cannot break); its zips are
+  # attached only when its own files changed, so a Presenter that updates itself hears only of releases that concern
+  # it. Same version number as SlideMage.
+  presenter-check:
+    name: Presenter changed?
+    runs-on: ubuntu-24.04
+    outputs:
+      build: ${{ steps.changed.outputs.build }}
+      attach: ${{ steps.changed.outputs.attach }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # presenter_changed.py needs the previous tag
+      - name: Compare with the previous release
+        id: changed
+        shell: bash
+        run: |
+          attach=$(python3 packaging/presenter_changed.py | tr -d '\r')
+          build=$attach
+          previous=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)
+          if [ -z "$previous" ] || ! git diff --quiet "$previous" HEAD -- .github/workflows/release.yml; then
+            build=true      # the workflow's Presenter steps may have changed: build and test it, attach nothing new
+          fi
+          echo "attach=$attach" | tee -a "$GITHUB_OUTPUT"
+          echo "build=$build" | tee -a "$GITHUB_OUTPUT"
+
+  presenter:
+    name: Presenter (${{ matrix.os }})
+    needs: presenter-check
+    if: needs.presenter-check.outputs.build == 'true'
+    # Code signing as in the build job (docs/CODE_SIGNING.md): the Windows Presenter on the "certum" runner when it is on.
+    runs-on: ${{ (matrix.os == 'windows-latest' && vars.SLIDEMAGE_CODE_SIGNING == 'on') && fromJSON('["self-hosted", "Windows", "certum"]') || matrix.os }}
+    env:
+      CODE_SIGNING: ${{ matrix.os == 'windows-latest' && vars.SLIDEMAGE_CODE_SIGNING == 'on' }}
+      SLIDEMAGE_SIGNING_CERT_SHA1: ${{ vars.SLIDEMAGE_SIGNING_CERT_SHA1 }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # max_mib: the unpacked Presenter (the folder, or the .app) must stay below it. It is the guard against a
+          # stray import that brings QtWebEngine, the compiler or the workspace back (several hundred MiB more), not
+          # a target to fill. Measured: Windows 105, macOS 142 (v0.13.10), Linux 172 MiB (v0.13.12). The step lists
+          # the largest files, and the symbolic links on Linux: zipping would expand each into a full copy.
+          - os: ubuntu-24.04     # as the build job: the minimum Linux follows the runner's glibc
+            asset_name: SlideMagePresenter-linux
+            bundle_path: dist/SlideMagePresenter
+            max_mib: 200
+          - os: windows-latest
+            asset_name: SlideMagePresenter-windows
+            bundle_path: dist/SlideMagePresenter
+            max_mib: 130
+          - os: macos-latest
+            asset_name: SlideMagePresenter-macos
+            bundle_path: dist/SlideMage Presenter.app
+            max_mib: 170
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # presenter_changed.py needs the previous tag
+      # First on the signing runner: every later `shell: bash` step needs Git Bash, and on a person's Windows the first
+      # bash on PATH is often WSL's (System32\bash.exe), which cannot run them. GitHub's runners have Git Bash first.
+      # (v0.18.6's first run failed here: the tag-only bash checks ran before Git Bash was put in front.)
+      - name: Git Bash first (signing runner)
+        if: env.CODE_SIGNING == 'true'
+        shell: pwsh
+        run: |
+          # Git for Windows' bin\bash.exe sits in an ancestor of whichever git.exe is on PATH (Git\cmd or Git\mingw64\bin).
+          $folder = Split-Path (Get-Command git.exe).Source
+          while ($folder -and -not (Test-Path (Join-Path $folder 'bin\bash.exe'))) { $folder = Split-Path $folder }
+          if (-not $folder) { throw 'No Git Bash (bin\bash.exe) above git.exe: install Git for Windows' }
+          Join-Path $folder 'bin' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      # Every zip is signed (packaging/sign_release.py, src/slidemage/release_signing.py): installations refuse a
+      # release without a valid signature. Fail now, before the long build, when the secret is missing.
+      - name: Signing key present
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          SLIDEMAGE_RELEASE_SIGNING_KEY: ${{ secrets.SLIDEMAGE_RELEASE_SIGNING_KEY }}
+        run: |
+          if [ -z "$SLIDEMAGE_RELEASE_SIGNING_KEY" ]; then
+            echo "::error::The repository secret SLIDEMAGE_RELEASE_SIGNING_KEY is missing: no unsigned release goes out (packaging/make_signing_key.py explains the setup)"
+            exit 1
+          fi
+      # The Presenter's updater compares the release tag with its VERSION_NUMBER, so the two must be the same.
+      - name: Tag matches VERSION_NUMBER
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          expected=$(sed -n 's/^VERSION_NUMBER = "\(v[^"]*\)".*/\1/p' src/slidemage/version.py)
+          if [ "$GITHUB_REF_NAME" != "$expected" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match VERSION_NUMBER $expected"
+            exit 1
+          fi
+      - uses: actions/setup-python@v5
+        if: env.CODE_SIGNING != 'true'
+        with:
+          python-version: "3.12"
+      # On the signing runner (a person's computer) actions/setup-python's installer does not run (2026-11-28: blocked
+      # script policy, then an installer it could not find), so the job uses the Python 3.12 installed there for the
+      # user (docs/CODE_SIGNING.md, "Tools"), in a fresh virtual environment of its own: nothing it installs stays.
+      - name: Python 3.12 (signing runner)
+        if: env.CODE_SIGNING == 'true'
+        shell: pwsh
+        run: |
+          $python = Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312\python.exe'
+          if (-not (Test-Path $python)) { throw "No Python 3.12 at ${python}: install it for this user (docs/CODE_SIGNING.md)" }
+          $venv = Join-Path $env:RUNNER_TEMP 'venv'
+          & $python -m venv --clear $venv
+          if ($LASTEXITCODE -ne 0) { throw "python -m venv failed" }
+          Join-Path $venv 'Scripts' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          & (Join-Path $venv 'Scripts\python.exe') --version
+      - name: Qt runtime libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1 xvfb libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0
+      - run: pip install -e ".[build]"
+      - name: Code signing ready (Windows)
+        if: env.CODE_SIGNING == 'true'
+        shell: pwsh
+        run: packaging/sign_windows.ps1 -Check
+      - name: Build SlideMage Presenter
+        run: pyinstaller --noconfirm packaging/slidemage_presenter.spec
+      - name: Sign the Presenter (Windows)
+        if: env.CODE_SIGNING == 'true'
+        shell: pwsh
+        run: packaging/sign_windows.ps1 dist/SlideMagePresenter/SlideMagePresenter.exe
+      # --self-test imports everything the Presenter needs (PyMuPDF, Qt, SVG, HTTPS) and exits 0, as SlideMage's does.
+      - name: Self-test (Linux)
+        if: runner.os == 'Linux'
+        timeout-minutes: 5
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: dist/SlideMagePresenter/SlideMagePresenter --self-test
+      # The self-test only imports. This really starts the program on a virtual display: the start window opens through
+      # the xcb plugin, with the libraries the spec leaves out gone, and the program quits by itself (TIMING).
+      - name: Real start (Linux)
+        if: runner.os == 'Linux'
+        timeout-minutes: 5
+        env:
+          QT_QPA_PLATFORM: xcb
+          SLIDEMAGE_PRESENTER_TIMING: "1"
+        run: xvfb-run -a dist/SlideMagePresenter/SlideMagePresenter
+      - name: Self-test (Windows)
+        if: runner.os == 'Windows'
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          $run = Start-Process -FilePath 'dist/SlideMagePresenter/SlideMagePresenter.exe' -ArgumentList '--self-test' -Wait -PassThru -NoNewWindow -RedirectStandardOutput selftest-out.txt -RedirectStandardError selftest-err.txt
+          Get-Content selftest-out.txt, selftest-err.txt -ErrorAction SilentlyContinue      # the program has no console of its own
+          if ($run.ExitCode -ne 0) { throw "SlideMagePresenter --self-test exited with $($run.ExitCode)" }
+      - name: Self-test (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 5
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          "dist/SlideMage Presenter.app/Contents/MacOS/SlideMagePresenter" --self-test
+      - name: Size of the unpacked Presenter
+        shell: bash
+        env:
+          BUNDLE: ${{ matrix.bundle_path }}
+          PRESENTER_MAX_MIB: ${{ matrix.max_mib }}
+        run: |
+          python - "$BUNDLE" "$PRESENTER_MAX_MIB" <<'PY'
+          import os, sys
+          root, limit = sys.argv[1], int(sys.argv[2])
+          sizes = []
+          for folder, _dirs, files in os.walk(root):      # symlinks (a macOS bundle has some) count as the links they are
+              for name in files:
+                  path = os.path.join(folder, name)
+                  sizes.append((os.lstat(path).st_size, os.path.relpath(path, root)))
+          mib = sum(size for size, _path in sizes) / 2**20
+          print(f"{root}: {mib:.1f} MiB (limit {limit} MiB); the largest files:")
+          for size, path in sorted(sizes, reverse=True)[:20]:
+              print(f"  {size / 2**20:7.1f} MiB  {path}")
+          links = [path for _size, path in sizes if os.path.islink(os.path.join(root, path))]
+          print(f"{len(links)} symbolic links", links[:10])
+          if mib > limit:
+              print(f"::error::The unpacked Presenter is {mib:.1f} MiB, over the limit of {limit} MiB")
+              sys.exit(1)
+          PY
+      # Windows and Linux: a zip with the one top-level folder SlideMagePresenter/, which the Presenter's updater
+      # unpacks next to the running folder (updater.stage_folder_update). Linux also gets the icon and the desktop
+      # file template inside that folder: PyInstaller embeds no icon in a Linux binary.
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cp src/slidemage/assets/presenter-icon-256.png packaging/slidemage-presenter.desktop.template dist/SlideMagePresenter/
+          python -c "import os, shutil; os.makedirs('out', exist_ok=True); shutil.make_archive('out/${{ matrix.asset_name }}', 'zip', 'dist', 'SlideMagePresenter')"
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          python -c "import os, shutil; os.makedirs('out', exist_ok=True); shutil.make_archive('out/${{ matrix.asset_name }}', 'zip', 'dist', 'SlideMagePresenter')"
+      # ditto keeps the bundle's symlinks and permissions, which zip would not.
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p out
+          ditto -c -k --keepParent "dist/SlideMage Presenter.app" "out/${{ matrix.asset_name }}.zip"
+      # No body: the release notes are the build job's. A run by hand (workflow_dispatch) attaches nothing.
+      - name: Sign
+        if: startsWith(github.ref, 'refs/tags/') && needs.presenter-check.outputs.attach == 'true'
+        shell: bash
+        env:
+          SLIDEMAGE_RELEASE_SIGNING_KEY: ${{ secrets.SLIDEMAGE_RELEASE_SIGNING_KEY }}
+        run: python packaging/sign_release.py "out/${{ matrix.asset_name }}.zip"
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/') && needs.presenter-check.outputs.attach == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            out/${{ matrix.asset_name }}.zip
+            out/${{ matrix.asset_name }}.zip.sig
+          fail_on_unmatched_files: true
+          # A beta tag (vX.Y.Z-beta.N, version.BETA_SUFFIX) is a pre-release: only installations with beta versions on get it.
+          prerelease: ${{ contains(github.ref_name, '-beta.') }}
+          generate_release_notes: false

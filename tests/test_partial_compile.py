@@ -1,0 +1,329 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""partial_compile: compile some slides of a deck, numbered as in the whole
+deck, and swap the new pages into the whole-deck PDF."""
+from __future__ import annotations
+
+import shutil
+import threading
+import time
+from pathlib import Path
+
+import pymupdf as fitz
+import pytest
+
+from slidemage import compile_records, compiler, deck_scan, partial_compile, render_evidence
+from slidemage.partial_compile import PartialError, format_page_spec, parse_page_spec
+from slidemage.project import ProjectContext
+
+DECK = ("\\documentclass{beamer}\n\\begin{document}\n"
+        "\\section{One}\n"
+        "\\slide{1aa-EN-A}\n"
+        "\\slide{1bb-EN-B}\n"
+        "\\slide{1cc-EN-C}\n"
+        "\\end{document}\n")
+
+
+def make_pdf(path: Path, pages: list[tuple[str, str, int]], links=None) -> Path:
+    """pages: (body text, slide id, frame number) per page."""
+    doc = fitz.open()
+    for body, slide_id, frame in pages:
+        page = doc.new_page(width=400, height=225)
+        page.insert_text((20, 40), body)
+        page.insert_text((20, 215), f"(slide id: {slide_id} | v1.0.0EN | instructor deck)  {frame}",
+                         fontsize=5)
+    for i, page_links in (links or {}).items():
+        for link in page_links:
+            doc[i].insert_link(link)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    doc.save(path)
+    return path
+
+
+def full_pages():
+    return [("A text", "1aa", 1), ("B old step 1", "1bb", 2), ("B old step 2", "1bb", 2),
+            ("C text", "1cc", 3)]
+
+
+def ctx_of(job):
+    return ProjectContext.at(job.deck.path.parent.parent)
+
+
+@pytest.mark.skipif(shutil.which("latexmk") is None or shutil.which("lualatex") is None,
+                    reason="needs a TeX installation")
+@pytest.mark.parametrize("render_changes", [False, True])
+def test_page_compile_matches_full_compile_after_another_slide_changes(ctx, render_changes):
+    from slidemage import app_settings, deck_context, slide_versioning
+
+    ctx.decks_dir.mkdir(parents=True)
+    ctx.slides_dir.mkdir()
+    # A tiny deck using real LaTeX input substitution and the footer format the planner reads,
+    # without a theme or fonts obscuring which source supplied each page.
+    deck_text = (r"\documentclass{article}" "\n"
+                 r"\newcounter{framenumber}" "\n"
+                 r"\newcommand{\setSlideVersion}[1]{}" "\n"
+                 r"\newcommand{\SMProjectLanguages}[2][]{}" "\n"
+                 r"\def\slideid#1#2#3#4\relax{#1#2#3}" "\n"
+                 r"\newcommand{\slide}[1]{\stepcounter{framenumber}\input{slides/#1-current.tex}"
+                 r"\par (slide id: \slideid#1\relax\space | v1.0.0EN | instructor deck)"
+                 r"\space\arabic{framenumber}\clearpage}" "\n"
+                 "\\begin{document}\n\\slide{1aa-EN-A}\n\\slide{1bb-EN-B}\n\\end{document}\n")
+    (ctx.decks_dir / "t-Frozen.tex").write_text(deck_text, encoding="utf-8")
+    (ctx.root / ".latexmkrc").write_text("$pdf_mode = 4;\n", encoding="utf-8")
+    (ctx.slides_dir / "1aa-EN-A-current.tex").write_text(
+        "\\setSlideVersion{1-0-0+}\nCurrent alpha\n", encoding="utf-8")
+    (ctx.slides_dir / "1aa-EN-A-v1-0-0.tex").write_text(
+        "\\setSlideVersion{1-0-0}\nFrozen alpha\n", encoding="utf-8")
+    other = ctx.slides_dir / "1bb-EN-B-current.tex"
+    other.write_text("Original beta\n", encoding="utf-8")
+    app_settings.set(ctx, slide_versioning.RENDER_CHANGES_SETTING_KEY, render_changes)
+    job = compiler.CompileJob(deck_scan.scan_dir(ctx.decks_dir, False)[0], None, None)
+    logs = []
+
+    def compile_full():
+        published = threading.Event()
+        job.pages = None
+        assert compiler.run_job(ctx, job, logs.append, on_relocated=lambda *_: published.set()), "\n".join(logs)
+        assert published.wait(30), "\n".join(logs)
+        record = compile_records.read_record(ctx.build_dir, job.jobname)
+        assert record is not None, "\n".join(logs)
+        return Path(record["pdf"])
+
+    pdf = compile_full()
+    expected, absent = ("Current alpha", "Frozen alpha") if render_changes else ("Frozen alpha", "Current alpha")
+    with fitz.open(pdf) as doc:
+        assert expected in doc[0].get_text() and absent not in doc[0].get_text()
+
+    preview = deck_context.render_in_deck(ctx, job.deck, "instructor", "1aa", "1aa-EN-A", logs.append)
+    assert preview is not None, "\n".join(logs)
+    with fitz.open(preview) as doc:
+        assert "Current alpha" in doc[0].get_text() and "Frozen alpha" not in doc[0].get_text()
+
+    other.write_text("Edited beta\n", encoding="utf-8")
+    # A range can include an unchanged '+' slide beside the slide just edited.
+    job.pages = [1, 2]
+    assert compiler.run_job(ctx, job, logs.append), "\n".join(logs)
+    with fitz.open(pdf) as doc:
+        assert len(doc) == 2
+        assert "Edited beta" in doc[1].get_text()
+        assert expected in doc[0].get_text() and absent not in doc[0].get_text()
+        patched_pages = [page.get_pixmap().samples for page in doc]
+    # The patch must look exactly like a fresh whole-deck compile with the same setting.
+    with fitz.open(compile_full()) as doc:
+        assert [page.get_pixmap().samples for page in doc] == patched_pages
+
+
+@pytest.fixture
+def deck_on_record(tmp_path, monkeypatch, request):
+    root = tmp_path / "Proj"
+    build = root / ".build"
+    ctx = ProjectContext.at(root)
+    monkeypatch.setattr(compile_records, "engine_version", lambda: "E")
+    deck_file = root / "decks" / "t-D.tex"
+    deck_file.parent.mkdir(parents=True)
+    deck_text = DECK
+    inputs = [deck_file]
+    if getattr(request, "param", None):
+        if request.param == "slideblock":
+            fragment = root / "blocks" / "topic.tex"
+            fragment.parent.mkdir()
+            fragment.write_text("\\slide{1bb-EN-B}\n", encoding="utf-8")
+            target = "topic"
+        else:
+            fragment = deck_file.parent / "fragment.tex"
+            fragment.write_text("\\section{Fragment}\n% " + "padding " * 20 + "\n"
+                                "\\slide{1bb-EN-B}\n", encoding="utf-8")
+            inputs.append(fragment)
+            target = "fragment"
+        deck_text = DECK.replace("\\slide{1bb-EN-B}\n", f"\\{request.param}{{{target}}}\n")
+    deck_file.write_text(deck_text, encoding="utf-8", newline="")
+    for slug in ("1aa-EN-A", "1bb-EN-B", "1cc-EN-C"):
+        f = root / "slides" / f"{slug}-current.tex"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(f"slide {slug}\n", encoding="utf-8")
+    deck = deck_scan.scan_dir(root / "decks", False)[0]
+    job = compiler.CompileJob(deck, None, None)
+    inv = build / "t-D-x"
+    inv.mkdir(parents=True)
+    (inv / "t-D.fls").write_text("".join(
+        f"INPUT {p}\n" for p in [*inputs, *sorted((root / "slides").iterdir())]), encoding="utf-8")
+    (inv / "t-D.log").write_text("ok\n", encoding="utf-8")
+    (inv / "t-D.aux").write_text("\\relax\n", encoding="utf-8")
+    pdf = make_pdf(root / "pdf" / "t-D.pdf", full_pages())
+    assert compile_records.write_record(ProjectContext(root, build), "t-D", inv, deck_file / "_w.tex",
+                                        compiler.wrapper_text(ctx, job), pdf, time.time() + 1,
+                                        render_evidence.search_inventory(root, compiler.build_env(ctx)),
+                                        render_evidence.digest(render_evidence.configuration_state(root, compiler.build_env(ctx))),
+                                        deck_path=deck_file)
+    return root, job, pdf
+
+
+def test_page_spec():
+    assert parse_page_spec("4, 5, 7-10, 15") == [4, 5, 7, 8, 9, 10, 15]
+    assert format_page_spec([4, 5, 7, 8, 9, 10, 15]) == "4-5, 7-10, 15"
+    for bad in ("", "a", "5-3", "0"):
+        with pytest.raises(PartialError):
+            parse_page_spec(bad)
+
+
+@pytest.mark.parametrize("deck_on_record", [None, "input", "include"], indirect=True,
+                         ids=["inline", "input", "include"])
+def test_page_compile_maps_slides_and_preserves_numbers(deck_on_record):
+    _root, job, _pdf = deck_on_record
+    plan = partial_compile.plan(ctx_of(job), job, "2, 9")
+    assert [k.call.id for k in plan.kept] == ["1bb"]
+    assert plan.kept[0].first_frame == 2 and plan.kept[0].first_page == 2
+    assert plan.missing == [9]
+    chapter = "One" if job.deck.text == DECK else "Fragment"
+    assert plan.kept[0].call.chapter.title == chapter
+    assert partial_compile.frames_for_slides(ctx_of(job), job, ["1cc", "1bb"]) == [2, 3]
+    assert partial_compile.frames_for_slides(ctx_of(job), job, ["1AA"]) == [1]
+    assert partial_compile.frames_for_slides(ctx_of(job), job, ["1zz"]) == []     # not in that PDF
+    text = partial_compile.wrapper_text(plan)
+    assert f"\\section{{{chapter}}}" in text
+    assert "\\setcounter{framenumber}{1}\\setcounter{page}{2}%\n\\slide{1bb-EN-B}" in text
+    assert "1aa-EN-A" not in text and "1cc-EN-C" not in text
+    assert "{fragment}" not in text
+    plan = partial_compile.plan(ctx_of(job), job, [3])
+    assert plan.kept[0].call.id == "1cc" and plan.kept[0].first_page == 4
+    text = partial_compile.wrapper_text(plan)
+    assert "\\setcounter{framenumber}{2}\\setcounter{page}{4}%\n\\slide{1cc-EN-C}" in text
+    assert "1aa-EN-A" not in text and "1bb-EN-B" not in text
+
+
+@pytest.mark.parametrize("deck_on_record", [None, "input"], indirect=True, ids=["inline", "input"])
+def test_deck_changes_after_the_asked_for_slides_are_fine(deck_on_record):
+    root, job, _pdf = deck_on_record
+    original = job.deck.text
+    set_deck(root, original.replace("\\slide{1cc-EN-C}\n", "\\slide{1cc-EN-C}\n\\slide{1dd-EN-D}\n"))
+    assert [k.call.id for k in partial_compile.plan(ctx_of(job), job, "2").kept] == ["1bb"]
+    set_deck(root, original.replace("\\slide{1cc-EN-C}", "\\slide{1zz-EN-Z}\n\\slide{1cc-EN-C}"))
+    with pytest.raises(PartialError, match="changed before or at page 3"):
+        partial_compile.plan(ctx_of(job), job, "3")
+
+
+@pytest.mark.parametrize("deck_on_record", ["include"], indirect=True)
+def test_frames_for_slides_finds_a_fragment_translation(deck_on_record):
+    root, job, _pdf = deck_on_record
+    (root / "slides" / "1dd-DE-B-current.tex").write_text(
+        "%% Translation of: 1bb-EN-B\nText\n", encoding="utf-8")
+    assert partial_compile.frames_for_slides(ctx_of(job), job, ["1dd"]) == [2]
+
+
+def set_deck(root: Path, text: str) -> None:
+    (root / "decks" / "t-D.tex").write_text(text, encoding="utf-8", newline="")
+
+
+def test_no_deck_copy_on_record_means_any_change_counts(deck_on_record):
+    root, job, _pdf = deck_on_record
+    (root / ".build" / "compile-records" / "t-D" / "deck.tex").unlink()
+    set_deck(root, DECK + "% a comment at the end\n")
+    with pytest.raises(PartialError, match="changed in its preamble"):
+        partial_compile.plan(ctx_of(job), job, "2")
+
+
+@pytest.mark.parametrize("change, message", [
+    (lambda root, pdf: set_deck(root, DECK.replace("\\begin{document}", "% x\n\\begin{document}")),
+     "t-D.tex changed in its preamble"),
+    (lambda root, pdf: pdf.write_bytes(pdf.read_bytes() + b"\n%x"), "t-D.pdf was changed"),
+    (lambda root, pdf: (root / ".build" / "compile-records" / "t-D.json").unlink(),
+     "has no whole-deck compile on record"),
+])
+def test_plan_refuses_when_the_whole_deck_is_needed(deck_on_record, change, message):
+    root, job, pdf = deck_on_record
+    change(root, pdf)
+    with pytest.raises(PartialError, match=message):
+        partial_compile.plan(ctx_of(job), job, "2")
+    if "no whole-deck compile" in message:
+        with pytest.raises(PartialError, match="compile the whole deck once"):
+            partial_compile.frames_for_slides(ctx_of(job), job, ["1bb"])
+
+
+def output_for(tmp_path, pages, links=None):
+    pdf = make_pdf(tmp_path / "part" / "t-D.pdf", pages, links)
+    return partial_compile.PartialOutput(pdf, tmp_path / "part", partial_compile.page_infos(pdf))
+
+
+def test_patch_swaps_the_pages_in_and_keeps_the_rest(deck_on_record, tmp_path):
+    root, job, pdf = deck_on_record
+    (root / "slides" / "1bb-EN-B-current.tex").write_text("edited\n", encoding="utf-8")
+    assert partial_compile.plan(ctx_of(job), job, "3").other_changed == ["1bb"]
+    plan = partial_compile.plan(ctx_of(job), job, "2")
+    uri = {"kind": fitz.LINK_URI, "from": fitz.Rect(10, 10, 60, 30), "uri": "https://x.org"}
+    goto = {"kind": fitz.LINK_GOTO, "from": fitz.Rect(10, 50, 60, 70), "page": 1}
+    output = output_for(tmp_path, [("B new step 1", "1bb", 2), ("B new step 2", "1bb", 2)],
+                        {0: [uri, goto]})
+    result = partial_compile.patch(plan, output, print)
+    assert result.replaced == [2] and result.mismatched == []
+    with fitz.open(pdf) as doc:
+        texts = [page.get_text() for page in doc]
+        assert len(texts) == 4
+        assert "A text" in texts[0] and "C text" in texts[3]
+        assert "B new step 1" in texts[1] and "B old" not in texts[1]
+        assert "B new step 2" in texts[2]
+        links = doc[1].get_links()
+    assert {link["kind"] for link in links} == {fitz.LINK_URI, fitz.LINK_GOTO}
+    # the in-PDF link to the slide's second page now points at its full-deck page
+    assert next(link for link in links if link["kind"] == fitz.LINK_GOTO)["page"] == 2
+    followup = partial_compile.plan(ctx_of(job), job, "3")
+    assert followup.kept[0].call.id == "1cc" and followup.other_changed == []
+
+
+def test_slide_with_a_new_page_count_is_not_swapped(deck_on_record, tmp_path):
+    _root, job, pdf = deck_on_record
+    plan = partial_compile.plan(ctx_of(job), job, "2")
+    before = pdf.read_bytes()
+    output = output_for(tmp_path, [("B 1", "1bb", 2), ("B 2", "1bb", 2), ("B 3", "1bb", 2)])
+    result = partial_compile.patch(plan, output, print)
+    assert result.replaced == [] and result.mismatched == [2]
+    assert pdf.read_bytes() == before
+    with fitz.open(result.separate_pdf) as doc:
+        assert doc.page_count == 3
+
+
+def test_progress_bar_stops_after_a_page_compile():
+    """A page compile ends the busy bar at PASS even without a MOVING line."""
+    from slidemage import compile_progress
+
+    progress = compile_progress.BatchProgress()
+    job = compiler.CompileJob(deck_scan.Deck(
+        name="t-D", path=Path("t-D.tex"), archived=False, text="", supports_version=True,
+        uses_biblatex=False, preamble_end=None, chapters=[], output_folders={}),
+        "instructor", None, pages=[4])
+    progress.reset({job.jobname: compile_progress.spec_for_job(ctx_of(job), job)})
+    progress.feed("==== Compiling t-D -> t-D-instructor ====")
+    progress.feed("Run number 1 of rule 'lualatex'")
+    assert progress.active and progress.fraction is None          # busy bar
+    update = progress.feed("==== PASS: t-D-instructor -> pdf/t-D-instructor.pdf ====")
+    assert not progress.active and update[2] is True              # batch finished
+
+
+@pytest.mark.parametrize("deck_on_record", ["slideblock"], indirect=True)
+@pytest.mark.parametrize("content", ["% edited\n\\slide{1bb-EN-B}\n", "", None],
+                         ids=["comment", "emptied", "deleted"])
+def test_editing_a_block_requires_a_full_compile(deck_on_record, content):
+    from slidemage import deck_outline, preview_target
+    from slidemage.deck_editor import parse_slide_calls
+
+    _root, job, _pdf = deck_on_record
+    ctx = ctx_of(job)
+    block = ctx.blocks_dir / "topic.tex"
+    record = compile_records.read_record(ctx.build_dir, job.jobname)
+    assert str(block) in {e["path"] for e in record["inputs"]}
+    assert partial_compile.plan(ctx, job, "1").frames == [1]
+    outline = deck_outline.resolve_outline(ctx, job.deck, "instructor", "EN")
+    # A contents slide depends on the deck, including the block's calls.
+    (ctx.slides_dir / "1aa-EN-A-current.tex").write_text("\\tableofcontents\n", encoding="utf-8")
+    call = parse_slide_calls(job.deck)[0]
+    target = preview_target.for_call(ctx, job.deck, call, 1)
+    assert outline.matches(ctx, job.deck, "EN")
+    if content is None:
+        block.unlink()
+    else:
+        block.write_text(content, encoding="utf-8")
+    assert not outline.matches(ctx, job.deck, "EN")
+    assert preview_target.for_call(ctx, job.deck, call, 1).deck_hash != target.deck_hash
+    with pytest.raises(PartialError, match="topic.tex changed.*compile the whole deck"):
+        partial_compile.plan(ctx, job, "1")
+    with pytest.raises(PartialError, match="topic.tex changed.*compile the whole deck"):
+        partial_compile.frames_for_slides(ctx, job, ["1aa"])

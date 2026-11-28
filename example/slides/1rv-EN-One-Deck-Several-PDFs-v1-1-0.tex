@@ -1,0 +1,40 @@
+%% Included in decks: slidemage-manual, slidemage-manual-copy
+%%
+
+% SlideMage manual, chapter "Decks and deck versions": the deck versions, with
+% the same slide (1th, "Reveals that depend on the deck version") cropped from
+% this manual compiled as each version (tools/manual/make_crops.py versions).
+\setSlideVersion{1-1-0}
+\providecommand{\versioncrop}[2]{% image, caption
+	\begin{tabular}[t]{@{}c@{}}
+		{\setlength{\fboxsep}{0pt}\setlength{\fboxrule}{0.4pt}%
+		\fcolorbox{c_primary_gray}{white}{#1}}\\[-1pt]
+		{\scriptsize #2}
+	\end{tabular}}
+\begin{standardframe}{One deck, several PDFs}
+	\small
+	Students need the slides before a lecture, but without the answers to the
+	questions you ask; after the course they should get everything. Instead of
+	three decks, you keep one: each compile produces one \emph{deck version},
+	and the slides say what each version shows.
+	\par\medskip
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.42\linewidth}
+			\shrinklists{1}
+			\begin{itemize}
+				\item \textbf{instructor}: everything, step by step
+				\item \textbf{during-course}: answers left out
+				\item \textbf{after-course}: everything, all at once
+				\item Also: a \textbf{presenter} PDF with your notes, and after-course \textbf{per chapter} (so you can share the after-course version whenever you have covered a chapter)
+				\item The footer names the version
+			\end{itemize}
+		\end{column}
+		\begin{column}{0.56\linewidth}
+			\centering
+			\versioncrop{\includegraphics[width=92pt]{media/screenshot-slide-version-instructor-step1.png}}{instructor, first step} \hspace{4pt}
+			\versioncrop{\includegraphics[width=92pt]{media/screenshot-slide-version-instructor-step4.png}}{instructor, last step}\\[3pt]
+			\versioncrop{\includegraphics[width=92pt]{media/screenshot-slide-version-during-course-step1.png}}{during-course} \hspace{4pt}
+			\versioncrop{\includegraphics[width=92pt]{media/screenshot-slide-version-after-course-step1.png}}{after-course}
+		\end{column}
+	\end{columns}
+\end{standardframe}

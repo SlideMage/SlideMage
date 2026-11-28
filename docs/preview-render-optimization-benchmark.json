@@ -1,0 +1,3056 @@
+{
+  "date": "2026-10-18",
+  "automated_checks": {
+    "integrated_passed": 693,
+    "integrated_seconds": 63.7,
+    "final_cache_guard_passed": 54,
+    "final_cache_guard_seconds": 1.54,
+    "real_latex_gate_passed": 1,
+    "real_latex_gate_seconds": 146.49
+  },
+  "cold_font_probe": [
+    {
+      "phase": "cold-identical-all",
+      "seconds": 38.23574527501478,
+      "statuses": [
+        "rendered",
+        "rendered",
+        "rendered"
+      ],
+      "compile_count": 3,
+      "latex_passes": 6,
+      "raster_count": 3,
+      "sequence_raster_count": 3,
+      "cache_hits": 0,
+      "validation_seconds": 0.0007681370188947767,
+      "dependency_bytes_read": 3022126401,
+      "content_bytes_read": 9169692033,
+      "deduplicated_images": 15,
+      "metrics": [
+        {
+          "seconds": 28.24232552299509,
+          "stages": {
+            "lock_wait": 8.293101564049721e-05,
+            "cache_validation": 0.0003068600199185312,
+            "cache_configuration": 0.0013094479800201952,
+            "format_build": 19.95058776900987,
+            "prune": 0.00020712398691102862,
+            "wrapper_write": 4.2104016756638885e-05,
+            "latexmk": 3.9937099410162773,
+            "pdf_copy": 0.0001538449723739177,
+            "dependencies": 0.2424067660176661,
+            "build": 26.2770695189829,
+            "render": 26.27708783300477,
+            "png": 0.1827603959827684,
+            "raster_sequence": 0.022056343994336203,
+            "prepare": 1.8314021872356534e-05
+          },
+          "counters": {
+            "content_bytes_read": 3056564011,
+            "dependency_bytes_read": 1007375467
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.2429200590122491
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.2994581770035438
+            },
+            {
+              "rule": "lualatex",
+              "number": 3,
+              "seconds": 1.261125215998618
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 1
+        },
+        {
+          "seconds": 5.598616793024121,
+          "stages": {
+            "lock_wait": 5.478804814629257e-05,
+            "cache_validation": 0.0002555999963078648,
+            "cache_configuration": 0.0011412089806981385,
+            "prune": 0.0002606009948067367,
+            "wrapper_write": 5.2054005209356546e-05,
+            "latexmk": 2.7008466479892377,
+            "pdf_copy": 0.000161083007697016,
+            "dependencies": 0.24692754601710476,
+            "build": 3.7649094669905026,
+            "render": 3.7649249240057543,
+            "png": 0.0633336319879163,
+            "raster_sequence": 0.021543576003750786,
+            "prepare": 1.5457015251740813e-05
+          },
+          "counters": {
+            "content_bytes_read": 3056564011,
+            "dependency_bytes_read": 1007375467
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.3189153670100495
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.2581158109824173
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 7
+        },
+        {
+          "seconds": 4.309067579015391,
+          "stages": {
+            "lock_wait": 5.146395415067673e-05,
+            "cache_validation": 0.00020567700266838074,
+            "cache_configuration": 0.0011475810024421662,
+            "prune": 0.000217166991205886,
+            "wrapper_write": 7.736100815236568e-05,
+            "latexmk": 1.391273580986308,
+            "pdf_copy": 0.00015138799790292978,
+            "dependencies": 0.2477593180083204,
+            "build": 2.4784633470117114,
+            "render": 2.4784770930127706,
+            "png": 0.06278380099684,
+            "raster_sequence": 0.020978523010853678,
+            "prepare": 1.3746001059189439e-05
+          },
+          "counters": {
+            "content_bytes_read": 3056564011,
+            "dependency_bytes_read": 1007375467
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.284360610996373
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 7
+        }
+      ]
+    },
+    {
+      "phase": "saved-versus-captured-reference",
+      "seconds": 10.114390995004214,
+      "reference_compiles": 3,
+      "identical_sequences": true
+    },
+    {
+      "phase": "warm-all",
+      "seconds": 2.678191095998045,
+      "statuses": [
+        "cached",
+        "cached",
+        "cached"
+      ],
+      "compile_count": 0,
+      "latex_passes": 0,
+      "raster_count": 0,
+      "sequence_raster_count": 0,
+      "cache_hits": 3,
+      "validation_seconds": 2.5985775189765263,
+      "dependency_bytes_read": 3022126401,
+      "content_bytes_read": 3051527874,
+      "deduplicated_images": 0,
+      "metrics": [
+        {
+          "seconds": 0.8727330130059272,
+          "stages": {
+            "lock_wait": 1.9505969248712063e-05,
+            "cache_validation": 0.8705313419923186
+          },
+          "counters": {
+            "content_bytes_read": 1017175958,
+            "dependency_bytes_read": 1007375467
+          },
+          "rules": [],
+          "cache_hit": true,
+          "compile_avoided": 1,
+          "deduplicated_images": 0
+        },
+        {
+          "seconds": 0.8635561560222413,
+          "stages": {
+            "lock_wait": 1.4838005881756544e-05,
+            "cache_validation": 0.8614930800104048
+          },
+          "counters": {
+            "content_bytes_read": 1017175958,
+            "dependency_bytes_read": 1007375467
+          },
+          "rules": [],
+          "cache_hit": true,
+          "compile_avoided": 1,
+          "deduplicated_images": 0
+        },
+        {
+          "seconds": 0.8707249200087972,
+          "stages": {
+            "lock_wait": 1.4588003978133202e-05,
+            "cache_validation": 0.8665530969738029
+          },
+          "counters": {
+            "content_bytes_read": 1017175958,
+            "dependency_bytes_read": 1007375467
+          },
+          "rules": [],
+          "cache_hit": true,
+          "compile_avoided": 1,
+          "deduplicated_images": 0
+        }
+      ]
+    },
+    {
+      "phase": "restart-all",
+      "seconds": 2.677626724005677,
+      "statuses": [
+        "cached",
+        "cached",
+        "cached"
+      ],
+      "compile_count": 0,
+      "latex_passes": 0,
+      "raster_count": 0,
+      "sequence_raster_count": 0,
+      "cache_hits": 3,
+      "validation_seconds": 2.598003250983311,
+      "dependency_bytes_read": 3022126401,
+      "content_bytes_read": 3051527874,
+      "deduplicated_images": 0,
+      "metrics": [
+        {
+          "seconds": 0.8683800569851883,
+          "stages": {
+            "lock_wait": 2.1760992240160704e-05,
+            "cache_validation": 0.866102363972459
+          },
+          "counters": {
+            "content_bytes_read": 1017175958,
+            "dependency_bytes_read": 1007375467
+          },
+          "rules": [],
+          "cache_hit": true,
+          "compile_avoided": 1,
+          "deduplicated_images": 0
+        },
+        {
+          "seconds": 0.8680775690008886,
+          "stages": {
+            "lock_wait": 1.876501482911408e-05,
+            "cache_validation": 0.8644774850108661
+          },
+          "counters": {
+            "content_bytes_read": 1017175958,
+            "dependency_bytes_read": 1007375467
+          },
+          "rules": [],
+          "cache_hit": true,
+          "compile_avoided": 1,
+          "deduplicated_images": 0
+        },
+        {
+          "seconds": 0.8694567430065945,
+          "stages": {
+            "lock_wait": 1.4896999346092343e-05,
+            "cache_validation": 0.8674234019999858
+          },
+          "counters": {
+            "content_bytes_read": 1017175958,
+            "dependency_bytes_read": 1007375467
+          },
+          "rules": [],
+          "cache_hit": true,
+          "compile_avoided": 1,
+          "deduplicated_images": 0
+        }
+      ]
+    },
+    {
+      "phase": "view-switch-cache-lookup",
+      "seconds": 2.629426372994203,
+      "compile_count": 0,
+      "raster_count": 0,
+      "cache_hits": 3
+    },
+    {
+      "phase": "grouped-one",
+      "seconds": 6.20301517599728,
+      "compile_count": 1,
+      "reference_seconds": 6.384830252995016,
+      "reference_compiles": 3,
+      "cache_hits": 2,
+      "groups": 1
+    },
+    {
+      "phase": "grouped-one-identical-buffer",
+      "compile_count": 0,
+      "raster_count": 0,
+      "cache_hits": 3,
+      "sequence_reuse": true
+    },
+    {
+      "phase": "grouped-two",
+      "seconds": 5.823801938997349,
+      "compile_count": 2,
+      "reference_seconds": 7.477019854995888,
+      "reference_compiles": 3,
+      "cache_hits": 1,
+      "groups": 2
+    },
+    {
+      "phase": "grouped-two-identical-buffer",
+      "compile_count": 0,
+      "raster_count": 0,
+      "cache_hits": 3,
+      "sequence_reuse": true
+    },
+    {
+      "phase": "grouped-three",
+      "seconds": 7.415110915986588,
+      "compile_count": 3,
+      "reference_seconds": 7.4833877980127,
+      "reference_compiles": 3,
+      "cache_hits": 0,
+      "groups": 3
+    },
+    {
+      "phase": "grouped-three-identical-buffer",
+      "compile_count": 0,
+      "raster_count": 0,
+      "cache_hits": 3,
+      "sequence_reuse": true
+    },
+    {
+      "phase": "default-labels-all",
+      "seconds": 10.640723340999102,
+      "statuses": [
+        "rendered",
+        "rendered",
+        "rendered"
+      ],
+      "compile_count": 3,
+      "latex_passes": 6,
+      "raster_count": 3,
+      "sequence_raster_count": 3,
+      "cache_hits": 0,
+      "validation_seconds": 0.0007746490300633013,
+      "dependency_bytes_read": 94369845,
+      "content_bytes_read": 408680606,
+      "deduplicated_images": 3,
+      "metrics": [
+        {
+          "seconds": 5.994313749979483,
+          "stages": {
+            "lock_wait": 5.816301563754678e-05,
+            "cache_validation": 0.0002506040036678314,
+            "cache_configuration": 0.001411361008649692,
+            "format_build": 1.7991135749907698,
+            "prune": 0.00021462500444613397,
+            "wrapper_write": 4.2050989577546716e-05,
+            "latexmk": 3.9063410260132514,
+            "pdf_copy": 0.00019494598382152617,
+            "dependencies": 0.021947868022834882,
+            "build": 5.780529743991792,
+            "render": 5.780543503991794,
+            "png": 0.05582299901288934,
+            "raster_sequence": 0.02137895199120976,
+            "prepare": 1.3760000001639128e-05
+          },
+          "counters": {
+            "content_bytes_read": 136226828,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.240974020009162
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.2410502859856933
+            },
+            {
+              "rule": "lualatex",
+              "number": 3,
+              "seconds": 1.2374415759986732
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 1
+        },
+        {
+          "seconds": 2.9148269559955224,
+          "stages": {
+            "lock_wait": 5.604000762104988e-05,
+            "cache_validation": 0.00030266502290032804,
+            "cache_configuration": 0.0010953549935948104,
+            "prune": 0.0003973669954575598,
+            "wrapper_write": 5.6118995416909456e-05,
+            "latexmk": 2.6251124749833252,
+            "pdf_copy": 0.00015997898299247026,
+            "dependencies": 0.02202140900772065,
+            "build": 2.6896330210147426,
+            "render": 2.6896500180009753,
+            "png": 0.06048472301336005,
+            "raster_sequence": 0.02135639000334777,
+            "prepare": 1.6996986232697964e-05
+          },
+          "counters": {
+            "content_bytes_read": 136226855,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.2620347260090057
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.2386680700001307
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 1
+        },
+        {
+          "seconds": 1.6616617769759614,
+          "stages": {
+            "lock_wait": 5.2130024414509535e-05,
+            "cache_validation": 0.00022138000349514186,
+            "cache_configuration": 0.0011628399952314794,
+            "prune": 0.0003724269918166101,
+            "wrapper_write": 5.3072028094902635e-05,
+            "latexmk": 1.3751604520075489,
+            "pdf_copy": 0.0001355860149487853,
+            "dependencies": 0.021785338001791388,
+            "build": 1.4395857110212091,
+            "render": 1.439602025988279,
+            "png": 0.06322220299625769,
+            "raster_sequence": 0.02133127997512929,
+            "prepare": 1.6314967069774866e-05
+          },
+          "counters": {
+            "content_bytes_read": 136226923,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.2695669849927071
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 1
+        }
+      ]
+    },
+    {
+      "phase": "included-instructor-pause",
+      "seconds": 10.607031142018968,
+      "statuses": [
+        "rendered",
+        "rendered",
+        "rendered"
+      ],
+      "compile_count": 3,
+      "latex_passes": 6,
+      "raster_count": 3,
+      "sequence_raster_count": 3,
+      "cache_hits": 0,
+      "validation_seconds": 0.0007577100186608732,
+      "dependency_bytes_read": 94369932,
+      "content_bytes_read": 408677993,
+      "deduplicated_images": 9,
+      "metrics": [
+        {
+          "seconds": 6.029074964986648,
+          "stages": {
+            "lock_wait": 5.925301229581237e-05,
+            "cache_validation": 0.0002564910100772977,
+            "cache_configuration": 0.0009999839821830392,
+            "format_build": 1.7748170329723507,
+            "prune": 0.00034982399665750563,
+            "wrapper_write": 3.788998583331704e-05,
+            "latexmk": 3.9207874900021125,
+            "pdf_copy": 0.00013715500244870782,
+            "dependencies": 0.021808294986840338,
+            "build": 5.774846507003531,
+            "render": 5.774860235978849,
+            "png": 0.06200454800273292,
+            "raster_sequence": 0.02146232599625364,
+            "prepare": 1.372897531837225e-05
+          },
+          "counters": {
+            "content_bytes_read": 136226741,
+            "dependency_bytes_read": 31456644
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.2293129880272318
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.2413006559945643
+            },
+            {
+              "rule": "lualatex",
+              "number": 3,
+              "seconds": 1.2555102290061768
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 2
+        },
+        {
+          "seconds": 2.874536233022809,
+          "stages": {
+            "lock_wait": 5.9723068261519074e-05,
+            "cache_validation": 0.00024503900203853846,
+            "cache_configuration": 0.0011486670118756592,
+            "prune": 0.0005229270027484745,
+            "wrapper_write": 5.763000808656216e-05,
+            "latexmk": 2.5980081029993016,
+            "pdf_copy": 0.00013228401076048613,
+            "dependencies": 0.021562531008385122,
+            "build": 2.66280073201051,
+            "render": 2.6628156139922794,
+            "png": 0.06275568099226803,
+            "raster_sequence": 0.012199315009638667,
+            "prepare": 1.4881981769576669e-05
+          },
+          "counters": {
+            "content_bytes_read": 136225626,
+            "dependency_bytes_read": 31456644
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.2452776329882909
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.2328977480065078
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 1
+        },
+        {
+          "seconds": 1.6503440809901804,
+          "stages": {
+            "lock_wait": 6.147701060399413e-05,
+            "cache_validation": 0.00025618000654503703,
+            "cache_configuration": 0.0017072980117518455,
+            "prune": 0.0005042620177846402,
+            "wrapper_write": 5.31190016772598e-05,
+            "latexmk": 1.3703970630012918,
+            "pdf_copy": 0.0001537460193503648,
+            "dependencies": 0.02206744099385105,
+            "build": 1.436344037996605,
+            "render": 1.436359168990748,
+            "png": 0.06143251800676808,
+            "raster_sequence": 0.012329908000538126,
+            "prepare": 1.5130994142964482e-05
+          },
+          "counters": {
+            "content_bytes_read": 136225626,
+            "dependency_bytes_read": 31456644
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.2668871979985852
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 6
+        }
+      ]
+    },
+    {
+      "phase": "macro-override-unknown",
+      "seconds": 10.607300475996453,
+      "statuses": [
+        "rendered",
+        "rendered",
+        "rendered"
+      ],
+      "compile_count": 3,
+      "latex_passes": 6,
+      "raster_count": 3,
+      "sequence_raster_count": 3,
+      "cache_hits": 0,
+      "validation_seconds": 0.0007689200283493847,
+      "dependency_bytes_read": 94369845,
+      "content_bytes_read": 408679466,
+      "deduplicated_images": 1,
+      "metrics": [
+        {
+          "seconds": 5.937657802976901,
+          "stages": {
+            "lock_wait": 6.267896969802678e-05,
+            "cache_validation": 0.0002490030019544065,
+            "cache_configuration": 0.0010419700120110065,
+            "format_build": 1.7728392139833886,
+            "prune": 0.0004551530000753701,
+            "wrapper_write": 4.0503015043213964e-05,
+            "latexmk": 3.868054775026394,
+            "pdf_copy": 0.00014413398457691073,
+            "dependencies": 0.022408488992368802,
+            "build": 5.717794675001642,
+            "render": 5.717808001994854,
+            "png": 0.06141640298301354,
+            "raster_sequence": 0.020548269007122144,
+            "prepare": 1.3326993212103844e-05
+          },
+          "counters": {
+            "content_bytes_read": 136226443,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.2262034179875627
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.2262345120252576
+            },
+            {
+              "rule": "lualatex",
+              "number": 3,
+              "seconds": 1.2288329689763486
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 1
+        },
+        {
+          "seconds": 2.9394988589920104,
+          "stages": {
+            "lock_wait": 6.26379915047437e-05,
+            "cache_validation": 0.0002813540049828589,
+            "cache_configuration": 0.0015089850057847798,
+            "prune": 0.0005559329874813557,
+            "wrapper_write": 4.972098395228386e-05,
+            "latexmk": 2.6510700510116294,
+            "pdf_copy": 0.00014101600390858948,
+            "dependencies": 0.021959037985652685,
+            "build": 2.7172388010076247,
+            "render": 2.717266016989015,
+            "png": 0.06048527400707826,
+            "raster_sequence": 0.020635142020182684,
+            "prepare": 2.7215981390327215e-05
+          },
+          "counters": {
+            "content_bytes_read": 136226570,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.2871488429955207
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.240006824984448
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 0
+        },
+        {
+          "seconds": 1.65669894599705,
+          "stages": {
+            "lock_wait": 6.392205250449479e-05,
+            "cache_validation": 0.00023856302141211927,
+            "cache_configuration": 0.0015901860024314374,
+            "prune": 0.0006114999996498227,
+            "wrapper_write": 6.090299575589597e-05,
+            "latexmk": 1.3647451889992226,
+            "pdf_copy": 0.00015286001143977046,
+            "dependencies": 0.021589726995443925,
+            "build": 1.431654793996131,
+            "render": 1.4316692530119326,
+            "png": 0.060706974007189274,
+            "raster_sequence": 0.02021829897421412,
+            "prepare": 1.4459015801548958e-05
+          },
+          "counters": {
+            "content_bytes_read": 136226453,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.2577320910058916
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 0
+        }
+      ]
+    },
+    {
+      "phase": "conditional-reveals-all",
+      "seconds": 8.863978885987308,
+      "statuses": [
+        "rendered",
+        "rendered",
+        "rendered"
+      ],
+      "compile_count": 3,
+      "latex_passes": 6,
+      "raster_count": 3,
+      "sequence_raster_count": 3,
+      "cache_hits": 0,
+      "validation_seconds": 0.0005923130374867469,
+      "dependency_bytes_read": 94369845,
+      "content_bytes_read": 408679038,
+      "deduplicated_images": 15,
+      "metrics": [
+        {
+          "seconds": 2.9898590340162627,
+          "stages": {
+            "lock_wait": 5.986503674648702e-05,
+            "cache_validation": 0.00013752799713984132,
+            "cache_configuration": 0.0011486140138003975,
+            "prune": 0.0006299839878920466,
+            "wrapper_write": 4.786701174452901e-05,
+            "latexmk": 2.6999027129786555,
+            "pdf_copy": 0.00012862999574281275,
+            "dependencies": 0.02186480298405513,
+            "build": 2.7639259450079408,
+            "render": 2.7639395220030565,
+            "png": 0.06285317201400176,
+            "raster_sequence": 0.021002871013479307,
+            "prepare": 1.3576995115727186e-05
+          },
+          "counters": {
+            "content_bytes_read": 136226797,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.3152701910003088
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.2601813889923505
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 2
+        },
+        {
+          "seconds": 2.9463429150055163,
+          "stages": {
+            "lock_wait": 5.9267913457006216e-05,
+            "cache_validation": 0.00023620601859875023,
+            "cache_configuration": 0.0011157990084029734,
+            "prune": 0.0006470640073530376,
+            "wrapper_write": 6.703499821014702e-05,
+            "latexmk": 2.6562248789996374,
+            "pdf_copy": 0.00017153500812128186,
+            "dependencies": 0.021406835003290325,
+            "build": 2.720296620973386,
+            "render": 2.720310258999234,
+            "png": 0.060972983977990225,
+            "raster_sequence": 0.022702901012962684,
+            "prepare": 1.3638025848194957e-05
+          },
+          "counters": {
+            "content_bytes_read": 136226673,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.297826077992795
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.2355421450047288
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 7
+        },
+        {
+          "seconds": 2.863062803982757,
+          "stages": {
+            "lock_wait": 6.059196311980486e-05,
+            "cache_validation": 0.00021857902174815536,
+            "cache_configuration": 0.0012048199714627117,
+            "prune": 0.0005935230001341552,
+            "wrapper_write": 5.401897942647338e-05,
+            "latexmk": 2.579518504004227,
+            "pdf_copy": 0.00025918902247212827,
+            "dependencies": 0.02179378000437282,
+            "build": 2.645609733008314,
+            "render": 2.6456238119862974,
+            "png": 0.06141288802609779,
+            "raster_sequence": 0.01208536300691776,
+            "prepare": 1.4078977983444929e-05
+          },
+          "counters": {
+            "content_bytes_read": 136225568,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.24470862900489
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.212689517007675
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 6
+        }
+      ]
+    },
+    {
+      "phase": "image-edit-all",
+      "seconds": 7.7342369580001105,
+      "statuses": [
+        "rendered",
+        "rendered",
+        "rendered"
+      ],
+      "compile_count": 3,
+      "latex_passes": 5,
+      "raster_count": 3,
+      "sequence_raster_count": 3,
+      "cache_hits": 0,
+      "validation_seconds": 0.031317847984610125,
+      "dependency_bytes_read": 94369854,
+      "content_bytes_read": 437746242,
+      "deduplicated_images": 15,
+      "metrics": [
+        {
+          "seconds": 2.974949335999554,
+          "stages": {
+            "lock_wait": 6.239299545995891e-05,
+            "cache_validation": 0.010568038997007534,
+            "cache_configuration": 0.0011176079860888422,
+            "prune": 0.000603938999120146,
+            "wrapper_write": 5.2023999160155654e-05,
+            "latexmk": 2.6696243819897063,
+            "pdf_copy": 0.00014202299644239247,
+            "dependencies": 0.02272466101567261,
+            "build": 2.7344934229913633,
+            "render": 2.73450696998043,
+            "png": 0.06330063598579727,
+            "raster_sequence": 0.021485615987330675,
+            "prepare": 1.3546989066526294e-05
+          },
+          "counters": {
+            "content_bytes_read": 145915414,
+            "dependency_bytes_read": 31456618
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.301818223000737
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.2447279269981664
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 1
+        },
+        {
+          "seconds": 2.9676566859998275,
+          "stages": {
+            "lock_wait": 6.742504774592817e-05,
+            "cache_validation": 0.009772870980668813,
+            "cache_configuration": 0.0012500659795477986,
+            "prune": 0.000606099987635389,
+            "wrapper_write": 5.182399763725698e-05,
+            "latexmk": 2.6680929840076715,
+            "pdf_copy": 0.00015406700549647212,
+            "dependencies": 0.02172729099402204,
+            "build": 2.7324635289842263,
+            "render": 2.732479049998801,
+            "png": 0.06195593500160612,
+            "raster_sequence": 0.022209902992472053,
+            "prepare": 1.552101457491517e-05
+          },
+          "counters": {
+            "content_bytes_read": 145915414,
+            "dependency_bytes_read": 31456618
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.2970142329868395
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.2478116349957418
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 7
+        },
+        {
+          "seconds": 1.7196771889866795,
+          "stages": {
+            "lock_wait": 6.179200136102736e-05,
+            "cache_validation": 0.010976938006933779,
+            "cache_configuration": 0.0011184870090801269,
+            "prune": 0.000613351003266871,
+            "wrapper_write": 5.0040020141750574e-05,
+            "latexmk": 1.4152558839996345,
+            "pdf_copy": 0.00014632198144681752,
+            "dependencies": 0.023716206022072583,
+            "build": 1.4818889170128386,
+            "render": 1.4819037160195876,
+            "png": 0.06252837899955921,
+            "raster_sequence": 0.022138456988614053,
+            "prepare": 1.4799006748944521e-05
+          },
+          "counters": {
+            "content_bytes_read": 145915414,
+            "dependency_bytes_read": 31456618
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.3088712019962259
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 7
+        }
+      ]
+    },
+    {
+      "phase": "external-framework-edit-all",
+      "seconds": 11.173080350010423,
+      "statuses": [
+        "rendered",
+        "rendered",
+        "rendered"
+      ],
+      "compile_count": 3,
+      "latex_passes": 6,
+      "raster_count": 3,
+      "sequence_raster_count": 3,
+      "cache_hits": 0,
+      "validation_seconds": 0.1503598340204917,
+      "dependency_bytes_read": 188738436,
+      "content_bytes_read": 542258160,
+      "deduplicated_images": 15,
+      "metrics": [
+        {
+          "seconds": 6.177140526997391,
+          "stages": {
+            "lock_wait": 6.866708281449974e-05,
+            "cache_validation": 0.048561295989202335,
+            "cache_configuration": 0.0010804369812831283,
+            "format_build": 1.7994855129800271,
+            "prune": 0.0005884489801246673,
+            "wrapper_write": 4.174301284365356e-05,
+            "latexmk": 4.011837603989989,
+            "pdf_copy": 0.00014643999747931957,
+            "dependencies": 0.02189308698871173,
+            "build": 5.8965008209925145,
+            "render": 5.896515739994356,
+            "png": 0.06410712900105864,
+            "raster_sequence": 0.026343397999880835,
+            "prepare": 1.4919001841917634e-05
+          },
+          "counters": {
+            "content_bytes_read": 187515792,
+            "dependency_bytes_read": 62912812
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.244998112990288
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.2879156049748417
+            },
+            {
+              "rule": "lualatex",
+              "number": 3,
+              "seconds": 1.2881919629871845
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 7
+        },
+        {
+          "seconds": 3.203829850011971,
+          "stages": {
+            "lock_wait": 6.723497062921524e-05,
+            "cache_validation": 0.05151010601548478,
+            "cache_configuration": 0.001154625992057845,
+            "prune": 0.0007858850003685802,
+            "wrapper_write": 5.796499317511916e-05,
+            "latexmk": 2.8642138139985036,
+            "pdf_copy": 0.0001434230071026832,
+            "dependencies": 0.022021801996743307,
+            "build": 2.928964566992363,
+            "render": 2.9289801779959816,
+            "png": 0.06087384800775908,
+            "raster_sequence": 0.021095141011755913,
+            "prepare": 1.561100361868739e-05
+          },
+          "counters": {
+            "content_bytes_read": 177371184,
+            "dependency_bytes_read": 62912812
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.3961126040085219
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.3418744019872975
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 3
+        },
+        {
+          "seconds": 1.7237260029942263,
+          "stages": {
+            "lock_wait": 6.0761027270928025e-05,
+            "cache_validation": 0.050288432015804574,
+            "cache_configuration": 0.0011894300114363432,
+            "prune": 0.000711105007212609,
+            "wrapper_write": 5.0719972932711244e-05,
+            "latexmk": 1.3852413990243804,
+            "pdf_copy": 0.00014090799959376454,
+            "dependencies": 0.021620815008645877,
+            "build": 1.449670005007647,
+            "render": 1.4496859569917433,
+            "png": 0.06098378499154933,
+            "raster_sequence": 0.021029066992923617,
+            "prepare": 1.5951984096318483e-05
+          },
+          "counters": {
+            "content_bytes_read": 177371184,
+            "dependency_bytes_read": 62912812
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.279849478014512
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 5
+        }
+      ]
+    },
+    {
+      "phase": "same-plus-source-edit-all",
+      "seconds": 7.670178958011093,
+      "statuses": [
+        "rendered",
+        "rendered",
+        "rendered"
+      ],
+      "compile_count": 3,
+      "latex_passes": 5,
+      "raster_count": 3,
+      "sequence_raster_count": 3,
+      "cache_hits": 0,
+      "validation_seconds": 0.000684909027768299,
+      "dependency_bytes_read": 94369218,
+      "content_bytes_read": 408677973,
+      "deduplicated_images": 9,
+      "metrics": [
+        {
+          "seconds": 2.9600266040069982,
+          "stages": {
+            "lock_wait": 6.644995301030576e-05,
+            "cache_validation": 0.0002491310006007552,
+            "cache_configuration": 0.0011199910077266395,
+            "prune": 0.0007087289995979518,
+            "wrapper_write": 5.051001789979637e-05,
+            "latexmk": 2.6679181230138056,
+            "pdf_copy": 0.0002423980040475726,
+            "dependencies": 0.022016495000571012,
+            "build": 2.7323313700035214,
+            "render": 2.7323459290200844,
+            "png": 0.0625915770069696,
+            "raster_sequence": 0.020536616997560486,
+            "prepare": 1.4559016562998295e-05
+          },
+          "counters": {
+            "content_bytes_read": 136225991,
+            "dependency_bytes_read": 31456406
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.2739848499768414
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.269598909013439
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 1
+        },
+        {
+          "seconds": 2.946897211979376,
+          "stages": {
+            "lock_wait": 6.924601620994508e-05,
+            "cache_validation": 0.00017658801516517997,
+            "cache_configuration": 0.0010943070228677243,
+            "prune": 0.0007737450068816543,
+            "wrapper_write": 4.843497299589217e-05,
+            "latexmk": 2.657196093001403,
+            "pdf_copy": 0.00013160897651687264,
+            "dependencies": 0.022662963019683957,
+            "build": 2.721221426007105,
+            "render": 2.7212358939868864,
+            "png": 0.06113135800114833,
+            "raster_sequence": 0.021425597020424902,
+            "prepare": 1.4467979781329632e-05
+          },
+          "counters": {
+            "content_bytes_read": 136225991,
+            "dependency_bytes_read": 31456406
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.2920197579951491
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.241656989994226
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 3
+        },
+        {
+          "seconds": 1.6951860549743287,
+          "stages": {
+            "lock_wait": 0.00010986698907800019,
+            "cache_validation": 0.0002591900120023638,
+            "cache_configuration": 0.0011291420087218285,
+            "prune": 0.0007940320065245032,
+            "wrapper_write": 5.453699850477278e-05,
+            "latexmk": 1.4026429759978782,
+            "pdf_copy": 0.00017561498680152,
+            "dependencies": 0.023380041995551437,
+            "build": 1.4683028160070535,
+            "render": 1.4683176850085147,
+            "png": 0.06168773098033853,
+            "raster_sequence": 0.02191002099425532,
+            "prepare": 1.4869001461192966e-05
+          },
+          "counters": {
+            "content_bytes_read": 136225991,
+            "dependency_bytes_read": 31456406
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.2956242380023468
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 5
+        }
+      ]
+    },
+    {
+      "phase": "warm-after-edits-all",
+      "seconds": 0.2208888239983935,
+      "statuses": [
+        "cached",
+        "cached",
+        "cached"
+      ],
+      "compile_count": 0,
+      "latex_passes": 0,
+      "raster_count": 0,
+      "sequence_raster_count": 0,
+      "cache_hits": 3,
+      "validation_seconds": 0.14908584399381652,
+      "dependency_bytes_read": 94369218,
+      "content_bytes_read": 123704513,
+      "deduplicated_images": 0,
+      "metrics": [
+        {
+          "seconds": 0.049843688000692055,
+          "stages": {
+            "lock_wait": 2.042000414803624e-05,
+            "cache_validation": 0.04902692200266756
+          },
+          "counters": {
+            "content_bytes_read": 41255957,
+            "dependency_bytes_read": 31456406
+          },
+          "rules": [],
+          "cache_hit": true,
+          "compile_avoided": 1,
+          "deduplicated_images": 0
+        },
+        {
+          "seconds": 0.051409095991402864,
+          "stages": {
+            "lock_wait": 1.4258024748414755e-05,
+            "cache_validation": 0.05083153999294154
+          },
+          "counters": {
+            "content_bytes_read": 41224278,
+            "dependency_bytes_read": 31456406
+          },
+          "rules": [],
+          "cache_hit": true,
+          "compile_avoided": 1,
+          "deduplicated_images": 0
+        },
+        {
+          "seconds": 0.049944812984904274,
+          "stages": {
+            "lock_wait": 1.6882986528798938e-05,
+            "cache_validation": 0.04922738199820742
+          },
+          "counters": {
+            "content_bytes_read": 41224278,
+            "dependency_bytes_read": 31456406
+          },
+          "rules": [],
+          "cache_hit": true,
+          "compile_avoided": 1,
+          "deduplicated_images": 0
+        }
+      ]
+    }
+  ],
+  "final_view_gate": [
+    {
+      "phase": "cold-identical-all",
+      "seconds": 10.87601365800947,
+      "statuses": [
+        "rendered",
+        "rendered",
+        "rendered"
+      ],
+      "compile_count": 3,
+      "latex_passes": 6,
+      "raster_count": 3,
+      "sequence_raster_count": 3,
+      "cache_hits": 0,
+      "validation_seconds": 0.000698434014339,
+      "dependency_bytes_read": 94369845,
+      "content_bytes_read": 408680019,
+      "deduplicated_images": 15,
+      "metrics": [
+        {
+          "seconds": 6.146555602987064,
+          "stages": {
+            "lock_wait": 7.221699343062937e-05,
+            "cache_validation": 0.00020827099797315896,
+            "cache_configuration": 0.0010913119767792523,
+            "format_build": 1.773360004008282,
+            "prune": 0.00018324301345273852,
+            "wrapper_write": 3.920498420484364e-05,
+            "latexmk": 3.9408361479872838,
+            "pdf_copy": 0.0001414419966749847,
+            "dependencies": 0.022226141998544335,
+            "build": 5.791793284995947,
+            "render": 5.791816871002084,
+            "png": 0.18321178300539032,
+            "raster_sequence": 0.021421212994027883,
+            "prepare": 2.3586006136611104e-05
+          },
+          "counters": {
+            "content_bytes_read": 136226673,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.2696400549903046
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.2346787509741262
+            },
+            {
+              "rule": "lualatex",
+              "number": 3,
+              "seconds": 1.248511245008558
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 1
+        },
+        {
+          "seconds": 2.928260765009327,
+          "stages": {
+            "lock_wait": 5.326201790012419e-05,
+            "cache_validation": 0.00028023900813423097,
+            "cache_configuration": 0.0010881650086957961,
+            "prune": 0.0002819829969666898,
+            "wrapper_write": 5.1539012929424644e-05,
+            "latexmk": 2.6476886740128975,
+            "pdf_copy": 0.00014980899868533015,
+            "dependencies": 0.021877696010051295,
+            "build": 2.711042934010038,
+            "render": 2.7110594369878527,
+            "png": 0.0638488259864971,
+            "raster_sequence": 0.021584892994724214,
+            "prepare": 1.6502977814525366e-05
+          },
+          "counters": {
+            "content_bytes_read": 136226673,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.2840620979841333
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.2381957859906834
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 7
+        },
+        {
+          "seconds": 1.7164759319857694,
+          "stages": {
+            "lock_wait": 4.976705531589687e-05,
+            "cache_validation": 0.00020992400823161006,
+            "cache_configuration": 0.0011733080027624965,
+            "prune": 0.0002547500189393759,
+            "wrapper_write": 5.12890110258013e-05,
+            "latexmk": 1.430107700987719,
+            "pdf_copy": 0.0001413020072504878,
+            "dependencies": 0.02329585497500375,
+            "build": 1.4968399249773938,
+            "render": 1.496853671997087,
+            "png": 0.06322689200169407,
+            "raster_sequence": 0.0218196350033395,
+            "prepare": 1.3747019693255424e-05
+          },
+          "counters": {
+            "content_bytes_read": 136226673,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.3234951019985601
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 7
+        }
+      ]
+    },
+    {
+      "phase": "saved-versus-captured-reference",
+      "seconds": 7.101319472014438,
+      "reference_compiles": 3,
+      "identical_sequences": true
+    },
+    {
+      "phase": "warm-all",
+      "seconds": 0.222267284989357,
+      "statuses": [
+        "cached",
+        "cached",
+        "cached"
+      ],
+      "compile_count": 0,
+      "latex_passes": 0,
+      "raster_count": 0,
+      "sequence_raster_count": 0,
+      "cache_hits": 3,
+      "validation_seconds": 0.1483763799769804,
+      "dependency_bytes_read": 94369845,
+      "content_bytes_read": 123771318,
+      "deduplicated_images": 0,
+      "metrics": [
+        {
+          "seconds": 0.050021418021060526,
+          "stages": {
+            "lock_wait": 1.7043028492480516e-05,
+            "cache_validation": 0.049324367981171235
+          },
+          "counters": {
+            "content_bytes_read": 41257106,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [],
+          "cache_hit": true,
+          "compile_avoided": 1,
+          "deduplicated_images": 0
+        },
+        {
+          "seconds": 0.04955011297715828,
+          "stages": {
+            "lock_wait": 1.5731988241896033e-05,
+            "cache_validation": 0.0488392359984573
+          },
+          "counters": {
+            "content_bytes_read": 41257106,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [],
+          "cache_hit": true,
+          "compile_avoided": 1,
+          "deduplicated_images": 0
+        },
+        {
+          "seconds": 0.05093928301357664,
+          "stages": {
+            "lock_wait": 1.6581994714215398e-05,
+            "cache_validation": 0.050212775997351855
+          },
+          "counters": {
+            "content_bytes_read": 41257106,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [],
+          "cache_hit": true,
+          "compile_avoided": 1,
+          "deduplicated_images": 0
+        }
+      ]
+    },
+    {
+      "phase": "restart-all",
+      "seconds": 0.22843236400512978,
+      "statuses": [
+        "cached",
+        "cached",
+        "cached"
+      ],
+      "compile_count": 0,
+      "latex_passes": 0,
+      "raster_count": 0,
+      "sequence_raster_count": 0,
+      "cache_hits": 3,
+      "validation_seconds": 0.15468744197278284,
+      "dependency_bytes_read": 94369845,
+      "content_bytes_read": 123771318,
+      "deduplicated_images": 0,
+      "metrics": [
+        {
+          "seconds": 0.05132970301201567,
+          "stages": {
+            "lock_wait": 1.7454993212595582e-05,
+            "cache_validation": 0.050598637986695394
+          },
+          "counters": {
+            "content_bytes_read": 41257106,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [],
+          "cache_hit": true,
+          "compile_avoided": 1,
+          "deduplicated_images": 0
+        },
+        {
+          "seconds": 0.051757174980593845,
+          "stages": {
+            "lock_wait": 1.9208004232496023e-05,
+            "cache_validation": 0.05097574298270047
+          },
+          "counters": {
+            "content_bytes_read": 41257106,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [],
+          "cache_hit": true,
+          "compile_avoided": 1,
+          "deduplicated_images": 0
+        },
+        {
+          "seconds": 0.05381700399448164,
+          "stages": {
+            "lock_wait": 1.5519995940849185e-05,
+            "cache_validation": 0.053113061003386974
+          },
+          "counters": {
+            "content_bytes_read": 41257106,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [],
+          "cache_hit": true,
+          "compile_avoided": 1,
+          "deduplicated_images": 0
+        }
+      ]
+    },
+    {
+      "phase": "view-switch-cache-lookup",
+      "seconds": 0.15604477300075814,
+      "compile_count": 0,
+      "raster_count": 0,
+      "cache_hits": 3
+    },
+    {
+      "phase": "grouped-one",
+      "seconds": 6.214513004000764,
+      "compile_count": 1,
+      "latex_passes": 3,
+      "raster_count": 1,
+      "sequence_raster_count": 1,
+      "validation_seconds": 0.10609409600147046,
+      "dependency_bytes_read": 94369845,
+      "metrics": [
+        {
+          "seconds": 6.091200555005344,
+          "stages": {
+            "lock_wait": 4.757000715471804e-05,
+            "cache_validation": 0.00019053599680773914,
+            "cache_configuration": 0.0010938929917756468,
+            "format_build": 1.7870345400006045,
+            "prune": 5.945400334894657e-05,
+            "wrapper_write": 4.0849001379683614e-05,
+            "latexmk": 4.004787713987753,
+            "pdf_copy": 0.00015742299729026854,
+            "dependencies": 0.02326205899589695,
+            "build": 5.870489889988676,
+            "render": 5.870503996993648,
+            "png": 0.06096036100643687,
+            "raster_sequence": 0.022669210011372343,
+            "prepare": 1.4107004972174764e-05
+          },
+          "counters": {
+            "content_bytes_read": 136226673,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.2711716819903813
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.2591601979802363
+            },
+            {
+              "rule": "lualatex",
+              "number": 3,
+              "seconds": 1.279573376988992
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 1
+        },
+        {
+          "seconds": 0.05905427900142968,
+          "stages": {
+            "lock_wait": 1.7232028767466545e-05,
+            "cache_validation": 0.055835965991718695
+          },
+          "counters": {
+            "content_bytes_read": 41257106,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [],
+          "cache_hit": true,
+          "compile_avoided": 1,
+          "deduplicated_images": 0
+        },
+        {
+          "seconds": 0.05294029400101863,
+          "stages": {
+            "lock_wait": 1.2445001630112529e-05,
+            "cache_validation": 0.05006759401294403
+          },
+          "counters": {
+            "content_bytes_read": 41257106,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [],
+          "cache_hit": true,
+          "compile_avoided": 1,
+          "deduplicated_images": 0
+        }
+      ],
+      "reference_seconds": 6.438867960008793,
+      "reference_compiles": 3,
+      "cache_hits": 2,
+      "groups": 1
+    },
+    {
+      "phase": "grouped-one-identical-buffer",
+      "seconds": 0.17134054700727575,
+      "compile_count": 0,
+      "raster_count": 0,
+      "cache_hits": 3,
+      "sequence_reuse": true
+    },
+    {
+      "phase": "grouped-two",
+      "seconds": 5.932006899995031,
+      "compile_count": 2,
+      "latex_passes": 4,
+      "raster_count": 2,
+      "sequence_raster_count": 2,
+      "validation_seconds": 0.05222477301140316,
+      "dependency_bytes_read": 94369845,
+      "metrics": [
+        {
+          "seconds": 2.96270557702519,
+          "stages": {
+            "lock_wait": 5.1288981921970844e-05,
+            "cache_validation": 0.00023793699801899493,
+            "cache_configuration": 0.0011946339800488204,
+            "prune": 0.0002669829991646111,
+            "wrapper_write": 5.427398718893528e-05,
+            "latexmk": 2.6740574139985256,
+            "pdf_copy": 0.00016300298739224672,
+            "dependencies": 0.02227682402008213,
+            "build": 2.7398687539971434,
+            "render": 2.7398819489753805,
+            "png": 0.06425195300835185,
+            "raster_sequence": 0.020561721990816295,
+            "prepare": 1.31949782371521e-05
+          },
+          "counters": {
+            "content_bytes_read": 136226673,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.2832505090045743
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.2609285619982984
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 7
+        },
+        {
+          "seconds": 2.9032016470155213,
+          "stages": {
+            "lock_wait": 6.057496648281813e-05,
+            "cache_validation": 0.00023469000007025898,
+            "cache_configuration": 0.0011486750154290348,
+            "prune": 0.00031431400566361845,
+            "wrapper_write": 5.1287992391735315e-05,
+            "latexmk": 2.6190045670082327,
+            "pdf_copy": 0.00014093099161982536,
+            "dependencies": 0.02411660601501353,
+            "build": 2.6856805779971182,
+            "render": 2.685695455991663,
+            "png": 0.06619431401486509,
+            "raster_sequence": 0.011964392993832007,
+            "prepare": 1.4877994544804096e-05
+          },
+          "counters": {
+            "content_bytes_read": 136225568,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.2603754029842094
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.2295200850057881
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 1
+        },
+        {
+          "seconds": 0.05491433499264531,
+          "stages": {
+            "lock_wait": 2.688198583200574e-05,
+            "cache_validation": 0.051752146013313904
+          },
+          "counters": {
+            "content_bytes_read": 41245348,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [],
+          "cache_hit": true,
+          "compile_avoided": 1,
+          "deduplicated_images": 0
+        }
+      ],
+      "reference_seconds": 7.702814271993702,
+      "reference_compiles": 3,
+      "cache_hits": 1,
+      "groups": 2
+    },
+    {
+      "phase": "grouped-two-identical-buffer",
+      "seconds": 0.17257725802483037,
+      "compile_count": 0,
+      "raster_count": 0,
+      "cache_hits": 3,
+      "sequence_reuse": true
+    },
+    {
+      "phase": "grouped-three",
+      "seconds": 7.467329601000529,
+      "compile_count": 3,
+      "latex_passes": 5,
+      "raster_count": 3,
+      "sequence_raster_count": 3,
+      "validation_seconds": 0.000569111027289182,
+      "dependency_bytes_read": 94369845,
+      "metrics": [
+        {
+          "seconds": 2.9296256189991254,
+          "stages": {
+            "lock_wait": 5.501494160853326e-05,
+            "cache_validation": 0.00011816600454039872,
+            "cache_configuration": 0.0011252289987169206,
+            "prune": 0.00031082701752893627,
+            "wrapper_write": 5.144902388565242e-05,
+            "latexmk": 2.6400412259972654,
+            "pdf_copy": 0.00023991099442355335,
+            "dependencies": 0.023597266001161188,
+            "build": 2.7055134660040494,
+            "render": 2.705526199977612,
+            "png": 0.06356088901520707,
+            "raster_sequence": 0.022529898007633165,
+            "prepare": 1.2733973562717438e-05
+          },
+          "counters": {
+            "content_bytes_read": 136226648,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.278484667011071
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.2343335939804092
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 2
+        },
+        {
+          "seconds": 2.8803249310003594,
+          "stages": {
+            "lock_wait": 5.246003274805844e-05,
+            "cache_validation": 0.0002420840028207749,
+            "cache_configuration": 0.0014246429782360792,
+            "prune": 0.0002771519939415157,
+            "wrapper_write": 5.342200165614486e-05,
+            "latexmk": 2.6014432900119573,
+            "pdf_copy": 0.00015910499496385455,
+            "dependencies": 0.022266156011028215,
+            "build": 2.6657767230062746,
+            "render": 2.6657899679848924,
+            "png": 0.06539918199996464,
+            "raster_sequence": 0.01225839598919265,
+            "prepare": 1.3244978617876768e-05
+          },
+          "counters": {
+            "content_bytes_read": 136225568,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.2576301980006974
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.2170968129939865
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 6
+        },
+        {
+          "seconds": 1.6443768450117204,
+          "stages": {
+            "lock_wait": 5.227094516158104e-05,
+            "cache_validation": 0.00020886101992800832,
+            "cache_configuration": 0.00111704200389795,
+            "prune": 0.00023836700711399317,
+            "wrapper_write": 4.620800609700382e-05,
+            "latexmk": 1.3559201239841059,
+            "pdf_copy": 0.00015943599282763898,
+            "dependencies": 0.02479424700140953,
+            "build": 1.4227779580105562,
+            "render": 1.42279560197494,
+            "png": 0.06544484602636658,
+            "raster_sequence": 0.013525813003070652,
+            "prepare": 1.7643964383751154e-05
+          },
+          "counters": {
+            "content_bytes_read": 136225655,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.2486887050035875
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 6
+        }
+      ],
+      "reference_seconds": 7.60223396398942,
+      "reference_compiles": 3,
+      "cache_hits": 0,
+      "groups": 3
+    },
+    {
+      "phase": "grouped-three-identical-buffer",
+      "seconds": 0.17153315100586042,
+      "compile_count": 0,
+      "raster_count": 0,
+      "cache_hits": 3,
+      "sequence_reuse": true
+    },
+    {
+      "phase": "default-labels-all",
+      "seconds": 10.939132131985389,
+      "statuses": [
+        "rendered",
+        "rendered",
+        "rendered"
+      ],
+      "compile_count": 3,
+      "latex_passes": 6,
+      "raster_count": 3,
+      "sequence_raster_count": 3,
+      "cache_hits": 0,
+      "validation_seconds": 0.000713487999746576,
+      "dependency_bytes_read": 94369845,
+      "content_bytes_read": 408680606,
+      "deduplicated_images": 3,
+      "metrics": [
+        {
+          "seconds": 6.2007456139835995,
+          "stages": {
+            "lock_wait": 5.6329998187720776e-05,
+            "cache_validation": 0.0003652909945230931,
+            "cache_configuration": 0.0011056290240958333,
+            "format_build": 1.8073364619922359,
+            "prune": 0.0002351609873585403,
+            "wrapper_write": 4.383397754281759e-05,
+            "latexmk": 4.096564275008859,
+            "pdf_copy": 0.00016243100981228054,
+            "dependencies": 0.022405477007851005,
+            "build": 5.98137060701265,
+            "render": 5.9813847040059045,
+            "png": 0.06316498800879344,
+            "raster_sequence": 0.021209334983723238,
+            "prepare": 1.4096993254497647e-05
+          },
+          "counters": {
+            "content_bytes_read": 136226828,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.3109234340081457
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.3290118289878592
+            },
+            {
+              "rule": "lualatex",
+              "number": 3,
+              "seconds": 1.2554051830084063
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 1
+        },
+        {
+          "seconds": 2.9558841310208663,
+          "stages": {
+            "lock_wait": 4.931597504764795e-05,
+            "cache_validation": 0.00012650300050154328,
+            "cache_configuration": 0.001145995978731662,
+            "prune": 0.0004399130120873451,
+            "wrapper_write": 5.1018025260418653e-05,
+            "latexmk": 2.6697145070065744,
+            "pdf_copy": 0.0002867590228561312,
+            "dependencies": 0.02198156001395546,
+            "build": 2.7347833169915248,
+            "render": 2.7347967519890517,
+            "png": 0.06480637702043168,
+            "raster_sequence": 0.02109077197383158,
+            "prepare": 1.3434997526928782e-05
+          },
+          "counters": {
+            "content_bytes_read": 136226855,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.2913598909799475
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.2496981090225745
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 1
+        },
+        {
+          "seconds": 1.7057917719939724,
+          "stages": {
+            "lock_wait": 4.881300264969468e-05,
+            "cache_validation": 0.00022169400472193956,
+            "cache_configuration": 0.0011674769630189985,
+            "prune": 0.0003876429982483387,
+            "wrapper_write": 5.4854986956343055e-05,
+            "latexmk": 1.414249197987374,
+            "pdf_copy": 0.00014034900232218206,
+            "dependencies": 0.02180771401617676,
+            "build": 1.4812987000041176,
+            "render": 1.4813140979968011,
+            "png": 0.06451035401551053,
+            "raster_sequence": 0.022375340980943292,
+            "prepare": 1.5397992683574557e-05
+          },
+          "counters": {
+            "content_bytes_read": 136226923,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.3050102760025766
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 1
+        }
+      ]
+    },
+    {
+      "phase": "included-instructor-pause",
+      "seconds": 11.029669442999875,
+      "statuses": [
+        "rendered",
+        "rendered",
+        "rendered"
+      ],
+      "compile_count": 3,
+      "latex_passes": 6,
+      "raster_count": 3,
+      "sequence_raster_count": 3,
+      "cache_hits": 0,
+      "validation_seconds": 0.0005868440493941307,
+      "dependency_bytes_read": 94369932,
+      "content_bytes_read": 408677993,
+      "deduplicated_images": 9,
+      "metrics": [
+        {
+          "seconds": 6.262897433014587,
+          "stages": {
+            "lock_wait": 5.348195554688573e-05,
+            "cache_validation": 0.00014867502613924444,
+            "cache_configuration": 0.0011243439803365618,
+            "format_build": 1.842385591007769,
+            "prune": 0.00039623898919671774,
+            "wrapper_write": 4.164999700151384e-05,
+            "latexmk": 4.122644876973936,
+            "pdf_copy": 0.0001475329918321222,
+            "dependencies": 0.021758197981398553,
+            "build": 6.044267888006289,
+            "render": 6.0442821249889676,
+            "png": 0.06311105901841074,
+            "raster_sequence": 0.021162596996873617,
+            "prepare": 1.4236982678994536e-05
+          },
+          "counters": {
+            "content_bytes_read": 136226741,
+            "dependency_bytes_read": 31456644
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.3370202099904418
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.3115778289793525
+            },
+            {
+              "rule": "lualatex",
+              "number": 3,
+              "seconds": 1.2797020900179632
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 2
+        },
+        {
+          "seconds": 2.9974251789972186,
+          "stages": {
+            "lock_wait": 5.640898598358035e-05,
+            "cache_validation": 0.00021874901722185314,
+            "cache_configuration": 0.0012051680241711438,
+            "prune": 0.0005574479873757809,
+            "wrapper_write": 7.640701369382441e-05,
+            "latexmk": 2.711383832996944,
+            "pdf_copy": 0.00014027801807969809,
+            "dependencies": 0.02280655998038128,
+            "build": 2.777030762983486,
+            "render": 2.7770452219992876,
+            "png": 0.06728531900444068,
+            "raster_sequence": 0.012686282017966732,
+            "prepare": 1.4459015801548958e-05
+          },
+          "counters": {
+            "content_bytes_read": 136225626,
+            "dependency_bytes_read": 31456644
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.3069655550061725
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.278982382005779
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 1
+        },
+        {
+          "seconds": 1.7128592009830754,
+          "stages": {
+            "lock_wait": 6.096501601859927e-05,
+            "cache_validation": 0.00021942000603303313,
+            "cache_configuration": 0.0012873250234406441,
+            "prune": 0.0005532090144697577,
+            "wrapper_write": 5.961401620879769e-05,
+            "latexmk": 1.4221178290026728,
+            "pdf_copy": 0.00018753900076262653,
+            "dependencies": 0.023108738008886576,
+            "build": 1.4891955890052486,
+            "render": 1.4892090350040235,
+            "png": 0.06841682098456658,
+            "raster_sequence": 0.012883669027360156,
+            "prepare": 1.3445998774841428e-05
+          },
+          "counters": {
+            "content_bytes_read": 136225626,
+            "dependency_bytes_read": 31456644
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.3113296529918443
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 6
+        }
+      ]
+    },
+    {
+      "phase": "macro-override-unknown",
+      "seconds": 11.153265553002711,
+      "statuses": [
+        "rendered",
+        "rendered",
+        "rendered"
+      ],
+      "compile_count": 3,
+      "latex_passes": 6,
+      "raster_count": 3,
+      "sequence_raster_count": 3,
+      "cache_hits": 0,
+      "validation_seconds": 0.0006771059706807137,
+      "dependency_bytes_read": 94369845,
+      "content_bytes_read": 408679466,
+      "deduplicated_images": 1,
+      "metrics": [
+        {
+          "seconds": 6.293965179997031,
+          "stages": {
+            "lock_wait": 6.239797221496701e-05,
+            "cache_validation": 0.0002623919863253832,
+            "cache_configuration": 0.0011613229871727526,
+            "format_build": 1.8821004779892974,
+            "prune": 0.0005247140070423484,
+            "wrapper_write": 4.120898665860295e-05,
+            "latexmk": 4.1143358499975875,
+            "pdf_copy": 0.00014626001939177513,
+            "dependencies": 0.02219270300702192,
+            "build": 6.073260113975266,
+            "render": 6.073273729998618,
+            "png": 0.06291888499981724,
+            "raster_sequence": 0.020551491004880518,
+            "prepare": 1.3616023352369666e-05
+          },
+          "counters": {
+            "content_bytes_read": 136226443,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.29694637801731
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.3032980599964503
+            },
+            {
+              "rule": "lualatex",
+              "number": 3,
+              "seconds": 1.3149324799887836
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 1
+        },
+        {
+          "seconds": 3.0643303569813725,
+          "stages": {
+            "lock_wait": 6.128902896307409e-05,
+            "cache_validation": 0.0002693760034162551,
+            "cache_configuration": 0.0012859310081694275,
+            "prune": 0.0007312200032174587,
+            "wrapper_write": 4.911399446427822e-05,
+            "latexmk": 2.7743385209760163,
+            "pdf_copy": 0.0002768099948298186,
+            "dependencies": 0.02266067499294877,
+            "build": 2.8422130180115346,
+            "render": 2.8422263340034988,
+            "png": 0.06152128899702802,
+            "raster_sequence": 0.021929996000835672,
+            "prepare": 1.3315991964191198e-05
+          },
+          "counters": {
+            "content_bytes_read": 136226570,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.319459366000956
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.3228761309874244
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 0
+        },
+        {
+          "seconds": 1.721554976014886,
+          "stages": {
+            "lock_wait": 6.245897384360433e-05,
+            "cache_validation": 0.00014533798093907535,
+            "cache_configuration": 0.0013137449859641492,
+            "prune": 0.0007652940112166107,
+            "wrapper_write": 7.239900878630579e-05,
+            "latexmk": 1.4358127629966475,
+            "pdf_copy": 0.00013900597696192563,
+            "dependencies": 0.02324262700858526,
+            "build": 1.502733513014391,
+            "render": 1.5027472189976834,
+            "png": 0.06077578401891515,
+            "raster_sequence": 0.021078493999084458,
+            "prepare": 1.370598329231143e-05
+          },
+          "counters": {
+            "content_bytes_read": 136226453,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.3279189350141678
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 0
+        }
+      ]
+    },
+    {
+      "phase": "conditional-reveals-all",
+      "seconds": 9.183083951997105,
+      "statuses": [
+        "rendered",
+        "rendered",
+        "rendered"
+      ],
+      "compile_count": 3,
+      "latex_passes": 6,
+      "raster_count": 3,
+      "sequence_raster_count": 3,
+      "cache_hits": 0,
+      "validation_seconds": 0.0006588709948118776,
+      "dependency_bytes_read": 94369845,
+      "content_bytes_read": 408679038,
+      "deduplicated_images": 15,
+      "metrics": [
+        {
+          "seconds": 3.047459475987125,
+          "stages": {
+            "lock_wait": 6.324201240204275e-05,
+            "cache_validation": 0.00014341497444547713,
+            "cache_configuration": 0.0012015409884043038,
+            "prune": 0.0007920660136733204,
+            "wrapper_write": 5.0336006097495556e-05,
+            "latexmk": 2.757126440992579,
+            "pdf_copy": 0.00015093901311047375,
+            "dependencies": 0.023136879986850545,
+            "build": 2.8237442730169278,
+            "render": 2.823759061022429,
+            "png": 0.06354180799098685,
+            "raster_sequence": 0.02131991198984906,
+            "prepare": 1.4788005501031876e-05
+          },
+          "counters": {
+            "content_bytes_read": 136226797,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.3345790460007265
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.286982372024795
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 2
+        },
+        {
+          "seconds": 3.1293816629913636,
+          "stages": {
+            "lock_wait": 5.592498928308487e-05,
+            "cache_validation": 0.00024354600463993847,
+            "cache_configuration": 0.0011080209806095809,
+            "prune": 0.0007524200191255659,
+            "wrapper_write": 4.9134017899632454e-05,
+            "latexmk": 2.8389775489922613,
+            "pdf_copy": 0.00014725199434906244,
+            "dependencies": 0.022033134009689093,
+            "build": 2.9049023230036255,
+            "render": 2.904916101018898,
+            "png": 0.06407654102076776,
+            "raster_sequence": 0.022206605994142592,
+            "prepare": 1.3778015272691846e-05
+          },
+          "counters": {
+            "content_bytes_read": 136226673,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.3745478600030765
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.3324367449968122
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 7
+        },
+        {
+          "seconds": 2.9441971849882975,
+          "stages": {
+            "lock_wait": 5.743798101320863e-05,
+            "cache_validation": 0.000271910015726462,
+            "cache_configuration": 0.0011659309966489673,
+            "prune": 0.0006618969782721251,
+            "wrapper_write": 4.999499651603401e-05,
+            "latexmk": 2.661035493016243,
+            "pdf_copy": 0.00027315301122143865,
+            "dependencies": 0.02359324600547552,
+            "build": 2.732303722004872,
+            "render": 2.732317709014751,
+            "png": 0.06281304400181398,
+            "raster_sequence": 0.011567725014174357,
+            "prepare": 1.398700987920165e-05
+          },
+          "counters": {
+            "content_bytes_read": 136225568,
+            "dependency_bytes_read": 31456615
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.3088159380131401
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.2245056690007914
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 6
+        }
+      ]
+    },
+    {
+      "phase": "image-edit-all",
+      "seconds": 7.823070059996098,
+      "statuses": [
+        "rendered",
+        "rendered",
+        "rendered"
+      ],
+      "compile_count": 3,
+      "latex_passes": 5,
+      "raster_count": 3,
+      "sequence_raster_count": 3,
+      "cache_hits": 0,
+      "validation_seconds": 0.026737047010101378,
+      "dependency_bytes_read": 94369854,
+      "content_bytes_read": 437746242,
+      "deduplicated_images": 15,
+      "metrics": [
+        {
+          "seconds": 3.01660852401983,
+          "stages": {
+            "lock_wait": 7.492201984860003e-05,
+            "cache_validation": 0.008066555019468069,
+            "cache_configuration": 0.0011185099720023572,
+            "prune": 0.0006975450087338686,
+            "wrapper_write": 4.919501952826977e-05,
+            "latexmk": 2.7167539419897366,
+            "pdf_copy": 0.00027052799123339355,
+            "dependencies": 0.023166194994701073,
+            "build": 2.784251476987265,
+            "render": 2.7842652529943734,
+            "png": 0.06278290698537603,
+            "raster_sequence": 0.020757446996867657,
+            "prepare": 1.3776007108390331e-05
+          },
+          "counters": {
+            "content_bytes_read": 145915414,
+            "dependency_bytes_read": 31456618
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.3007418630004395
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.2856629510060884
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 1
+        },
+        {
+          "seconds": 3.0209865620126948,
+          "stages": {
+            "lock_wait": 6.264992407523096e-05,
+            "cache_validation": 0.009519333980279043,
+            "cache_configuration": 0.0011664110061246902,
+            "prune": 0.000693466019583866,
+            "wrapper_write": 5.5796990636736155e-05,
+            "latexmk": 2.723729822988389,
+            "pdf_copy": 0.00024610100081190467,
+            "dependencies": 0.02196662701317109,
+            "build": 2.79165334298159,
+            "render": 2.791667771001812,
+            "png": 0.061552383995149285,
+            "raster_sequence": 0.020415970007888973,
+            "prepare": 1.4428020222112536e-05
+          },
+          "counters": {
+            "content_bytes_read": 145915414,
+            "dependency_bytes_read": 31456618
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.3071009129926097
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.2868652210163418
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 7
+        },
+        {
+          "seconds": 1.7137264170160051,
+          "stages": {
+            "lock_wait": 5.701801273971796e-05,
+            "cache_validation": 0.009151158010354266,
+            "cache_configuration": 0.0011312940041534603,
+            "prune": 0.0006750320026185364,
+            "wrapper_write": 4.9744994612410665e-05,
+            "latexmk": 1.4191947110230103,
+            "pdf_copy": 0.00014607000048272312,
+            "dependencies": 0.022292319015832618,
+            "build": 1.4840820230019744,
+            "render": 1.4840960910078138,
+            "png": 0.0620920910150744,
+            "raster_sequence": 0.021283087000483647,
+            "prepare": 1.406800583936274e-05
+          },
+          "counters": {
+            "content_bytes_read": 145915414,
+            "dependency_bytes_read": 31456618
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.3099944580171723
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 7
+        }
+      ]
+    },
+    {
+      "phase": "external-framework-edit-all",
+      "seconds": 11.174488036020193,
+      "statuses": [
+        "rendered",
+        "rendered",
+        "rendered"
+      ],
+      "compile_count": 3,
+      "latex_passes": 6,
+      "raster_count": 3,
+      "sequence_raster_count": 3,
+      "cache_hits": 0,
+      "validation_seconds": 0.1471953830041457,
+      "dependency_bytes_read": 188738436,
+      "content_bytes_read": 542258160,
+      "deduplicated_images": 15,
+      "metrics": [
+        {
+          "seconds": 6.194490934023634,
+          "stages": {
+            "lock_wait": 7.219696999527514e-05,
+            "cache_validation": 0.048155308002606034,
+            "cache_configuration": 0.001173235010355711,
+            "format_build": 1.805131244007498,
+            "prune": 0.0006772259948775172,
+            "wrapper_write": 3.919500159099698e-05,
+            "latexmk": 4.0294317720108666,
+            "pdf_copy": 0.00016157899517565966,
+            "dependencies": 0.023281465022591874,
+            "build": 5.922249080991605,
+            "render": 5.922263568994822,
+            "png": 0.06449960102327168,
+            "raster_sequence": 0.02101955801481381,
+            "prepare": 1.4488003216683865e-05
+          },
+          "counters": {
+            "content_bytes_read": 187515792,
+            "dependency_bytes_read": 62912812
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.254027170012705
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.2833343190141022
+            },
+            {
+              "rule": "lualatex",
+              "number": 3,
+              "seconds": 1.3019314990087878
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 7
+        },
+        {
+          "seconds": 3.0967797429766506,
+          "stages": {
+            "lock_wait": 7.330303196795285e-05,
+            "cache_validation": 0.04834689199924469,
+            "cache_configuration": 0.001141813991125673,
+            "prune": 0.000849053991260007,
+            "wrapper_write": 5.178898572921753e-05,
+            "latexmk": 2.754299127002014,
+            "pdf_copy": 0.00023290500394068658,
+            "dependencies": 0.023851252015447244,
+            "build": 2.821211508999113,
+            "render": 2.8212278909923043,
+            "png": 0.0627021949912887,
+            "raster_sequence": 0.021992527006659657,
+            "prepare": 1.6381993191316724e-05
+          },
+          "counters": {
+            "content_bytes_read": 177371184,
+            "dependency_bytes_read": 62912812
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.3009337580006104
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.3249842780060135
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 3
+        },
+        {
+          "seconds": 1.809851931000594,
+          "stages": {
+            "lock_wait": 5.858001532033086e-05,
+            "cache_validation": 0.05069318300229497,
+            "cache_configuration": 0.0011918800009880215,
+            "prune": 0.0008331539866048843,
+            "wrapper_write": 5.597699782811105e-05,
+            "latexmk": 1.469875023001805,
+            "pdf_copy": 0.0001396269944962114,
+            "dependencies": 0.022582112986128777,
+            "build": 1.5364628869865555,
+            "render": 1.5364772050234023,
+            "png": 0.06184943998232484,
+            "raster_sequence": 0.02116283800569363,
+            "prepare": 1.431803684681654e-05
+          },
+          "counters": {
+            "content_bytes_read": 177371184,
+            "dependency_bytes_read": 62912812
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.3600009930087253
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 5
+        }
+      ]
+    },
+    {
+      "phase": "same-plus-source-edit-all",
+      "seconds": 8.034609462978551,
+      "statuses": [
+        "rendered",
+        "rendered",
+        "rendered"
+      ],
+      "compile_count": 3,
+      "latex_passes": 5,
+      "raster_count": 3,
+      "sequence_raster_count": 3,
+      "cache_hits": 0,
+      "validation_seconds": 0.000633792020380497,
+      "dependency_bytes_read": 94369218,
+      "content_bytes_read": 408677973,
+      "deduplicated_images": 9,
+      "metrics": [
+        {
+          "seconds": 3.072230521996971,
+          "stages": {
+            "lock_wait": 6.476198905147612e-05,
+            "cache_validation": 0.00017768001998774707,
+            "cache_configuration": 0.0013138620124664158,
+            "prune": 0.0008863749972078949,
+            "wrapper_write": 5.543598672375083e-05,
+            "latexmk": 2.7768711039971095,
+            "pdf_copy": 0.00014239302254281938,
+            "dependencies": 0.024189975985791534,
+            "build": 2.8459660700173117,
+            "render": 2.8459826610051095,
+            "png": 0.06541829902562313,
+            "raster_sequence": 0.021680777019355446,
+            "prepare": 1.659098779782653e-05
+          },
+          "counters": {
+            "content_bytes_read": 136225991,
+            "dependency_bytes_read": 31456406
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.3070013120013755
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.3334995839977637
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 1
+        },
+        {
+          "seconds": 3.1548044909723103,
+          "stages": {
+            "lock_wait": 5.653800326399505e-05,
+            "cache_validation": 0.00020553299691528082,
+            "cache_configuration": 0.0011858369980473071,
+            "prune": 0.0008233650005422533,
+            "wrapper_write": 5.423399852588773e-05,
+            "latexmk": 2.854576810990693,
+            "pdf_copy": 0.0002749859995674342,
+            "dependencies": 0.02234378198045306,
+            "build": 2.9229129860177636,
+            "render": 2.922926181985531,
+            "png": 0.0662688779993914,
+            "raster_sequence": 0.022135432984214276,
+            "prepare": 1.3195967767387629e-05
+          },
+          "counters": {
+            "content_bytes_read": 136225991,
+            "dependency_bytes_read": 31456406
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.3889688760100398
+            },
+            {
+              "rule": "lualatex",
+              "number": 2,
+              "seconds": 1.3360444590216503
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 3
+        },
+        {
+          "seconds": 1.7360541019879747,
+          "stages": {
+            "lock_wait": 6.212698644958436e-05,
+            "cache_validation": 0.0002505790034774691,
+            "cache_configuration": 0.0012316959910094738,
+            "prune": 0.0008370910072699189,
+            "wrapper_write": 4.495598841458559e-05,
+            "latexmk": 1.438845289987512,
+            "pdf_copy": 0.00018137699225917459,
+            "dependencies": 0.024879310018150136,
+            "build": 1.5119631540146656,
+            "render": 1.5119766499847174,
+            "png": 0.061692703020526096,
+            "raster_sequence": 0.022173313976963982,
+            "prepare": 1.349597005173564e-05
+          },
+          "counters": {
+            "content_bytes_read": 136225991,
+            "dependency_bytes_read": 31456406
+          },
+          "rules": [
+            {
+              "rule": "lualatex",
+              "number": 1,
+              "seconds": 1.3321230190049391
+            }
+          ],
+          "cache_hit": false,
+          "compile_avoided": 0,
+          "deduplicated_images": 5
+        }
+      ]
+    },
+    {
+      "phase": "warm-after-edits-all",
+      "seconds": 0.22057972598122433,
+      "statuses": [
+        "cached",
+        "cached",
+        "cached"
+      ],
+      "compile_count": 0,
+      "latex_passes": 0,
+      "raster_count": 0,
+      "sequence_raster_count": 0,
+      "cache_hits": 3,
+      "validation_seconds": 0.1494584050087724,
+      "dependency_bytes_read": 94369218,
+      "content_bytes_read": 123704513,
+      "deduplicated_images": 0,
+      "metrics": [
+        {
+          "seconds": 0.05066261801403016,
+          "stages": {
+            "lock_wait": 1.8987018847838044e-05,
+            "cache_validation": 0.05001298600109294
+          },
+          "counters": {
+            "content_bytes_read": 41255957,
+            "dependency_bytes_read": 31456406
+          },
+          "rules": [],
+          "cache_hit": true,
+          "compile_avoided": 1,
+          "deduplicated_images": 0
+        },
+        {
+          "seconds": 0.05116480801370926,
+          "stages": {
+            "lock_wait": 1.4007004210725427e-05,
+            "cache_validation": 0.05043888898217119
+          },
+          "counters": {
+            "content_bytes_read": 41224278,
+            "dependency_bytes_read": 31456406
+          },
+          "rules": [],
+          "cache_hit": true,
+          "compile_avoided": 1,
+          "deduplicated_images": 0
+        },
+        {
+          "seconds": 0.04977503899135627,
+          "stages": {
+            "lock_wait": 1.4918012311682105e-05,
+            "cache_validation": 0.049006530025508255
+          },
+          "counters": {
+            "content_bytes_read": 41224278,
+            "dependency_bytes_read": 31456406
+          },
+          "rules": [],
+          "cache_hit": true,
+          "compile_avoided": 1,
+          "deduplicated_images": 0
+        }
+      ]
+    }
+  ],
+  "font_input_profile": {
+    "dependency_count": 3814,
+    "bytes": 1007375258,
+    "largest_inputs": [
+      {
+        "path": "/usr/share/fonts/opentype/noto/NotoSerifCJK-Bold.ttc",
+        "bytes": 27397052
+      },
+      {
+        "path": "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
+        "bytes": 26411360
+      },
+      {
+        "path": "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+        "bytes": 20050760
+      },
+      {
+        "path": "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "bytes": 19484784
+      },
+      {
+        "path": "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
+        "bytes": 11020136
+      },
+      {
+        "path": "/usr/share/texlive/texmf-dist/fonts/truetype/google/noto-emoji/NotoColorEmoji.ttf",
+        "bytes": 11020136
+      },
+      {
+        "path": "/var/lib/texmf/web2c/luahbtex/lualatex.fmt",
+        "bytes": 5656939
+      },
+      {
+        "path": "/var/lib/texmf/fonts/map/pdftex/updmap/pdftex.map",
+        "bytes": 5381040
+      },
+      {
+        "path": "/usr/share/fonts/truetype/noto/NotoSansSignWriting-Regular.ttf",
+        "bytes": 5211268
+      },
+      {
+        "path": "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
+        "bytes": 4033420
+      },
+      {
+        "path": "/usr/share/fonts/truetype/freefont/FreeSerif.ttf",
+        "bytes": 3686360
+      },
+      {
+        "path": "/usr/share/texlive/texmf-dist/fonts/truetype/public/gnu-freefont/FreeSerif.ttf",
+        "bytes": 3686360
+      },
+      {
+        "path": "/usr/share/texlive/texmf-dist/fonts/truetype/public/juliamono/JuliaMono-BlackItalic.ttf",
+        "bytes": 3447164
+      },
+      {
+        "path": "/usr/share/fonts/truetype/noto/NotoSerifTangut-Regular.ttf",
+        "bytes": 3419020
+      },
+      {
+        "path": "/usr/share/texlive/texmf-dist/fonts/truetype/public/juliamono/JuliaMono-ExtraBoldItalic.ttf",
+        "bytes": 3398600
+      }
+    ],
+    "policy": "Keep recorder font inputs; do not remove them merely to improve timings."
+  },
+  "deck_refresh": {
+    "requests": 9,
+    "cold_compile_count": 9,
+    "cold_seconds": 26.40516314699198,
+    "warm_compile_count": 0,
+    "warm_raster_count": 0,
+    "warm_seconds": 0.4759085889963899,
+    "warm_cache_hits": 9,
+    "repeated_and_pinned_calls": true,
+    "all_view_surface_images_match": true
+  },
+  "pinned_batch": {
+    "initial_compile_count": 1,
+    "after_batch_compile_count": 0,
+    "after_batch_raster_count": 0,
+    "pinned_unchanged": true,
+    "current_revision_distinct": true
+  },
+  "display": {
+    "rows": 200,
+    "workload": "synthetic populated cache, shared 32 MiB dependency",
+    "qt_platform": "offscreen",
+    "samples": [
+      {
+        "validation_seconds": 0.430755138018867,
+        "dependency_hash_seconds": 0.04091682599391788,
+        "configuration_seconds": 0.007305448001716286,
+        "stability_seconds": 0.04811451901332475,
+        "stability_bytes": 33554795,
+        "dependency_bytes": 33554505,
+        "hashed_bytes": 33554795,
+        "unstable": false,
+        "gui_event_latency_seconds": 0.006243568001082167,
+        "publication_seconds": 0.0029577380046248436,
+        "wall_seconds": 0.44435840199002996,
+        "max_timer_gap_seconds": 0.018007086007855833,
+        "first_paint_seconds": 0.006370657996740192,
+        "last_paint_seconds": 0.44214234498213045
+      },
+      {
+        "validation_seconds": 0.42553804800263606,
+        "dependency_hash_seconds": 0.040129654022166505,
+        "configuration_seconds": 0.0074509210244286805,
+        "stability_seconds": 0.047182112000882626,
+        "stability_bytes": 33554795,
+        "dependency_bytes": 33554505,
+        "hashed_bytes": 33554795,
+        "unstable": false,
+        "gui_event_latency_seconds": 0.006440074008423835,
+        "publication_seconds": 0.0035633470106404275,
+        "wall_seconds": 0.4403886590152979,
+        "max_timer_gap_seconds": 0.016043118986999616,
+        "first_paint_seconds": 0.4377746089885477,
+        "last_paint_seconds": 0.4377746089885477
+      },
+      {
+        "validation_seconds": 0.4297938479867298,
+        "dependency_hash_seconds": 0.039829929010011256,
+        "configuration_seconds": 0.007409726997138932,
+        "stability_seconds": 0.047219148982549086,
+        "stability_bytes": 33554795,
+        "dependency_bytes": 33554505,
+        "hashed_bytes": 33554795,
+        "unstable": false,
+        "gui_event_latency_seconds": 0.006406151020200923,
+        "publication_seconds": 0.0034969270054716617,
+        "wall_seconds": 0.44361683999886736,
+        "max_timer_gap_seconds": 0.010734873008914292,
+        "first_paint_seconds": 0.4414753449964337,
+        "last_paint_seconds": 0.4414753449964337
+      }
+    ],
+    "selection_and_scroll_preserved": true,
+    "compile_count": 0,
+    "raster_count": 0
+  },
+  "packaged_smoke": {
+    "binary": "/tmp/slidemage-plan-validation/package/dist/SlideMage",
+    "sha256": "1aa24dc575d64669e10f46c01a7c1226b1078a0a364783dc150fd23f106bbbb2",
+    "help": true,
+    "persistent_raster_requests": 2,
+    "page_images_equal": true,
+    "full_sequence_equal": true
+  }
+}

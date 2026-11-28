@@ -1,0 +1,293 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Precompiled preamble formats for interactive previews.
+
+Loading a deck's preamble (beamer, tikz, pgfplots, biblatex, the theme and
+its fonts) is about half of every LuaLaTeX run, and the slide-sized rest is
+small. A TeX *format* stores the loaded preamble, so an edit only has to run
+the slide.
+
+A format keeps TeX's state but not the engine's, so the preamble is dumped
+together with three repairs (PRELUDE_TAIL):
+
+* pgf reserves PDF object numbers at load time; they are re-reserved when
+  the document starts.
+* Lua state (functions, callbacks) is gone; the template's \\SMLuaOnce{...}
+  blocks, recorded in \\SMLuaReplayList, run again from \\everyjob, and so
+  does fontspec's Lua module (its font commands call it).
+* A font loaded in the preamble keeps its metrics but loses luaotfload's
+  Lua-side data, so OpenType kerning and ligatures silently stop applying to
+  it. The font specifications are captured when the format is dumped (see
+  CAPTURE_LUA) and the fonts are defined again from \\everyjob.
+* graphics caches \\saveimageresource indices by file name; an image the
+  preamble measured would reference a PDF object that no longer exists, so
+  those cache entries are forgotten.
+
+MiKTeX does not search TEXFORMATS, so there -fmt names the format file itself
+(fmt_option). The format build and -fmt get forward slashes: TeX reads a
+Windows path's backslashes as commands.
+
+None of this is guaranteed for an arbitrary preamble, so every failure path
+returns None and the caller builds the slide the ordinary way; a run that
+fails only with the format is repeated without it (see preview_build).
+"""
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+import subprocess
+
+from .compiler import FATAL_ERROR_RE, MISSING_INPUT_RE, run_streamed
+from .preview_metrics import stage
+from .processes import no_console_kwargs
+from .render_evidence import (FileStates, configuration_state, find_tool, inventory_state, search_inventory,
+                              search_roots)
+from .fileio import atomic_write
+
+SCHEMA = 5           # 4: formats work on Windows/MiKTeX (before, every one there was marked bad)
+                     # 5: format.json holds inventory_state of the inputs, not a walk of every search root
+ENGINE = 'lualatex'
+NAME = 'preamble'   # the format's file name (and TeX jobname) inside its directory
+_FONT_CACHE_RACE = 'no writeable cache path'     # as preview_build.font_cache_race (which imports this module)
+
+# Runs just before the dump (a file, so TeX never tokenizes it). The captured
+# specifications are stored in a Lua bytecode register, which formats keep.
+BYTECODE_REGISTER = 7001
+CAPTURE_LUA = r"""
+local entries = {}
+local n = 0
+for id = 1, font.max() do
+  local f = font.getfont(id)
+  if f and (f.format == "opentype" or f.format == "truetype") and f.name then
+    n = n + 1
+    entries[n] = string.format("{%d,%q,%d}", id, f.name, f.size)
+  end
+end
+local src = "local list = {" .. table.concat(entries, ",") .. "}\n" .. [[
+local cb = callback.find("define_font")
+for _, e in ipairs(list) do
+  local id, name, size = e[1], e[2], e[3]
+  if cb and not font.getfont(id) then
+    local tfm = cb(name, size, id)
+    if type(tfm) == "table" then font.define(id, tfm) end
+  end
+end
+]]
+lua.bytecode[__REGISTER__] = load(src, "slidemage-font-replay")
+"""
+
+# Appended to the preamble before \dump. Guarded: a preamble without beamer/pgf
+# or without the template's replay list is dumped unchanged.
+PRELUDE_TAIL = r"""
+\begingroup\makeatletter
+\@ifundefined{pgf@sys@pdf@install@pageresources}{}{%
+  \AtBeginDocument{%
+    \pdfextension obj reserveobjnum \xdef\pgf@sys@pdf@extgs@objnum{\the\numexpr\pdffeedback lastobj\relax}%
+    \pdfextension obj reserveobjnum \xdef\pgf@sys@pdf@pattern@objnum{\the\numexpr\pdffeedback lastobj\relax}%
+    \pdfextension obj reserveobjnum \xdef\pgf@sys@pdf@colrospaces@objnum{\the\numexpr\pdffeedback lastobj\relax}%
+    \pgf@sys@pdf@install@pageresources
+  }%
+}
+\@ifundefined{SMLuaReplayList}{}{%
+  \edef\SM@t{\the\everyjob\the\SMLuaReplayList}\global\everyjob\expandafter{\SM@t}%
+}
+\@ifpackageloaded{fontspec}{%
+  \global\everyjob\expandafter{\the\everyjob\directlua{require("fontspec")}}%
+}{}
+\directlua{dofile("__CAPTURE__")}
+\global\everyjob\expandafter{\the\everyjob\directlua{lua.bytecode[__REGISTER__]()}}
+\directlua{
+  local out = {} local n = 0
+  for _, name in ipairs(tex.hashtokens()) do
+    if name:find("^[^ ]+[.][A-Za-z0-9]+ image") or name:find("^[^ ]+[.][A-Za-z0-9]+ height")
+        or name:find("^[^ ]+[.][A-Za-z0-9]+ width") then
+      n = n + 1
+      out[n] = "\\global\\expandafter\\let\\csname " .. name .. "\\endcsname\\relax"
+    end
+  end
+  tex.print(table.concat(out, " "))
+}
+\endgroup
+\dump
+"""
+
+
+def _stamp(path: Path, states: FileStates):
+    try:
+        state = states(path)
+    except OSError:
+        return None
+    return [str(path), state] if state is not None else None
+
+
+def _fls_inputs(fls: Path, cwd: Path, skip: Path) -> list[str]:
+    names = []
+    for line in fls.read_text(errors='replace').splitlines():
+        if line.startswith('PWD '):
+            cwd = Path(line[4:])
+        elif line.startswith('INPUT '):
+            path = Path(os.path.abspath(Path(line[6:]) if Path(line[6:]).is_absolute()
+                                        else cwd / line[6:]))
+            if not path.is_relative_to(skip) and path.is_file():
+                names.append(str(path))
+    return sorted(set(names))
+
+
+def _fresh(manifest: Path, project_root: Path, env: dict) -> bool:
+    try:
+        data = json.loads(manifest.read_text(encoding='utf-8'))
+        states = FileStates(search_roots(project_root, env))
+        names = [item[0] for item in data['inputs']]
+        return (data['inventory'] == inventory_state(search_inventory(project_root, env, inputs=names), names)
+                and data['configuration'] == configuration_state(project_root, env)
+                and all(_stamp(Path(item[0]), states) == item for item in data['inputs']))
+    except (OSError, ValueError, KeyError, IndexError, TypeError, AttributeError):
+        return False
+
+
+def _texinputs(project_root: Path, env: dict) -> str:
+    """What the project's .latexmkrc sets: the project, the framework, then the rest."""
+    framework = env.get('SLIDEMAGE_LATEX') or str(project_root / '..' / 'latex')
+    return os.pathsep.join([str(project_root), framework, env.get('TEXINPUTS', '')])
+
+
+def stem(directory: Path) -> Path:
+    return directory / NAME
+
+
+def inputs(directory: Path) -> list[str]:
+    """Files the format was built from: part of a preview's dependency list."""
+    try:
+        data = json.loads((directory / 'format.json').read_text(encoding='utf-8'))
+        return [item[0] for item in data['inputs']]
+    except (OSError, ValueError, KeyError, TypeError, IndexError, AttributeError):
+        return []
+
+
+def fmt_option(directory: Path, env: dict) -> tuple[str, dict]:
+    """The -fmt option and environment that load the format in `directory`. MiKTeX finds a format only in its own
+    folders (it ignores TEXFORMATS) but takes a full path; elsewhere the name is found through TEXFORMATS (a path
+    given to -fmt would name the recorder file)."""
+    if _is_miktex(env):
+        return '-fmt=' + stem(directory).with_suffix('.fmt').as_posix(), env
+    return '-fmt=' + NAME, dict(env, TEXFORMATS=str(directory) + os.pathsep)
+
+
+def _is_miktex(env: dict) -> bool:
+    engine = find_tool(ENGINE, env.get('PATH'))
+    return bool(engine and 'miktex' in engine.lower()) or bool(find_tool('initexmf', env.get('PATH')))
+
+
+def disable(directory: Path, missing=()) -> None:
+    """Mark the format unusable. `missing`: the input files its build did not find, one name per line: the format
+    is built again once one of them exists in a search folder (issue #251)."""
+    (directory / 'format.bad').write_text('\n'.join(missing), encoding='utf-8')
+
+
+def _found_missing(directory: Path, project_root: Path, env: dict) -> bool:
+    """Whether a file the failed build missed (named in format.bad) is in a search folder now."""
+    try:
+        names = (directory / 'format.bad').read_text(encoding='utf-8').splitlines()
+        return any((root / name).is_file() for name in names for root in search_roots(project_root, env))
+    except (OSError, ValueError):
+        return False
+
+
+def ensure(preamble: str, key: str, *, project_root: Path, build_dir: Path, env: dict,
+           log, lock, cancel=None) -> Path | None:
+    """Return the format's directory (its `preamble.fmt` is the format), or None.
+
+    `lock` is preview_build.build_lock: formats are shared by every slide of a
+    preamble, so two previews may ask for the same one at once. The check that
+    the format is current (about a quarter second) runs under a shared lock, so
+    renders that run at once do not queue for it; only a build is exclusive.
+    """
+    if os.environ.get('SLIDEMAGE_PREVIEW_FORMAT') == '0' or not find_tool(ENGINE, env.get('PATH')):
+        return None
+    directory = build_dir / 'preview-formats' / f'{SCHEMA}-{key}'
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        with lock(directory / 'build.lock', shared=True, cancel=cancel):
+            (directory / 'build.lock').touch()    # last use, including attempts of a disabled format
+            if (directory / 'format.bad').exists():
+                if not _found_missing(directory, project_root, env):
+                    return None
+            elif stem(directory).with_suffix('.fmt').is_file() and _fresh(directory / 'format.json', project_root, env):
+                return directory
+        with lock(directory / 'build.lock', cancel=cancel):          # build it (unless another render just did)
+            retry = (directory / 'format.bad').exists()
+            if retry and not _found_missing(directory, project_root, env):
+                return None
+            if not retry and stem(directory).with_suffix('.fmt').is_file() and _fresh(directory / 'format.json', project_root, env):
+                return directory
+            (directory / 'format.bad').unlink(missing_ok=True)
+            return _build(preamble, directory, project_root=project_root, env=env,
+                          log=log, cancel=cancel)
+    except OSError:
+        return None
+
+
+def _build(preamble, directory, *, project_root: Path, env, log, cancel=None):
+    from . import preview_build
+    preview_build.discard_spare(project_root)
+    for old in directory.glob(NAME + '.*'):
+        old.unlink(missing_ok=True)
+    source = stem(directory).with_suffix('.tex')
+    capture = directory / 'capture.lua'
+    capture.write_text(CAPTURE_LUA.replace('__REGISTER__', str(BYTECODE_REGISTER)), encoding='utf-8')
+    tail = (PRELUDE_TAIL.replace('__CAPTURE__', capture.as_posix())
+            .replace('__REGISTER__', str(BYTECODE_REGISTER)))
+    source.write_text(preamble + '\n' + tail, encoding='utf-8', newline='')
+    run_env = dict(env, TEXINPUTS=_texinputs(project_root, env))
+    cwd = project_root / 'decks'
+    cwd.mkdir(parents=True, exist_ok=True)
+    # The source goes in with forward slashes: TeX reads this argument as input, and a Windows path's
+    # backslashes would be commands (`\.build` is the dot accent), which stops the run on every Windows machine.
+    cmd = [ENGINE, '-ini', '-recorder', '-interaction=nonstopmode', '-file-line-error',
+           f'-jobname={NAME}', f'-output-directory={directory.as_posix()}', '&' + ENGINE, source.as_posix()]
+    kwargs = no_console_kwargs()
+    log('==== Precompiling preamble (once per preamble) ====')
+    with stage('format_build'):
+        try:
+            if cancel is None:
+                subprocess.run(cmd, cwd=cwd, env=run_env, stdin=subprocess.DEVNULL,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                               timeout=300, **kwargs)
+            else:
+                run_streamed(cmd, cwd=cwd, env=run_env, log=lambda _: None, cancel=cancel)
+                if cancel.is_set():
+                    raise RuntimeError('Preview canceled')
+        except (OSError, subprocess.TimeoutExpired):
+            disable(directory)
+            return None
+    fmt = stem(directory).with_suffix('.fmt')
+    logfile = stem(directory).with_suffix('.log')
+    contents = logfile.read_text(errors='replace') if logfile.exists() else ''
+    fls = stem(directory).with_suffix('.fls')
+    # LaTeX's pre_dump hook prints a Lua error about lua-uni-algos' lazy tables
+    # when the format is dumped; it does not affect the format, so it is not a failure.
+    errors = [m for m in FATAL_ERROR_RE.finditer(contents)
+              if 'lua-uni-' not in contents[m.start():contents.find('\n', m.start())]]
+    if _FONT_CACHE_RACE in contents.replace('\n', ''):
+        # luaotfload lost the race for its font cache to a LuaLaTeX run that started at the same moment
+        # (preview_build.font_cache_race): not the preamble's fault, so it is not marked; the next preview tries again.
+        log('    (font cache busy; the preamble is precompiled next time)')
+        return None
+    if (not fmt.is_file() or errors or '\n!' in contents
+            or 'Beginning to dump on file' not in contents or not fls.is_file()):
+        log('    (preamble cannot be precompiled; previews build the ordinary way)')
+        disable(directory, MISSING_INPUT_RE.findall(contents))
+        return None
+    try:
+        states = FileStates(search_roots(project_root, env))
+        stamps = [stamp for name in _fls_inputs(fls, cwd, directory) if (stamp := _stamp(Path(name), states))]
+        names = [stamp[0] for stamp in stamps]
+        inventory = inventory_state(search_inventory(project_root, env, inputs=names), names)
+        configuration = configuration_state(project_root, env)
+    except (OSError, ValueError):
+        disable(directory)
+        return None
+    atomic_write(directory / 'format.json', json.dumps({'inputs': stamps, 'inventory': inventory,
+                                                       'configuration': configuration}))
+    return directory

@@ -1,0 +1,255 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Progress of a PDF compile, derived from the log lines the compile already
+produces (2026-09-27, direct instruction: a thin progress bar at the top edge
+of the log window; 4 compile passes assumed, 3 for a deck without a
+bibliography -- since v5.15.0 the number the deck needed last time, see
+compile_passes.py; progress *within* a pass from the slide currently being
+typeset; also for single-slide renders and Update previews).
+
+No Qt in here -- `BatchProgress.feed(line)` is called by the compile controller (ui/workspace/compile_controller.py)
+for every log line and returns the new (fraction, text) when something
+changed, so the whole thing can be tested by replaying a captured log.
+
+What the log gives us (measured on a real latexmk run):
+
+* ``Run number K of rule 'lualatex'``  -- pass K starts (a biber run in
+  between is ``... of rule 'biber ...'``, which just leaves the bar where
+  the finished pass put it);
+* ``(D:/.../slides/<id>-<LANG>-<slug>-current.tex``  -- LaTeX starts
+  reading a slide file, i.e. that slide is now being typeset. Every slide
+  call reads its file once per pass, so "slide files seen in this pass"
+  divided by "slide calls in this job" is the position inside the pass.
+
+fraction of a job = ((pass - 1) + slides_seen / slides_total) / passes,
+held below 100% until the job really finishes. Work is weighted by
+passes * slides per job, so in a queue a 395-slide deck outweighs a
+10-slide chapter.
+"""
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from typing import Optional
+
+from . import compile_passes, project
+from .compile_log import (
+    COMPILING_RE as _COMPILING_RE,
+    FAIL_PREFIX_RE as _FAIL_RE,
+    FINISHED_RE as _FINISHED_RE,
+    MOVING_RE as _MOVING_RE,
+    PASS_RE as _PASS_RE,
+    RENDER_FAIL_RE as _RENDER_FAIL_RE,
+    RENDER_PASS_RE as _RENDER_PASS_RE,
+    RENDERING_RE as _RENDERING_RE,
+    SKIPPED_RE as _SKIPPED_RE,
+    STOPPED_RE as _STOPPED_RE,
+)
+
+PASSES_WITH_BIBLIOGRAPHY = 4
+PASSES_WITHOUT_BIBLIOGRAPHY = 3
+SINGLE_RENDER_PASSES = 3
+
+_RUN_RE = re.compile(r"^Run number (\d+) of rule '([^']+)'")
+_SLIDE_OPEN_RE = re.compile(r"\(\S*?/slides/[0-9A-Za-z]{3}-")
+
+_HOLD_BELOW_DONE = 0.99
+
+
+@dataclass(frozen=True)
+class JobSpec:
+    passes: int
+    slides: int          # slide calls typeset per pass (0 = unknown -> indeterminate)
+    # True when `passes` is a guess, not the count this deck needed last
+    # time (compile_passes.py): the label then says "(estimated)"
+    estimated: bool = False
+
+    @property
+    def units(self) -> int:
+        return self.passes * max(self.slides, 1)
+
+
+def passes_for(uses_biblatex: bool) -> int:
+    return PASSES_WITH_BIBLIOGRAPHY if uses_biblatex else PASSES_WITHOUT_BIBLIOGRAPHY
+
+
+def count_job_slides(ctx: project.ProjectContext, deck, version: Optional[str], chapter,
+                    language: Optional[str] = None) -> int:
+    """Slide calls a compile of `deck` (in `version`, whole or one chapter)
+    typesets per pass -- the same scoping the pre-render syntax check uses:
+    calls left out of the version by \\conditionalslide/\\slidestep are not
+    counted, a chapter job counts only its chapter, and \\input-ed deck
+    fragments (test-slides.tex) count with their own calls."""
+    total = 0
+    text = deck.text
+    if not text:
+        return 0
+    from . import deck_language
+    from .deck_settings import read_settings
+    language = (language or read_settings(text).language).upper()
+    for slot in deck_language.deck_slots(ctx, deck, language):
+        call = slot.call
+        if chapter is not None and (call.chapter is None or call.chapter.order != chapter.order):
+            continue
+        if call.included_in(version):
+            total += 1
+    return total
+
+
+def spec_for_job(ctx: project.ProjectContext, job) -> JobSpec:
+    """JobSpec of a compiler.CompileJob: the passes this deck needed last
+    time (compile_passes), else the 4/3 guess."""
+    if getattr(job, "pages", None):
+        # a page compile: two short single-pass runs, size unknown (busy bar)
+        return JobSpec(1, 0, estimated=True)
+    remembered, known = compile_passes.predict(ctx, job)
+    return JobSpec(remembered or passes_for(job.deck.uses_biblatex),
+                   count_job_slides(ctx, job.deck, job.version, job.chapter, getattr(job, "language", None)),
+                   estimated=not known)
+
+
+class BatchProgress:
+    """One progress value over a queue of jobs (see the module docstring)."""
+
+    def __init__(self) -> None:
+        self.reset({})
+
+    # -- lifecycle --------------------------------------------------------------
+
+    def reset(self, specs: dict[str, JobSpec]) -> None:
+        """Start tracking a new batch: `specs` maps jobname -> JobSpec."""
+        self._specs = dict(specs)
+        self._total_units = sum(s.units for s in specs.values())
+        self._done_units = 0
+        self._finished: set[str] = set()
+        self._current: Optional[str] = None
+        self._pass = 0
+        self._seen = 0
+        self._peak = 0.0
+        self._announced = False
+
+    @property
+    def active(self) -> bool:
+        return self._current is not None
+
+    # -- value ------------------------------------------------------------------
+
+    def _current_fraction(self) -> float:
+        spec = self._specs[self._current]  # type: ignore[index]
+        if self._pass <= 0:
+            return 0.0
+        inside = min(self._seen / spec.slides, 1.0) if spec.slides else 0.0
+        passes = self._expected_passes(spec)
+        fraction = min(((self._pass - 1) + inside) / passes, _HOLD_BELOW_DONE)
+        # a raised pass count must not move the bar backwards: it waits
+        # until the longer compile catches up with where it already was
+        self._peak = max(self._peak, fraction)
+        return self._peak
+
+    def _expected_passes(self, spec: JobSpec) -> int:
+        """The job's pass count as far as known: the prediction, raised to
+        the current pass once a compile runs past it (v5.20.0, direct
+        instruction: "update the estimate to 'pass 4/5'" rather than
+        announcing an extra pass)."""
+        return max(spec.passes, self._pass)
+
+    @property
+    def fraction(self) -> Optional[float]:
+        """0..1 overall, or None while the current job's size is unknown
+        (the bar then shows its indeterminate animation)."""
+        if self._current is None:      # between jobs: what is done so far
+            return self._done_units / self._total_units if self._total_units else None
+        spec = self._specs[self._current]
+        if spec.slides <= 0:
+            return None
+        cur = self._current_fraction() * spec.units
+        return (self._done_units + cur) / max(self._total_units, 1)
+
+    @property
+    def text(self) -> str:
+        if self._current is None:
+            return ""
+        spec = self._specs[self._current]
+        if self._pass <= 0:
+            return "starting"
+        where = f", slide {min(self._seen, spec.slides)}/{spec.slides}" if spec.slides else ""
+        guess = " (estimated)" if spec.estimated else ""
+        return f"pass {self._pass}/{self._expected_passes(spec)}{guess}{where}"
+
+    # -- input ------------------------------------------------------------------
+
+    def _finish_current(self) -> None:
+        if self._current is not None and self._current not in self._finished:
+            self._finished.add(self._current)
+            self._done_units += self._specs[self._current].units
+        self._current = None
+
+    def feed(self, line: str) -> Optional[tuple[Optional[float], str, bool]]:
+        """Process one log line. Returns (fraction, text, finished_batch) if
+        the displayed state changed, else None. `finished_batch` is True once,
+        on the line that completes the last job (the caller shows 100% and
+        hides the bar shortly after)."""
+        if not line:
+            return None
+        before = (self.fraction, self.text)
+
+        if "/slides/" in line:
+            if self._current is not None and _SLIDE_OPEN_RE.search(line):
+                self._seen += 1
+        elif line.startswith("Run number"):
+            m = _RUN_RE.match(line)
+            if m and self._current is not None and m.group(2).startswith("lualatex"):
+                self._pass = int(m.group(1))
+                self._seen = 0
+        elif line.startswith("===="):
+            m = _COMPILING_RE.match(line)
+            if m:
+                self._begin(m.group(1), JobSpec(SINGLE_RENDER_PASSES, 0, estimated=True))
+            else:
+                m = _RENDERING_RE.match(line)
+                if m:
+                    self._begin(m.group(2), JobSpec(SINGLE_RENDER_PASSES, 1, estimated=True), force=True)
+                else:
+                    m = (_MOVING_RE.match(line) or _FINISHED_RE.match(line)
+                         or _PASS_RE.match(line))
+                    if m and m.group(1) == self._current:
+                        self._finish_current()
+                    elif _RENDER_PASS_RE.match(line):
+                        self._finish_current()
+                    elif _STOPPED_RE.match(line):
+                        self.reset({})      # stopped by the user: back to idle
+                        self._announced = True
+                    elif m := _SKIPPED_RE.match(line):
+                        self._skip(m.group(1))
+        elif line.startswith("*** FAIL"):
+            if _FAIL_RE.match(line) or _RENDER_FAIL_RE.match(line):
+                self._finish_current()
+
+        if (self._current is None and not self._announced and self._specs
+                and len(self._finished) >= len(self._specs)):
+            self._announced = True
+            return (1.0, "done", True)
+        after = (self.fraction, self.text)
+        if after == before:
+            return None
+        return (after[0], after[1], False)
+
+    def _skip(self, jobname: str) -> None:
+        """A queued job that will not run counts as done work."""
+        if jobname in self._specs and jobname not in self._finished:
+            self._finished.add(jobname)
+            self._done_units += self._specs[jobname].units
+
+    def _begin(self, jobname: str, fallback: JobSpec, force: bool = False) -> None:
+        """A job starts. Jobs announced up front (reset()) keep their spec;
+        anything else (an ad-hoc render, a job nobody told us about) is
+        added with `fallback`."""
+        self._finish_current()
+        if self._announced and (force or jobname not in self._specs):
+            self.reset({})          # the previous batch is over: start afresh
+        if force or jobname not in self._specs:
+            self._specs[jobname] = fallback
+            self._total_units += fallback.units
+            self._announced = False
+        self._current, self._pass, self._seen = jobname, 0, 0
+        self._peak = 0.0

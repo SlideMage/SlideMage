@@ -1,0 +1,33 @@
+% Demo/reference slide: the two numbered footnote marker styles of
+% \SMSetFootnoteMarkers{boxed|dice} (see beamerthemeSlideMage.sty), live, in
+% running text and at actual footnote size. Each call sits in a group, so the
+% markers of the following slides stay as they are.
+%% Included in decks: slidemage-manual, slidemage-manual-copy
+%%
+
+\setSlideVersion{1-0-0+}
+\begin{standardframe}{Footnote marker styles}
+\footnotesize
+\texttt{\textbackslash SMSetFootnoteMarkers\{boxed\}} sets the footnote's number in a thin box,
+\texttt{\{dice\}} draws it as dice, \texttt{\{symbols\}} is the symbol sequence again (the default).
+A template says it once after \texttt{\textbackslash input\{SlideMage\_setup\}}; a deck or slide from any point on,
+inside a group \texttt{\{...\}} it holds to the group's end. \texttt{\textbackslash setfootnotesymbols}
+changes the symbols only, never the style.
+
+\vspace{0.8em}
+\textbf{Boxed}: the number in a box, a two-digit number in a wider one.
+
+\vspace{0.3em}
+{\SMSetFootnoteMarkers{boxed}\Large\SMFootnoteMark{1} \ \SMFootnoteMark{9} \ \SMFootnoteMark{10} \ \SMFootnoteMark{12}}
+\quad {\footnotesize at actual footnote size:} {\SMSetFootnoteMarkers{boxed}\fontsize{3.2}{4.5}\selectfont\SMFootnoteMark{1} \SMFootnoteMark{9} \SMFootnoteMark{10} \SMFootnoteMark{12}}
+
+\vspace{0.8em}
+\textbf{Dice}: 1 to 6 one die; above that the number in base 6 with the digits 1 to 6 (no zero), the most significant die first: 7 is one-one, 12 one-six, 13 two-one, 42 six-six, 43 three dice.
+
+\vspace{0.3em}
+{\SMSetFootnoteMarkers{dice}\Large\SMFootnoteMark{1} \ \SMFootnoteMark{7} \ \SMFootnoteMark{12} \ \SMFootnoteMark{13}}
+\quad {\footnotesize at actual footnote size:} {\SMSetFootnoteMarkers{dice}\fontsize{3.2}{4.5}\selectfont\SMFootnoteMark{1} \SMFootnoteMark{7} \SMFootnoteMark{12} \SMFootnoteMark{13}}
+
+\vspace{0.8em}
+In running text, a marker is scaled to 75\%: text\,{\SMSetFootnoteMarkers{boxed}\SMFootnoteMark{3}}\ and text\,{\SMSetFootnoteMarkers{dice}\SMFootnoteMark{3}}\ at this size.
+\end{standardframe}

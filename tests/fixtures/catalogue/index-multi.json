@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "generated": "2026-10-28T09:00:00Z",
+  "plugins_page": "https://slidemage.org/plugins/",
+  "themes": [],
+  "plugins": [
+    {
+      "id": "multi-release",
+      "name": "Multi Release",
+      "summary": "A plugin with three releases, for testing which release the app picks.",
+      "homepage": "https://slidemage.org/plugins/multi-release/",
+      "source": "https://github.com/stpalan/slidemage-plugin-multi-release",
+      "icon": "https://slidemage.org/plugins/multi-release/icon.svg",
+      "license": "GPL-3.0-or-later",
+      "maintainer": "Stefan Palan",
+      "recommended": false,
+      "color": "red",
+      "needs": [
+        "Network access to the campus server"
+      ],
+      "network": [
+        "campus.example.org"
+      ],
+      "releases": [
+        {
+          "version": "2.0.0",
+          "api_version": 1,
+          "requires_slidemage": ">=99.0",
+          "url": "https://github.com/stpalan/slidemage-plugin-multi-release/releases/download/v2.0.0/multi-release-2.0.0.smplugin",
+          "sha256": "5070c45d3ada0917260a87c2713eaadc74a93367d9dc9e61e4e33bc9a1db71d0",
+          "size": 20001,
+          "published": "2026-10-27",
+          "notes_url": "https://github.com/stpalan/slidemage-plugin-multi-release/releases/tag/v2.0.0"
+        },
+        {
+          "version": "1.5.0",
+          "api_version": 2,
+          "requires_slidemage": ">=9.0",
+          "url": "https://github.com/stpalan/slidemage-plugin-multi-release/releases/download/v1.5.0/multi-release-1.5.0.smplugin",
+          "sha256": "49ad69eedf3acd8f27a928c4b3f8e3aee0791c1018618c9e5aa691efbce7c9cf",
+          "size": 19500,
+          "published": "2026-10-20",
+          "notes_url": "https://github.com/stpalan/slidemage-plugin-multi-release/releases/tag/v1.5.0"
+        },
+        {
+          "version": "1.0.0",
+          "api_version": 1,
+          "requires_slidemage": ">=9.0",
+          "url": "https://github.com/stpalan/slidemage-plugin-multi-release/releases/download/v1.0.0/multi-release-1.0.0.smplugin",
+          "sha256": "12a101614c3b8145e0f6be33b6e6c70bda5f78276e7c333d5d9b4ef04d17fad8",
+          "size": 18000,
+          "published": "2026-09-01",
+          "notes_url": "https://github.com/stpalan/slidemage-plugin-multi-release/releases/tag/v1.0.0"
+        }
+      ]
+    },
+    {
+      "id": "extra-tools",
+      "name": "Extra Tools",
+      "summary": "A recommended plugin with one release.",
+      "homepage": "https://slidemage.org/plugins/extra-tools/",
+      "source": "https://github.com/stpalan/slidemage-plugin-extra-tools",
+      "license": "GPL-3.0-or-later",
+      "maintainer": "Jürgen Fleiß",
+      "recommended": true,
+      "needs": [],
+      "network": [],
+      "releases": [
+        {
+          "version": "0.3.0",
+          "api_version": 1,
+          "requires_slidemage": ">=9.0",
+          "url": "https://github.com/stpalan/slidemage-plugin-extra-tools/releases/download/v0.3.0/extra-tools-0.3.0.smplugin",
+          "sha256": "4258c7600b14a50d9f926608ef2cf978fc656247c07e846afc6d4cffa169074b",
+          "size": 9100,
+          "published": "2026-10-15"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,175 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Private persistent process for preview PDF rasterization.
+
+MuPDF objects stay in this process and never cross a GUI/worker thread boundary.
+Requests and results are newline-delimited JSON on private pipes, with PNG bytes
+encoded as base64, or a path to a raw last-page image in the request's temp folder.
+"""
+
+from __future__ import annotations
+
+import base64
+from contextlib import redirect_stdout
+import json
+import hashlib
+import os
+import sys
+
+
+def raster(data, sizes, full_size, raw=None):
+    import pymupdf
+
+    with pymupdf.open(stream=data, filetype="pdf") as doc:
+        if not doc.page_count:
+            return []
+        page = doc[-1]
+        if raw is not None:
+            zoom = sizes[0][0] / page.rect.width
+            page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom)).save(raw)
+            return raw
+        # Parse the PDF page once; replay it for the display, tool image and thumbnails.
+        display = page.get_displaylist()
+        images = {}
+        for size in map(tuple, sizes):
+            if size in images:
+                continue
+            width, height, *fit = size
+            if fit:
+                # (width, height, "fit"): the largest size inside the box, aspect ratio kept (a list thumbnail)
+                zoom = min(width / page.rect.width, height / page.rect.height)
+                images[size] = display.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom)).tobytes("png")
+                continue
+            if (
+                height is None
+                and width == full_size[0]
+                and tuple(full_size) in images
+                and abs(
+                    page.rect.width / page.rect.height - full_size[0] / full_size[1]
+                )
+                < 0.0001
+            ):
+                images[size] = images[tuple(full_size)]
+                continue
+            zoom = width / page.rect.width
+            matrix = pymupdf.Matrix(
+                zoom, height / page.rect.height if height is not None else zoom
+            )
+            images[size] = display.get_pixmap(matrix=matrix).tobytes("png")
+        return [images[tuple(size)] for size in sizes]
+
+
+SEQUENCE_SCHEMA = 1
+SEQUENCE_DPI = 144
+
+
+def sequence(data):
+    """Render every reveal at one fixed RGB/opaque configuration, in PDF order."""
+    import pymupdf
+
+    configuration = dict(schema=SEQUENCE_SCHEMA, dpi=SEQUENCE_DPI, colorspace="rgb",
+                         alpha=False, annots=True, renderer=pymupdf.VersionBind)
+    pages, images = [], []
+    with pymupdf.open(stream=data, filetype="pdf") as doc:
+        for page in doc:
+            pixmap = page.get_pixmap(dpi=SEQUENCE_DPI, colorspace=pymupdf.csRGB,
+                                    alpha=False, annots=True)
+            # Pixel hashes exclude PNG metadata; exact point sizes also matter.
+            pages.append(dict(size=[page.rect.width, page.rect.height],
+                              pixels=[pixmap.width, pixmap.height],
+                              sha256=hashlib.sha256(pixmap.samples).hexdigest()))
+            images.append(pixmap.tobytes("png"))
+    evidence = dict(configuration=configuration, pages=pages)
+    signature = hashlib.sha256(json.dumps(evidence, sort_keys=True,
+                              separators=(",", ":")).encode()).hexdigest()
+    return dict(**evidence, signature=signature, images=images)
+
+
+def document(path, op, start=1, count=1, dpi=110, width=None, out=None):
+    """The chat's file reads: op "pdf" gives the page count and the text of `count` pages from page
+    `start`; "pdf_images" the same pages as PNGs; "extract_pages" those pages as a PDF of their own, written to `out`;
+    "drawing" an SVG or EPS file as one PNG; "layout" what the readability check reads of every page
+    (readability_pdf.read_pages)."""
+    import pymupdf
+
+    if op == "layout":
+        from .readability_pdf import read_pages
+        return dict(pages=read_pages(path))
+    if op == "drawing":
+        with open(path, "rb") as file:
+            data = file.read()
+        with pymupdf.open(stream=data, filetype=os.path.splitext(path)[1][1:]) as doc:
+            return dict(count=1, images=[doc[0].get_pixmap(dpi=dpi).tobytes("png")])
+    with pymupdf.open(path) as doc:
+        pages = range(start, min(start + count, doc.page_count + 1))
+        if op == "extract_pages":
+            total = doc.page_count
+            doc.select([n - 1 for n in pages])
+            doc.save(out, garbage=3, deflate=True)
+            return dict(count=total)
+        if op == "pdf_images":
+            if width is not None:   # every page `width` pixels wide, at its own aspect ratio
+                return dict(count=doc.page_count, images=[
+                    doc[n - 1].get_pixmap(matrix=pymupdf.Matrix(width / doc[n - 1].rect.width, width / doc[n - 1].rect.width)).tobytes("png")
+                    for n in pages])
+            return dict(count=doc.page_count, images=[doc[n - 1].get_pixmap(dpi=dpi).tobytes("png") for n in pages])
+        return dict(count=doc.page_count, texts=[doc[n - 1].get_text() for n in pages])
+
+
+def _pipe_stream(number, mode):
+    """Restore redirected pipes in a Windows windowed executable/pythonw."""
+    try:
+        descriptor = os.dup(number)
+    except OSError:
+        if os.name != "nt":
+            raise
+        import ctypes
+        from ctypes import wintypes
+        import msvcrt
+
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.GetStdHandle.argtypes = [wintypes.DWORD]
+        kernel.GetStdHandle.restype = wintypes.HANDLE
+        handle = kernel.GetStdHandle(wintypes.DWORD(-10 if number == 0 else -11))
+        if handle in (None, 0, ctypes.c_void_p(-1).value):
+            raise OSError("Preview image process has no redirected pipe")
+        flags = os.O_RDONLY if number == 0 else os.O_WRONLY
+        descriptor = msvcrt.open_osfhandle(handle, flags | os.O_BINARY)
+    return os.fdopen(descriptor, mode, encoding="utf-8")
+
+
+def serve():
+    # PyInstaller's Windows windowed bootloader can leave these as None even
+    # though this private child has redirected OS handles supplied by Popen.
+    incoming = sys.stdin if sys.stdin is not None else _pipe_stream(0, "r")
+    outgoing = sys.stdout if sys.stdout is not None else _pipe_stream(1, "w")
+    errors = sys.stderr if sys.stderr is not None else open(os.devnull, "w")
+    for line in incoming:
+        try:
+            request = json.loads(line)
+            with redirect_stdout(errors):
+                if "op" in request:
+                    response = document(**request)
+                    images = response.pop("images", [])
+                else:
+                    images = raster(
+                        base64.b64decode(request["pdf"]),
+                        request["sizes"],
+                        request["full_size"],
+                        request.get("raw"),
+                    )
+                    response = dict(raw=images) if request.get("raw") else {}
+                    if request.get("raw"):
+                        images = []
+            response |= dict(
+                ok=True,
+                images=[base64.b64encode(image).decode("ascii") for image in images],
+            )
+        except Exception as exc:
+            response = dict(ok=False, error=str(exc) or type(exc).__name__)
+        outgoing.write(json.dumps(response) + "\n")
+        outgoing.flush()
+
+
+if __name__ == "__main__":
+    serve()

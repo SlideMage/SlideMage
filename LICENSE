@@ -1,0 +1,43 @@
+SlideMage
+Copyright (c) 2026 Stefan Palan, Jürgen Fleiß
+
+This repository holds material under three licences. The full texts are in
+the LICENSES/ folder (one SPDX identifier per file name); the licence of
+every file is also given in its header or in REUSE.toml.
+
+  Part                                   Paths                                              Licence
+  -------------------------------------  -------------------------------------------------  ------------------
+  The SlideMage application              src/, tools/, packaging/, tests/, pyproject.toml   GPL-3.0-or-later
+  The SlideMage LaTeX framework          latex/ (SlideMage_*.tex, *.lua, logos)             LPPL-1.3c+
+  The SlideMage beamer theme, a          latex/beamerthemeSlideMage.sty                     LPPL-1.3c,
+  modified version of the Gotham                                                            (c) Romain Noël and
+  theme v1.2.5.a (third-party origin)                                                       (c) the SlideMage authors
+  Documentation and example project     README.md, docs/, example/                         CC-BY-SA-4.0
+
+* GPL-3.0-or-later   LICENSES/GPL-3.0-or-later.txt   https://www.gnu.org/licenses/gpl-3.0.html
+* LPPL-1.3c          LICENSES/LPPL-1.3c.txt          https://www.latex-project.org/lppl/lppl-1-3c/
+* CC-BY-SA-4.0       LICENSES/CC-BY-SA-4.0.txt       https://creativecommons.org/licenses/by-sa/4.0/legalcode
+
+NO WARRANTY. To the extent permitted by applicable law, SlideMage, the
+SlideMage framework, the documentation and the example project are provided
+"as is", without warranty of any kind, express or implied, including the
+implied warranties of merchantability and fitness for a particular purpose,
+and the copyright holders are not liable for any damage arising from their
+use. The licence texts state this in full: GPL-3.0 sections 15 and 16, the
+LPPL 1.3c's "No Warranty" section and CC BY-SA 4.0 section 5.
+
+The slides and PDFs that people make with SlideMage are not covered by any of
+these licences.
+
+The released executable bundles third-party software under its own licences,
+listed in THIRD_PARTY_NOTICES.md (among them PyMuPDF, AGPL-3.0, and Qt for
+Python, LGPL-3.0). The complete corresponding source of every release is
+attached to it as a source archive and is in this repository.
+
+Releases published before the licence change (up to and including v8.30.0)
+were published under CC BY-SA 4.0 and stay available under it for whoever
+has them. Individual course slides, media files and other real course content
+built on top of this framework -- where present in a given copy of this
+project -- may carry their own separate sourcing/attribution (see that copy's
+media/alt-text.json "source" field per image) and are not necessarily covered
+by these licences.

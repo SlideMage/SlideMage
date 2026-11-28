@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Cross-platform "open in the OS's default app" helper. os.startfile()
+(used everywhere this project opens a compiled PDF/PPTX/image) is a
+Windows-only stdlib attribute -- calling it on Linux raises AttributeError,
+not caught by the existing `except OSError` handlers at each call site.
+Windows behavior is unchanged (still literally os.startfile); Linux uses
+xdg-open, the desktop-environment-agnostic standard (part of xdg-utils,
+present by default on Ubuntu 24.04)."""
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+
+def open_in_default_app(path: Path | str) -> None:
+    if os.name == "nt":
+        os.startfile(path)  # type: ignore[attr-defined]
+    else:
+        env = os.environ.copy()
+        if sys.platform == "linux" and getattr(sys, "frozen", False):
+            # PyInstaller's private libraries can delay or prevent an
+            # external viewer from starting when inherited by xdg-open.
+            original = env.get("LD_LIBRARY_PATH_ORIG")
+            if original is None:
+                env.pop("LD_LIBRARY_PATH", None)
+            else:
+                env["LD_LIBRARY_PATH"] = original
+        subprocess.Popen(
+            ["open" if sys.platform == "darwin" else "xdg-open", str(path)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            env=env,
+        )
+
+
+# The menu text for reveal_in_file_manager, as each system calls it (Linux only opens the folder).
+REVEAL_TEXT = ("Show in Explorer" if sys.platform.startswith("win")
+               else "Reveal in Finder" if sys.platform == "darwin" else "Open containing folder")
+
+
+def reveal_in_file_manager(path: Path | str) -> None:
+    """Show `path` selected in the OS's file manager (Explorer, Finder); on Linux, where the file managers have no
+    common way to select, its folder."""
+    path = Path(path)
+    if os.name == "nt":
+        subprocess.Popen(["explorer", f"/select,{path}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", "-R", str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    else:
+        open_in_default_app(path.parent)

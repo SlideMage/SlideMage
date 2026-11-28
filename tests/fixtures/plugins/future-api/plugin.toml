@@ -1,0 +1,11 @@
+id = "future-api"
+name = "future-api fixture"
+version = "0.1.0"
+api_version = 2
+requires_slidemage = ">=8.0"
+summary = "Fixture plugin future-api."
+author = "Test"
+homepage = "https://example.org/future-api"
+license = "GPL-3.0-or-later"
+needs = []
+network = []

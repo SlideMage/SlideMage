@@ -1,0 +1,20 @@
+% !TeX program = lualatex
+\documentclass[aspectratio=169]{beamer}
+\makeatletter\def\input@path{{../}}\makeatother
+\graphicspath{{../}}
+\input{SlideMage_template_slidemage}  % the template
+\SMUseBibliography                     % optional
+\newcommand{\FooterText}{SlideMage Manual}
+\ifdefined\deckversionoverride          % set by SlideMage
+	\deckversion[\deckversionoverride]
+\else
+	\deckversion[instructor]
+\fi
+\decklanguage[en]
+\deckoutputfolder[after-course]{D:/Teaching/Handouts}
+%% SlideMage course URL: https://...
+\decktags{course}
+\begin{document}
+	\slide{1jh-EN-Title-Slide}
+	\section{The big picture}
+\end{document}

@@ -1,0 +1,805 @@
+% SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+% SPDX-License-Identifier: LPPL-1.3c+
+% SlideMage setup layer and hook catalog (SlideMage v10.0.0, theme v10.7.0).
+%
+% A template \input{}s this file first, sets whatever it wants to change from
+% the catalog below, then \input{}s SlideMage_base:
+%
+%   % SlideMage template name: My University
+%   \input{SlideMage_setup}
+%   \definecolor{c_primary_highlight}{HTML}{...}
+%   \renewcommand{\SMInstituteLogoPath}{schemes/my_logo.pdf}
+%   \setlength{\SMLogoHeight}{3ex}
+%   \input{SlideMage_base}
+%   ... additions only: dark-mode beamer colors, citation format, project macros
+%
+% Rules for a template:
+%   1. Before this file: only \SMLayoutProfile (below; fira unless set) and \SMModeOverride
+%      (the color mode, written into the deck by SlideMage). Both decide what this file computes.
+%   2. Between this file and SlideMage_base: \setlength, \renewcommand,
+%      \definecolor and \colorlet on the names in this catalog. Every name
+%      exists already, so a misspelt \renewcommand is an error instead of a
+%      setting that silently does nothing.
+%   3. After SlideMage_base: additions only.
+%
+% Decks never load the beamer theme themselves; this file does. A length given
+% in ex or em is evaluated where the template sets it, in the normal body font,
+% after the layout profile has loaded the fonts.
+%
+% Layout profiles
+% ---------------
+% Everything that depends on the font lives in a layout profile,
+% SlideMage_layout_<name>.tex: the font files and how their weights map onto
+% bold and italic, the code fonts, the math handling that goes with them, and
+% the metrics the framework measures against (the ascender, the line spacing).
+% A template picks one before this file, and switching it switches all of them
+% together:
+%
+%   \newcommand{\SMLayoutProfile}{myfont}      % before \input{SlideMage_setup}; fira is the default
+%
+% SlideMage ships three profiles:
+%   fira    SlideMage_layout_fira.tex: Fira Sans Light and Fira Mono, today's look and
+%           the default (the fonts come with the TeX distribution's fira package, which
+%           MiKTeX installs on demand; TeX Live's full scheme has it).
+%   lmsans  SlideMage_layout_lmsans.tex: Latin Modern Sans and Latin Modern Mono, which
+%           every TeX distribution has. A template uses it with
+%             \newcommand{\SMLayoutProfile}{lmsans}   % before \input{SlideMage_setup}
+%   lmroman SlideMage_layout_lmroman.tex (v10.18.0): Latin Modern Roman, LaTeX's own serif
+%           text face, and Latin Modern Mono; written by tools/calibrate_font_profile.py --new.
+%           The grayscale template (SlideMage_template_grayscale.tex) uses it.
+% A project may keep its own profile next to its templates: the TeX search path finds
+% SlideMage_layout_<name>.tex there. A template does not change a profile's numbers; it
+% picks a profile or ships its own.
+%
+% What a profile defines (SlideMage_layout_fira.tex is the model; a test checks that every
+% other profile defines each of these names):
+%   fonts           the text font (\sfdefault with its weight mapping and \ttdefault), the
+%                   mono font (\ttfamily), \SMCodeFont, \SMInlineCodeFont, \SMCardHeadingFont,
+%                   and the math handling that goes with them
+%   metrics         \SMFontAscender (the ascender in em, used where the font gives none of
+%                   its own), \SMLinespread, \SMParskip
+% Nothing else: since v10.9.0 no length of a profile is measured against the rendered PDF;
+% every other length is read from the font or the page where it is used or is a hook of the
+% catalog below (see 'Derived, not set').
+%
+% Recipe for a new profile:
+%   1. python tools/calibrate_font_profile.py --profile <name> --new --text-regular <file>
+%        --text-italic <file> --text-bold <file> --text-bold-italic <file> [--mono <file> ...]
+%      writes SlideMage_layout_<name>.tex with those fonts and the ascender read from them,
+%      then does step 2 (or copy SlideMage_layout_fira.tex by hand and change the fonts).
+%   2. python tools/calibrate_font_profile.py --profile <name>
+%      It compiles the calibration deck of tests/fixtures/template_stress/ with the
+%      profile under the SlideMage template (the catalog's defaults) and reports, for
+%      everything the base derives from the font, what the PDF shows against what the hooks
+%      ask for.
+%   3. Run it again after a change until every check reads ok.
+%   4. Compile the calibration deck with a template that picks the profile and run
+%      tools/check_layout.py on the PDF (the stress-test template of that project does
+%      this for lmsans). It reads the margins from the PDF, so a template with other
+%      margins is checked against its own. Adjust until the report is clean.
+% The last block of the tool's output reports what follows from the font and the template
+% without a number of anyone's: where the title bar ends, the Top Margin, the footer number's
+% and the footnotes' right edges, the footer number's ink in its box, the footnotes' gap to
+% the footer, the section bar's height, and the first line of the frames the automatic Top
+% Margin does not correct by their content on the Top Margin.
+%
+% Derived, not set (SlideMage v10.7.0, v10.8.0, v10.9.0)
+% ---------------------------------------------------
+% These lengths follow from the hooks and the font, and SlideMage_base computes them after the
+% template (the first four) or where the font they depend on is in force (the rest). Slides may
+% read them. A template or a profile that sets one gets an error, below, instead of a number
+% that the next change to a hook or a font would silently contradict.
+%   v10.7.0   \SMContentTopAlign (the Top Margin as a coordinate for overlays),
+%            \SMTitleBarBottomAlign (where the title bar ends), \SMFootnoteRightShift (a
+%            footnote's right edge against the text margin), \SMFooterRightShift (the same for
+%            the frame number)
+%   v10.8.0   \SMFooterTextDrop (the frame number's ink centred in the footer box),
+%            \SMFootlineVOffset (the footnotes' descender \SMFootnoteFooterGap above the
+%            footer box), \SMLabelItemWidth, \SMLabelItemSep (the widest label of the lists
+%            with "a)" / "1." labels and the gap to the text), \SMEnumerateNestedMinNumber,
+%            \SMEnumerateNestedLabelSep, \SMEnumerateNestedLeftMargin, \SMEnumerateLabelBox
+%            (the numeral column of a nested enumerate), and the section frame's four
+%            corrections \SMSectionframeRefDepth, \SMSectionframeBottomGap,
+%            \SMSectionframeBottomPadCorrection, \SMSectionframeHeightCorrection (the frame
+%            places its title by the title's own box, with \SMSectionframeTitleGap)
+%   v10.9.0   \SMContentTopShift (the pull-up of a frame the automatic Top Margin does not
+%            correct by its content: measured from where the frame's body begins, written
+%            to \jobname.top), \SMColumnsTopCorrection and \SMColumnsTTopCompensation (a
+%            columns environment that starts such a frame: measured against a list where
+%            it begins)
+%   v0.14.18  \SMFloatingInfoblockRightAlign (a floating SMFloatingInfoBlock's anchor against the
+%            logo's edge: \SMFrametitleRightPadding less the block's own 3.165pt border),
+%            \SMFloatingInfoblockTopAlign (the block's 6.02pt top padding above its title bar),
+%            \SMSectionframeBarBottom (where \sectionfigure starts: 0.12bp under the section bar)
+%            -- slides read them, and since step 5 left their class open they are derived
+
+\newcommand{\SMSetupLoaded}{}
+
+% The derived names, as macros that stop with an error when a template or a profile sets
+% or redefines them. SlideMage_base compares them with the copies kept here, replaces them with
+% the lengths it derives, and reports a name that was redefined.
+\makeatletter
+\newcommand{\SM@derivedname}[1]{\PackageError{SlideMage}{#1 is derived, not set}{%
+	SlideMage_base computes #1 from the hooks and the font (see 'Derived, not set' in
+	SlideMage_setup.tex). Remove the line that sets it from the template or the layout profile;
+	to move what it places, change the hook it follows.}}
+\newcommand{\SM@guardname}[1]{%
+	\newcommand{#1}{\SM@derivedname{\string#1}}%
+	\expandafter\let\csname SM@guard@\expandafter\@gobble\string#1\endcsname#1}
+\SM@guardname\SMContentTopAlign
+\SM@guardname\SMTitleBarBottomAlign
+\SM@guardname\SMFootnoteRightShift
+\SM@guardname\SMFooterRightShift
+\SM@guardname\SMFooterTextDrop
+\SM@guardname\SMFootlineVOffset
+\SM@guardname\SMLabelItemWidth
+\SM@guardname\SMLabelItemSep
+\SM@guardname\SMEnumerateNestedMinNumber
+\SM@guardname\SMEnumerateNestedLabelSep
+\SM@guardname\SMEnumerateNestedLeftMargin
+\SM@guardname\SMEnumerateLabelBox
+\SM@guardname\SMSectionframeRefDepth
+\SM@guardname\SMSectionframeBottomGap
+\SM@guardname\SMSectionframeBottomPadCorrection
+\SM@guardname\SMSectionframeHeightCorrection
+\SM@guardname\SMContentTopShift
+\SM@guardname\SMColumnsTopCorrection
+\SM@guardname\SMColumnsTTopCompensation
+\SM@guardname\SMFloatingInfoblockRightAlign
+\SM@guardname\SMFloatingInfoblockTopAlign
+\SM@guardname\SMSectionframeBarBottom
+\makeatother
+
+% Names that were hooks and are gone (v10.11.0): the footline box's height and depth and the allowance
+% before the frame number moved nothing on the page, because the derived \SMFootlineVOffset and
+% \SMFooterRightShift cancelled them; two hooks were renamed for what they do. A template or a
+% profile that still sets one gets an error that says what to do.
+\makeatletter
+\newcommand{\SM@removedname}[2]{\PackageError{SlideMage}{#1 is no longer a hook}{#2}}
+\newcommand{\SM@renamedname}[2]{\PackageError{SlideMage}{#1 was renamed #2}{%
+	Use #2 in the template or the layout profile; the value means what it did.}}
+\newcommand{\SMFootlineHeight}{\SM@removedname{\string\SMFootlineHeight}{%
+	The footline box's height moved nothing on the page (the derived \string\SMFootlineVOffset cancels it).
+	Remove the line that sets it from the template or the layout profile.}}
+\newcommand{\SMFootlineDepth}{\SM@removedname{\string\SMFootlineDepth}{%
+	The footline box's depth moved nothing on the page (the derived \string\SMFootlineVOffset cancels it).
+	Remove the line that sets it from the template or the layout profile.}}
+\newcommand{\SMRightFooterPadding}{\SM@removedname{\string\SMRightFooterPadding}{%
+	The allowance before the frame number moved nothing on the page (the derived \string\SMFooterRightShift
+	cancels it). Remove the line that sets it from the template or the layout profile.}}
+\newcommand{\SMProgressStripHeight}{\SM@renamedname{\string\SMProgressStripHeight}{\string\SMProgressStripRoom}}
+\newcommand{\SMSideFootnoteTopSep}{\SM@renamedname{\string\SMSideFootnoteTopSep}{\string\SMSideFootnoteTitleBlockSep}}
+\makeatother
+
+% The layout profile: fonts and font metrics (see the header). Loaded before the
+% theme, so that the theme's own lengths in ex and em see its fonts.
+\providecommand{\SMLayoutProfile}{fira}
+\IfFileExists{SlideMage_layout_\SMLayoutProfile.tex}
+	{\input{SlideMage_layout_\SMLayoutProfile}}
+	{\PackageError{SlideMage}{Layout profile '\SMLayoutProfile' not found}{%
+		File `SlideMage_layout_\SMLayoutProfile.tex' not found on the TeX search path.\MessageBreak
+		SlideMage ships the profile 'fira' (the default);\MessageBreak
+		a profile of your own goes next to the template that names it.}}
+
+% The beamer theme (beamerthemeSlideMage.sty, a modified fork of Romain Noel's
+% Gotham theme, LPPL 1.3c). Sets font sizes and the look; the font files come from
+% the layout profile. Only this file loads it.
+\usetheme{SlideMage}
+
+% ---------------------------------------------------------------------------
+% Palette
+% ---------------------------------------------------------------------------
+% The SlideMage look; a template redefines what it changes (usually all of
+% them). The framework combines these pairs, so a template should keep them
+% readable (WCAG 2.1): body text c_primary_dark on each c_secondary_* block
+% title color >= 4.5:1, title/footer text on its box color >= 4.5:1, white text
+% on c_primary_gray (highlightframe), link underline c_secondary_blue on the
+% canvas >= 3:1.
+%
+% SlideMage's own values: wherever possible a color the app itself uses
+% (src/slidemage/palette.py, qt_deck_table.py, assets/splash.png). White
+% title/footer text on c_primary_dark is 16.7:1, white on c_primary_gray 5.0:1.
+\definecolor{c_primary_dark}{HTML}{1e1e1e}      % body text, dark boxes; splash screen background (palette dark "bg")
+\definecolor{c_primary_highlight}{HTML}{0066cc} % accent: bullets, highlights; SlideMage button blue (Create PDF, progress bar, links)
+\definecolor{c_primary_gray}{HTML}{6f6f6f}      % highlightframe background; palette dark "disabled_fg", dark enough for white text
+\definecolor{c_primary_white}{HTML}{FFFFFF}
+\definecolor{c_secondary_violet}{HTML}{ba68c8}  % block titles (block); palette dark "tab_deck_editor"
+\definecolor{c_tertiary_violet}{HTML}{dcb4e4}   % block bodies; derived (50% white-blend)
+% Derived, not an app color: the button blue is too dark for the dark text
+% an infoblock title puts on it, the app's dark-mode link blue (4da6ff) too
+% light for a link underline on white; this one sits between them and passes
+% both (4.9:1 and 3.4:1).
+\definecolor{c_secondary_blue}{HTML}{3d8fe0}    % infoblock titles, link underline
+\definecolor{c_tertiary_blue}{HTML}{9ec7f0}     % derived (50% white-blend)
+\definecolor{c_secondary_green}{HTML}{4caf50}   % exampleblock titles; palette dark "status_pass"
+\definecolor{c_tertiary_green}{HTML}{81c784}    % palette dark "tab_slide_editor"
+\definecolor{c_secondary_red}{HTML}{f04848}     % alertblock titles; palette dark "status_fail"
+\definecolor{c_tertiary_red}{HTML}{f8a4a4}      % derived (50% white-blend)
+\definecolor{c_secondary_orange}{HTML}{ffb74d}  % reference block titles; palette dark "tab_archived"
+\definecolor{c_tertiary_orange}{HTML}{ffdba6}   % derived (50% white-blend)
+\definecolor{c_secondary_yellow}{HTML}{ffd500}  % logo/splash yellow
+\definecolor{c_tertiary_yellow}{HTML}{ffe066}   % deck editor's highlight yellow
+\definecolor{c_tertiary_gray}{HTML}{e4e4e4}     % block bodies, process boxes; palette light "panel_bg"
+% Supporting colors ("custom": not part of the palette proper).
+% c_custom_gray is hyperlink text, button fill and the quote attribution.
+\definecolor{c_custom_gray}{HTML}{2d2d2d}       % palette dark "panel_bg"
+\definecolor{c_custom_red}{HTML}{cc0000}        % palette light "status_fail"
+\definecolor{c_custom_green}{HTML}{1a8a1a}      % palette light "status_pass"
+\definecolor{c_custom_brown}{HTML}{996600}      % palette light "syntax_brace"
+
+% ---------------------------------------------------------------------------
+% Roles: which palette color a part of the slide uses (color names, read
+% when used, so they follow a redefined palette color)
+% ---------------------------------------------------------------------------
+\newcommand{\SMBulletColor}{c_primary_highlight}       % itemize bullets
+\newcommand{\SMTitleBoxColor}{c_primary_dark}          % frame title bar
+\newcommand{\SMTitleTextColor}{c_primary_white}        % frame title text
+\newcommand{\SMFooterBoxColorDefault}{c_primary_dark}  % footer box
+\newcommand{\SMFooterTextColor}{c_primary_white}       % footer text, slide id
+% (v10.18.0) Four more, whose defaults are what the theme always used, so a template that does not
+% name them looks as before:
+\newcommand{\SMHighlightTitleTextColor}{\SMTitleTextColor}  % title text of a highlightframe (on SMHighlightColor, c_primary_gray)
+\newcommand{\SMStandoutTextColor}{}                    % text of a [standout] frame (on \SMTitleBoxColor); empty: the theme's pale yellow fffff0
+\newcommand{\SMAlertTextColor}{SMLightOrange}          % \alert{} text; the theme's orange EB811B
+\newcommand{\SMProgressBarColor}{SMDeepYellowOrange}   % the optional progress bar (below); the theme's yellow FFCC00
+% Block title text: one role for all five kinds, and one per kind that follows it unless a template names it (the
+% default is the dark text the blocks always had). The fill of each kind stays its c_secondary_* color; a template
+% that fills a title with a dark color sets the text white, e.g. \renewcommand{\SMBlockTitleTextColor}{c_primary_white}.
+\newcommand{\SMBlockTitleTextColor}{c_primary_dark}           % title text of block (and of every kind below)
+\newcommand{\SMAlertedBlockTitleTextColor}{\SMBlockTitleTextColor}    % alertblock
+\newcommand{\SMExampleBlockTitleTextColor}{\SMBlockTitleTextColor}    % exampleblock
+\newcommand{\SMReferenceBlockTitleTextColor}{\SMBlockTitleTextColor}  % referenceblock
+\newcommand{\SMInfoBlockTitleTextColor}{\SMBlockTitleTextColor}       % infoblock
+
+% Optional colors a template may define; SlideMage_base derives each one from
+% the palette when the template leaves it undefined:
+%   SMCanvasColor          slide background                  (white)
+%   SMCardBackgroundColor  SMCard fill                       (white)
+%   SMCardBorderColor      SMCard border                     (c_primary_dark)
+%   SMProcessBorderColor   SMProcess border, dark mode       (c_tertiary_gray)
+%   SMCodeKeywordColor     \SMCodeFile commands              (c_primary_highlight)
+%   SMCodeCommentColor     \SMCodeFile comments              (c_primary_gray)
+%   SMCodeBackgroundColor  \SMCodeFile panel                 (c_tertiary_gray)
+%   SMCodeTextColor        \SMCodeFile text                  (c_primary_dark)
+
+% ---------------------------------------------------------------------------
+% Color modes and role colors (v0.16.0; docs/plans/theme-editor.md, section 3.8)
+% ---------------------------------------------------------------------------
+% A MODE is a color scheme of a theme: other values for palette colors and for roles, and
+% nothing else (fonts, margins, bullets and footnote markers are the theme's design). The
+% framework knows no mode name. A theme declares its modes, the first being the base mode (the
+% colors the template sets directly), and may add data lines for the others:
+%
+%   \SMDeclareMode{light}{}                 % the base mode: first declared, no derivation
+%   \SMDeclareMode{dark}{dark}              % {id}{derive}: derive = dark | gray | colorblind | empty
+%   \SMDeclareMode{gray}{gray}
+%   \SMSetRole{text}{dark}{c_true_white}    % {role}{mode}{color}
+%   \SMSetColor{c_secondary_blue}{gray}{HTML}{8f8f8f}   % {palette color}{mode}{model}{spec}
+%
+% A line of another mode than the active one does nothing, so the lines need no \if. The
+% active mode is, in this order: \SMModeOverride, when the deck's wrapper defines it before this
+% file (\newcommand{\SMModeOverride}{dark}; SlideMage writes it for the deck's mode and a view's
+% `theme:mode`); else the base mode. The older switch \SMDarkMode was removed in v0.16.0 and
+% stops the compile with a message. A mode that is not the base
+% starts from its derive preset, then the palette lines, then the role lines, so an explicit
+% line always wins:
+%   dark        canvas and card from c_primary_dark mixed with white (17 % and 23 %), text, line and
+%               link white, text on an accent fill and on a button black, quote attribution muted
+%   gray        every palette color converted to its grey
+%   colorblind  the accents (c_secondary_*) in the Okabe-Ito set, their tertiary 50 % towards white
+% Nothing applies until SlideMage_base calls \SMApplyColorRoles, after the template, so a role
+% sees the template's palette. In the base mode every role resolves to what it was before
+% modes existed: the PDFs do not change.
+%
+% PALETTE: c_true_black and c_true_white are physical colors the framework defines; no mode
+% changes them. A palette name keeps one meaning, a color.
+%
+% ROLES: a color name a slide uses to follow the theme and the mode (a palette name means
+% "this exact color"). Role, color name, and what it is in the base mode:
+%   text            c_text            c_primary_dark     body text, rules and lines on the canvas
+%   canvas          c_canvas          SMCanvasColor      the slide background (white unless the template sets it)
+%   card            c_card            SMCardBackgroundColor   fill of an SMCard
+%   line            c_line            SMCardBorderColor  border of an SMCard
+%   text_muted      c_text_muted      c_primary_gray     secondary text
+%   text_on_accent  c_text_on_accent  c_primary_dark     text on a colored fill
+%   link            c_link            c_custom_gray      hyperlinks, buttons
+% Roles for parts of a slide (a color the framework reads; no color name for slides), role and what it is in the base mode:
+%   block_title_fill, alerted_block_title_fill, example_block_title_fill, reference_block_title_fill,
+%   info_block_title_fill    the five block kinds' title fills     c_secondary_violet, _red, _green, _orange, _blue
+%   block_body_fill          the fill of a block body (and SMProcess)   c_tertiary_gray
+%   block_body_text          text and bullets in a block body, SMProcess text   c_primary_dark
+%   link_underline           the rule under a link                  c_secondary_blue
+%   highlight_fill           highlightframe's title bar and footer box   c_primary_gray
+%   standout_fill            a [standout] frame's background        the title bar's fill (\SMTitleBoxColor)
+%   quote_attribution        the attribution under a quoteframe     c_custom_gray
+%   table_rule               rules of an SMTable outside a block (inside one: block_body_text)   c_primary_highlight
+%   image_border             the border SMImageBorder draws          c_primary_highlight
+%   marker                   SMHighlight, SMDottedHighlight and the warning sign   c_custom_red
+%   citation                 the color of a citation mark          black
+%   strip_fill               the \progressstrip's fill   c_tertiary_yellow
+%   strip_text               the \progressstrip's text   c_text_on_accent
+%   code_keyword, code_comment, code_panel, code_text   the \SMCodeFile colors (the optional colors above)
+%   button_text              the text of \beamergotobutton and its relatives   white
+% Roles that are off unless a mode sets them (v0.16.0): process_line (a border around SMProcess
+% boxes; none in the base) and inline_code (the color of \SMCode and \SMCmd in body text; text
+% in another color, on a title bar or a block title, keeps its color).
+% Roles that set a hook of the catalog above (no color name for slides): title_fill
+% (\SMTitleBoxColor), title_text, footer_fill (\SMFooterBoxColorDefault), footer_text, bullet,
+% alert, progress, block_title_text and, per kind, alerted_block_title_text, example_block_title_text,
+% reference_block_title_text, info_block_title_text, standout_text. A mode's line replaces the macro; without one it stays what
+% the template made it.
+\makeatletter
+% (the two helpers keep the palette reader of the app, which reads plain \definecolor and \colorlet lines, to the palette above)
+\newcommand{\SM@hexcolor}[2]{\definecolor{#1}{HTML}{#2}}
+\newcommand{\SM@letcolor}[2]{\colorlet{#1}{#2}}
+\SM@hexcolor{c_true_black}{000000}
+\SM@hexcolor{c_true_white}{FFFFFF}
+\newcommand{\SM@palettelines}{}
+\newcommand{\SM@basemode}{}
+\newcommand{\SMDeclareMode}[2]{%
+	\ifx\SM@basemode\@empty\gdef\SM@basemode{#1}\fi
+	\expandafter\gdef\csname SM@modederive@#1\endcsname{#2}}
+\newcommand{\SM@activemode}{%
+	\ifdefined\SMModeOverride\SMModeOverride\else\SM@basemode\fi}
+\ifdefined\SMDarkMode
+	\PackageError{SlideMage}{\string\SMDarkMode\space was removed in SlideMage v0.16.0}{%
+		Write \string\newcommand{\string\SMModeOverride}{dark} before the template instead
+		(Update project in SlideMage does it), and use a version of the theme made for v0.16.0
+		or later: it declares its modes with \string\SMDeclareMode.}
+\fi
+% \SM@ifmode{<id>}{<true>}{<false>}: whether <id> is the active mode.
+\newcommand{\SM@ifmode}[3]{%
+	\edef\SM@tmpa{\SM@activemode}\edef\SM@tmpb{#1}%
+	\ifx\SM@tmpa\SM@tmpb #2\else #3\fi}
+\newcommand{\SMSetRole}[3]{\SM@ifmode{#2}{\expandafter\gdef\csname SM@role@#1\endcsname{#3}}{}}
+\newcommand{\SMSetColor}[4]{\SM@ifmode{#2}{\g@addto@macro\SM@palettelines{\definecolor{#1}{#3}{#4}}}{}}
+% The colors the roles resolve into, defined now so the names exist before the template and the
+% base resolve them for the active mode (\SM@applymode, called by \SMApplyColorRoles).
+\colorlet{c_text}{c_primary_dark}
+\colorlet{c_canvas}{white}
+\colorlet{c_card}{white}
+\colorlet{c_line}{c_primary_dark}
+\SM@letcolor{c_text_muted}{c_primary_gray}
+\colorlet{c_text_on_accent}{c_primary_dark}
+\colorlet{c_link}{c_custom_gray}
+% Colors of parts of a slide (roles without a color name for slides; v0.15.10): the framework reads these names.
+\colorlet{SMBlockTitleFill}{c_secondary_violet}
+\colorlet{SMAlertedBlockTitleFill}{c_secondary_red}
+\colorlet{SMExampleBlockTitleFill}{c_secondary_green}
+\colorlet{SMReferenceBlockTitleFill}{c_secondary_orange}
+\colorlet{SMInfoBlockTitleFill}{c_secondary_blue}
+\colorlet{SMBlockBodyFill}{c_tertiary_gray}
+\colorlet{SMBlockBodyText}{c_primary_dark}
+\colorlet{SMProcessFill}{c_tertiary_gray}
+\colorlet{SMLinkUnderline}{c_secondary_blue}
+\colorlet{SMStandoutFill}{c_primary_dark}
+\colorlet{SMQuoteAttributionColor}{c_custom_gray}
+\colorlet{SMTableRuleColor}{c_primary_highlight}
+\colorlet{SMImageBorderColor}{c_primary_highlight}
+\colorlet{SMMarkerColor}{c_custom_red}
+\colorlet{SMCitationColor}{black}
+\colorlet{SMStripFill}{c_tertiary_yellow}
+\colorlet{SMStripText}{c_text_on_accent}
+% Resolution, in this order: derived values (a non-base mode's preset), then the palette lines,
+% then the roles (an explicit line, else the derived value, else the base mode's source).
+\newcommand{\SM@togray}[1]{%
+	\convertcolorspec{named}{#1}{gray}\SM@gray
+	\definecolor{#1}{gray}{\SM@gray}}
+\newcommand{\SM@preset@dark}{%
+	\gdef\SM@derived@canvas{c_primary_dark!83!white}%
+	\gdef\SM@derived@card{c_primary_dark!77!white}%
+	\gdef\SM@derived@line{c_true_white}%
+	\gdef\SM@derived@text{c_true_white}%
+	\expandafter\gdef\csname SM@derived@text_muted\endcsname{c_primary_gray!60!white}%
+	\expandafter\gdef\csname SM@derived@text_on_accent\endcsname{c_true_black}%
+	\gdef\SM@derived@link{c_true_white}%
+	% v0.16.5: a button is filled with the link color, white here, so its text is black; the quote
+	% attribution (c_custom_gray in the base, a dark grey) is muted text
+	\expandafter\gdef\csname SM@derived@button_text\endcsname{c_true_black}%
+	\expandafter\gdef\csname SM@derived@quote_attribution\endcsname{c_primary_gray!60!white}}
+\newcommand{\SM@preset@gray}{%
+	\@for\SM@n:={c_primary_dark,c_primary_highlight,c_primary_gray,%
+		c_secondary_violet,c_tertiary_violet,c_secondary_blue,c_tertiary_blue,c_secondary_green,%
+		c_tertiary_green,c_secondary_red,c_tertiary_red,c_secondary_orange,c_tertiary_orange,%
+		c_secondary_yellow,c_tertiary_yellow,c_tertiary_gray,c_custom_gray,c_custom_red,%
+		c_custom_green,c_custom_brown,SMLightOrange,SMLightGreen,SMDeepYellowOrange,SMAnthracite}%
+		\do{\SM@togray\SM@n}}
+\newcommand{\SM@preset@colorblind}{%
+	\SM@hexcolor{c_secondary_blue}{0072B2}\SM@hexcolor{c_secondary_green}{009E73}%
+	\SM@hexcolor{c_secondary_red}{D55E00}\SM@hexcolor{c_secondary_orange}{E69F00}%
+	\SM@hexcolor{c_secondary_yellow}{F0E442}\SM@hexcolor{c_secondary_violet}{CC79A7}%
+	\@for\SM@n:={blue,green,red,orange,yellow,violet}\do{%
+		\colorlet{c_tertiary_\SM@n}{c_secondary_\SM@n!50!white}}}
+% \SM@rolecolour{<role>}{<color name>}{<base source>}
+\newcommand{\SM@rolecolour}[3]{%
+	\ifcsname SM@role@#1\endcsname
+		\edef\SM@tmpa{\csname SM@role@#1\endcsname}%
+	\else\ifcsname SM@derived@#1\endcsname
+		\edef\SM@tmpa{\csname SM@derived@#1\endcsname}%
+	\else
+		\edef\SM@tmpa{#3}%
+	\fi\fi
+	\colorlet{#2}{\SM@tmpa}}
+% \SM@rolehook{<role>}{<hook macro>}: replaced by the mode's explicit line, otherwise untouched.
+\newcommand{\SM@rolehook}[2]{%
+	\ifcsname SM@role@#1\endcsname
+		\edef\SM@tmpa{\noexpand\renewcommand\noexpand#2{\csname SM@role@#1\endcsname}}\SM@tmpa
+	\fi}
+\newcommand{\SM@applymode}{%
+	\@ifundefinedcolor{SMCanvasColor}{\colorlet{SMCanvasColor}{white}}{}%
+	\@ifundefinedcolor{SMCardBackgroundColor}{\colorlet{SMCardBackgroundColor}{white}}{}%
+	\@ifundefinedcolor{SMCardBorderColor}{\colorlet{SMCardBorderColor}{c_primary_dark}}{}%
+	\SM@ifmode{\SM@basemode}{}{%
+		\edef\SM@tmpa{\SM@activemode}%
+		\ifcsname SM@modederive@\SM@tmpa\endcsname
+			\edef\SM@tmpa{\csname SM@modederive@\SM@tmpa\endcsname}%
+			\ifcsname SM@preset@\SM@tmpa\endcsname\csname SM@preset@\SM@tmpa\endcsname\fi
+		\fi}%
+	\SM@palettelines
+	\SM@rolecolour{text}{c_text}{c_primary_dark}%
+	\SM@rolecolour{canvas}{c_canvas}{SMCanvasColor}\colorlet{SMCanvasColor}{c_canvas}%
+	\SM@rolecolour{card}{c_card}{SMCardBackgroundColor}\colorlet{SMCardBackgroundColor}{c_card}%
+	\SM@rolecolour{line}{c_line}{SMCardBorderColor}\colorlet{SMCardBorderColor}{c_line}%
+	\SM@rolecolour{text_muted}{c_text_muted}{c_primary_gray}%
+	\SM@rolecolour{text_on_accent}{c_text_on_accent}{c_primary_dark}%
+	\SM@rolecolour{link}{c_link}{c_custom_gray}%
+	\SM@rolecolour{block_title_fill}{SMBlockTitleFill}{c_secondary_violet}%
+	\SM@rolecolour{alerted_block_title_fill}{SMAlertedBlockTitleFill}{c_secondary_red}%
+	\SM@rolecolour{example_block_title_fill}{SMExampleBlockTitleFill}{c_secondary_green}%
+	\SM@rolecolour{reference_block_title_fill}{SMReferenceBlockTitleFill}{c_secondary_orange}%
+	\SM@rolecolour{info_block_title_fill}{SMInfoBlockTitleFill}{c_secondary_blue}%
+	\SM@rolecolour{block_body_fill}{SMBlockBodyFill}{c_tertiary_gray}%
+	\SM@rolecolour{block_body_text}{SMBlockBodyText}{c_primary_dark}%
+	\SM@rolecolour{block_body_fill}{SMProcessFill}{c_tertiary_gray}%
+	\SM@rolecolour{link_underline}{SMLinkUnderline}{c_secondary_blue}%
+	\@ifundefinedcolor{SMCodeKeywordColor}{\colorlet{SMCodeKeywordColor}{c_primary_highlight}}{}%
+	\@ifundefinedcolor{SMCodeCommentColor}{\colorlet{SMCodeCommentColor}{c_primary_gray}}{}%
+	\@ifundefinedcolor{SMCodeBackgroundColor}{\colorlet{SMCodeBackgroundColor}{c_tertiary_gray}}{}%
+	\@ifundefinedcolor{SMCodeTextColor}{\colorlet{SMCodeTextColor}{c_primary_dark}}{}%
+	\SM@rolecolour{quote_attribution}{SMQuoteAttributionColor}{c_custom_gray}%
+	\SM@rolecolour{table_rule}{SMTableRuleColor}{c_primary_highlight}%
+	\SM@rolecolour{image_border}{SMImageBorderColor}{c_primary_highlight}%
+	\SM@rolecolour{marker}{SMMarkerColor}{c_custom_red}%
+	\SM@rolecolour{citation}{SMCitationColor}{black}%
+	\SM@rolecolour{strip_fill}{SMStripFill}{c_tertiary_yellow}%
+	\SM@rolecolour{strip_text}{SMStripText}{c_text_on_accent}%
+	\SM@rolecolour{code_keyword}{SMCodeKeywordColor}{SMCodeKeywordColor}%
+	\SM@rolecolour{code_comment}{SMCodeCommentColor}{SMCodeCommentColor}%
+	\SM@rolecolour{code_panel}{SMCodeBackgroundColor}{SMCodeBackgroundColor}%
+	\SM@rolecolour{code_text}{SMCodeTextColor}{SMCodeTextColor}%
+	\SM@rolehook{title_fill}\SMTitleBoxColor
+	\SM@rolehook{title_text}\SMTitleTextColor
+	\SM@rolehook{footer_fill}\SMFooterBoxColorDefault
+	\SM@rolehook{footer_text}\SMFooterTextColor
+	\SM@rolehook{bullet}\SMBulletColor
+	\SM@rolehook{alert}\SMAlertTextColor
+	\SM@rolehook{progress}\SMProgressBarColor
+	\SM@rolehook{block_title_text}\SMBlockTitleTextColor
+	\SM@rolehook{alerted_block_title_text}\SMAlertedBlockTitleTextColor
+	\SM@rolehook{example_block_title_text}\SMExampleBlockTitleTextColor
+	\SM@rolehook{reference_block_title_text}\SMReferenceBlockTitleTextColor
+	\SM@rolehook{info_block_title_text}\SMInfoBlockTitleTextColor
+	\SM@rolehook{standout_text}\SMStandoutTextColor
+	\SM@rolecolour{standout_fill}{SMStandoutFill}{\SMTitleBoxColor}%
+	\SM@rolecolour{button_text}{SMButtonText}{white}%
+	\SM@rolehook{process_line}\SM@processline
+	\SM@rolehook{inline_code}\SM@inlinecode}
+% process_line and inline_code: empty (off) unless the active mode sets them.
+\newcommand{\SM@processline}{none}
+\newcommand{\SM@inlinecode}{}
+\makeatother
+
+% ---------------------------------------------------------------------------
+% Card headings (SlideMage v10.17.0)
+% ---------------------------------------------------------------------------
+% The font switch of a card's heading in a diagram (a slide writes {\SMCardHeadingFont
+% Heading}): the layout profile's \SMCardHeadingFont (its bold) unless the template names
+% another one here, for instance a medium weight for its dark mode, with a font family of
+% its own:
+%   \newfontfamily\SMCardMediumFont{FiraSans-Medium.otf}
+%   \renewcommand{\SMCardHeadingStyle}{\SMCardMediumFont}
+% A template never redefines \SMCardHeadingFont itself, a value of the profile;
+% SlideMage_base.tex points it at this setting.
+\makeatletter
+\let\SM@profilecardheadingfont\SMCardHeadingFont
+\newcommand{\SMCardHeadingStyle}{\SM@profilecardheadingfont}
+\makeatother
+
+% ---------------------------------------------------------------------------
+% Logo
+% ---------------------------------------------------------------------------
+% A vector PDF cropped to its ink, found on the TeX search path (a project
+% path such as schemes/<name>/logo.pdf, or a file next to the template).
+% Empty (\renewcommand{\SMInstituteLogoPath}{}): no logo. Everything that is placed by the logo
+% keeps its place: the title bar is measured as if a logo of \SMLogoHeight were there, so
+% \SMLogoHeight still says where the bar ends (\SMTitleBarBottomAlign).
+\newcommand{\SMInstituteLogoPath}{slidemage-logo.pdf}
+\newlength{\SMLogoHeight}
+\setlength{\SMLogoHeight}{3ex}                         % logo height in the title bar
+
+% ---------------------------------------------------------------------------
+% Top Margin
+% ---------------------------------------------------------------------------
+% The distance from the top of the page to the top of a frame's first line (its
+% line box: the baseline minus the font's ascender), in bp, the unit of the PDF.
+% SlideMage measures every frame at shipout and moves its body until the first line
+% sits there. A dimension with a unit; "bp" is read exactly. SlideMage_base.tex
+% hands it, with the layout profile's ascender, to SlideMage_measure.lua.
+%
+% Everything that sits on the Top Margin follows this one setting: the overlay coordinate
+% \SMContentTopAlign (corner figures, \SMFit, floating blocks, frames with a side image) is
+% derived from it by the base, as are the bottom edge of the title bar
+% (\SMTitleBarBottomAlign, from the paddings, the frame title font and the logo height) and
+% the right edges of footer and footnotes (from the text margin and the logo's right padding).
+% A template sets none of those.
+\newcommand{\SMTopMargin}{41.58bp}
+
+% ---------------------------------------------------------------------------
+% Body text size (SlideMage v10.19.0)
+% ---------------------------------------------------------------------------
+% The size of \normalsize, the text of a frame. SlideMage_base.tex derives \small,
+% \footnotesize, \scriptsize and \tiny from it, so lists, \shrinklists and everything set
+% with those commands follow. At 10pt, 11pt and 12pt the sizes and baseline skips are
+% beamer's own for that class option (11pt: 10.95/13.6, 10/12, 9/11, 8/9.5, 6/7); any other
+% value gets 1.2 times the size as baseline skip and \small one point, \footnotesize two
+% points, \scriptsize 0.73 times and \tiny 0.55 times the body size below it. It wins over
+% the deck's \documentclass option. \large and up (the frame title and the like), the
+% footer and the footnotes keep their own sizes (\SMFooterTextSize, \SMFootnoteSize).
+% Citation format (v0.13.0): the key of the citation format \SMUseBibliography loads, the file
+% SlideMage_citation_<key>.tex ("default" is the house format, latex/SlideMage_citation_default.tex;
+% other formats come as citation packages, docs/CITATION_PACKAGE.md). A template sets it between this
+% file and SlideMage_base, a deck may set it again before \SMUseBibliography.
+\newcommand{\SMCitationFormat}{default}
+
+\newlength{\SMBodyFontSize}
+\setlength{\SMBodyFontSize}{11pt}               % body text size, beamer's 11pt option
+
+% ---------------------------------------------------------------------------
+% Text margins
+% ---------------------------------------------------------------------------
+\newlength{\SMTextMarginLeft}
+\setlength{\SMTextMarginLeft}{.45cm}           % left and right margin of the content text
+\newlength{\SMTextMarginRight}
+\setlength{\SMTextMarginRight}{.45cm}
+
+% ---------------------------------------------------------------------------
+% Frame title bar
+% ---------------------------------------------------------------------------
+% Space around the frame title. The right padding is measured against the
+% compiled PDF for the logo: see SlideMage_base.tex's comment on
+% \SMFrametitleRightPadding.
+\newlength{\SMFrametitleTopPadding}
+\setlength{\SMFrametitleTopPadding}{2.2ex}
+\newlength{\SMFrametitleBottomPadding}
+\setlength{\SMFrametitleBottomPadding}{2.2ex}  % the space from the title's baseline to the bottom of the title box. The box is drawn this tall, but the logo's white patch
+                                                % trims it to the logo's bottom edge (\SMTitleBarBottomAlign, derived from the top padding, the title font and the logo
+                                                % height), so the visible bar ends there unless this padding makes the box shorter than that: the bar's bottom edge is
+                                                % not set by this hook. It also fixes where the frame body begins (the automatic Top Margin corrects for it).
+\newlength{\SMFrametitleLeftPadding}
+\setlength{\SMFrametitleLeftPadding}{2.2ex}
+\newlength{\SMFrametitleRightPadding}
+\setlength{\SMFrametitleRightPadding}{0.28cm}
+\newcommand{\SMFrameSubtitleSep}{\ ---\space}   % the text between title and subtitle
+\newlength{\SMFrameSubtitleStrutEnd}
+\setlength{\SMFrameSubtitleStrutEnd}{0pt}       % the space added under a frame title that has a subtitle (the title box is that much taller)
+% The title's look and its alignment. Both keep the bar's geometry, so the Top Margin, \SMTitleBarBottomAlign
+% and everything placed by them stay where they are.
+\newcommand{\SMFrametitleStyle}{bar}            % bar: the title on a bar of \SMTitleBoxColor, the logo on a patch of the canvas (as always);
+                                                % plain: no bar and no patches, the text (and the logo, if there is one) on the slide's background
+\newcommand{\SMFrametitleAlign}{left}           % left or center; one frame: \begin{standardframe}[t,titlealign=center]{...}. Centred, the title keeps the
+                                                % same distance from both page edges (the larger of the left padding and the logo's column) and the logo
+                                                % stays at the right end of the bar's first line
+
+% ---------------------------------------------------------------------------
+% Footer and footnotes
+% ---------------------------------------------------------------------------
+\newlength{\SMFooterBoxHeight}
+\setlength{\SMFooterBoxHeight}{7.26pt}          % height of the footer box
+\newcommand{\SMFooterTextSize}{\fontsize{5}{3}\selectfont}   % footer text: {font size}{baseline skip} in pt
+\newcommand{\SMFooterIDSize}{\fontsize{4}{4}\selectfont}     % the slide id in the footer
+\newcommand{\SMFooterTextFont}{}                % a font switch for the whole footer line (text, slide id, number), e.g. \itshape; empty: none
+% \SMFooterBoxColorDefault may also be none: the box is not drawn (its height still places the footer and the footnotes).
+
+% ---------------------------------------------------------------------------
+% Page border (off by default)
+% ---------------------------------------------------------------------------
+% A rectangle around the slide, drawn behind the content (in the background, after a picture
+% \SMSetBackground draws, before a watermark). The insets are from the page's edges to the
+% middle of the line. Its bottom edge has no inset of its own: it lies on the top edge of the
+% footer box (\SMFooterBoxHeight), so the footer sits under the border and the footnotes,
+% which stay above the footer box, inside it.
+\newcommand{\SMPageBorder}{off}                 % on or off
+\newlength{\SMPageBorderWidth}
+\setlength{\SMPageBorderWidth}{0.4pt}           % line width
+\newcommand{\SMPageBorderColor}{c_text}         % line color
+\newlength{\SMPageBorderInsetTop}
+\setlength{\SMPageBorderInsetTop}{10pt}
+\newlength{\SMPageBorderInsetLeft}
+\setlength{\SMPageBorderInsetLeft}{10pt}
+\newlength{\SMPageBorderInsetRight}
+\setlength{\SMPageBorderInsetRight}{10pt}
+\newcommand{\SMPageBorderKinds}{content,title,section}  % the kinds of frame that get it (content: every frame not named here; title: \titleframe;
+                                                % section: sectionframe; none: [standout] and \quoteframe, which cover the page)
+\newcommand{\SMFootlineSidePadding}{3ex}        % padding at the left end of the footline, where the footer text begins (a macro: its ex is the footline font's). The right end of the line is
+                                                % pinned to the logo's padding edge by \SMFooterRightShift, so this padding has no effect there
+\newlength{\SMFooterTextRaise}
+\setlength{\SMFooterTextRaise}{0pt}             % raises the whole footer line (text, slide id, number) from where it is centred in the footer box; negative: lowers it
+\newcommand{\SMFooterRightEdge}{}               % the slide number's right edge, as a distance from the page's right edge (a length, e.g. 10.6pt, to line it up with a page border); empty: at \SMFrametitleRightPadding, where the logo's edge is
+\newlength{\SMFootnoteFooterGap}
+% The clear space between the descenders of the last footnote line and the top edge of the
+% footer box. (Until v10.8.0 this was \SMFootlineVOffset, a number of the Fira profile in the
+% body font's ex: -0.5ex-0.77pt; the base derives that offset now, from this gap, the footnote
+% font's descender and the footline's size. 1.6136pt is what the Fira default looked like:
+% an underlined link in a footnote clears the box by 1.74pt, and the offset had moved the
+% footnotes down by half of that after two earlier nudges.)
+\setlength{\SMFootnoteFooterGap}{1.6136pt}
+\newcommand{\SMFootnoteSize}{\fontsize{3.2}{1.9}\selectfont}  % footnote text, as the footer's
+% The marker of footnote number #1 (a TeX counter's value), in the text and before the note
+% (v10.18.0): the theme's sequence of currency signs by default, which a deck can replace with
+% \setfootnotesymbols{...}. A template that numbers its footnotes says
+%   \renewcommand{\SMFootnoteMark}[1]{\number#1}
+% (\setfootnotesymbols then has nothing to change). \SMSetFootnoteMarkers{boxed} or {dice}
+% renews it with the theme's boxed numbers or dice (v0.13.15), {symbols} with this default.
+\newcommand{\SMFootnoteMark}[1]{\SMFnSymbol{#1}}
+\newlength{\SMFootnoteSep}
+\setlength{\SMFootnoteSep}{3pt}                 % the space between two footnotes
+% Side footnotes (\sidefootnotes, \sectionfigure): the strip along the page's right edge.
+\newlength{\SMSideFootnoteHsize}
+\setlength{\SMSideFootnoteHsize}{207pt}         % its length: the strip's lines wrap at this width (a line is at most this long)
+\newlength{\SMSideFootnoteTitleBlockSep}
+\setlength{\SMSideFootnoteTitleBlockSep}{3pt}   % the distance the strip hangs below the foot of the title block (until v10.11.0 \SMSideFootnoteTopSep). The foot is the bottom of the title box plus beamer's gap under it,
+                                                % which lies below the visible bar when the bar is trimmed to the logo (see \SMFrametitleBottomPadding), so the gap seen from the bar is larger by that
+\newlength{\SMSideFootnoteRightInset}
+\setlength{\SMSideFootnoteRightInset}{2pt}      % the gap to the page's right edge (frames with a side image set their own)
+\newlength{\SMSideFootnoteMarkerShift}
+\setlength{\SMSideFootnoteMarkerShift}{1.3pt}   % shifts a real footnote's marker right, onto \source's left edge
+
+% ---------------------------------------------------------------------------
+% Blocks
+% ---------------------------------------------------------------------------
+\newlength{\SMBlockSideMargin}
+\setlength{\SMBlockSideMargin}{4.20pt}          % the margin on each side of a block
+\newlength{\SMBlockTitleMarkerWidth}
+\setlength{\SMBlockTitleMarkerWidth}{16pt}      % the width a block title leaves free at its right end for the marker (the title wraps before it)
+% The block titles' sizes are beamer fonts: \setbeamerfont{block title}{size=\large}
+% (also "block title alerted", "block title info", "block title reference") after
+% this file changes them. The same goes for the frame title ("frametitle", \large),
+% the caption ("caption", \small) and the bibliography entries ("bibliography entry
+% author/title/location/note").
+
+% ---------------------------------------------------------------------------
+% Frame types
+% ---------------------------------------------------------------------------
+\newlength{\SMTitleframeBoxHeight}
+\setlength{\SMTitleframeBoxHeight}{187.147pt}   % \titleframe: height of the title box
+\newlength{\SMTitleframeTextSep}
+\setlength{\SMTitleframeTextSep}{2.5ex}         % the title and the subtitle
+\newlength{\SMTitleframeBandGap}
+\setlength{\SMTitleframeBandGap}{0.8ex}         % the gap above the band
+\newlength{\SMTitleframeBottomPad}
+\setlength{\SMTitleframeBottomPad}{8.505pt}     % the space from the bottom of the last subtitle line's box (its baseline plus its depth: the strut's, or the deepest glyph's if that reaches lower) to the title box's bottom edge, as it
+                                                % reads. The text box is placed against that edge from the page's corner, not through the frame's flow (until v10.10.0 the
+                                                % hook was the space plus beamer's offset at the top of a frame body, 41pt for what is 8.505pt now)
+% \titleframe[author=..., affiliation=..., logos={a.pdf,b.png}, logoheight=..., venue=...]{title}{subtitle}: the
+% keys are optional lines under the subtitle (author, affiliation, a row of logos, the venue or a journal line).
+\newcommand{\SMTitleframeStyle}{box}            % box: the title box of \SMTitleBoxColor with the logo (as always); plain: no box and no logo, every line
+                                                % centred on the slide's background in \SMTitleTextColor, spread over the page between the border's top
+                                                % (\SMPageBorderInsetTop) and the footer box, the logos and the venue lower down
+\newcommand{\SMTitleframeTitleFont}{\Huge\bfseries}   % the fonts of the title frame's lines
+\newcommand{\SMTitleframeSubtitleFont}{\Large}
+\newcommand{\SMTitleframeAuthorFont}{\large\itshape}
+\newcommand{\SMTitleframeAffiliationFont}{\small}
+\newcommand{\SMTitleframeVenueFont}{\large}
+\newlength{\SMTitleframeLogoHeight}
+\setlength{\SMTitleframeLogoHeight}{1cm}        % the height of the logos in the row (the key logoheight changes it for one frame)
+\newcommand{\SMSectionframeStyle}{bar}          % bar: the title on a tall bar, the body under it (as always); plain: no bar, the title (in
+                                                % \SMSectionframeTitleFont) and the body centred on the slide, the footer kept
+\newcommand{\SMSectionframeTitleFont}{\huge\bfseries}
+\newlength{\SMSectionframeBoxHeight}
+\setlength{\SMSectionframeBoxHeight}{85.34pt}   % \sectionframe: height of the bar (85.02bp, as drawn since v5.28.0)
+\newcommand{\SMSectionframeTitleGap}{0.5436em}  % the space from under the title's last line (its strut's depth) to the bar's bottom edge, in em of the title font
+\newlength{\SMSectionframeContentDrop}
+\setlength{\SMSectionframeContentDrop}{11.5pt}  % the text's drop under the bar
+\newlength{\SMQuoteBoxHeight}
+\setlength{\SMQuoteBoxHeight}{0.8\paperheight}  % \quoteframe: height of the box
+\newlength{\SMQuoteAttributionGap}
+\setlength{\SMQuoteAttributionGap}{1.8ex}       % the gap above the attribution
+\newlength{\SMProgressStripRoom}
+\setlength{\SMProgressStripRoom}{11.08pt}       % \progressstrip: the room below the strip, i.e. how far the content under it is moved down (until v10.11.0 \SMProgressStripHeight). It is not the strip's drawn height, which is its own (11.2pt)
+
+% ---------------------------------------------------------------------------
+% Lists
+% ---------------------------------------------------------------------------
+% The bullet of every itemize level, drawn in color #1 (\SMBulletColor, or c_primary_dark
+% inside a block) (v10.18.0): a filled circle by default. The list's indent follows its
+% width (SlideMage_base measures it), so another glyph needs nothing else, e.g. an en dash:
+%   \renewcommand{\SMBulletSymbol}[1]{\textcolor{#1}{\textendash}}
+\newcommand{\SMBulletSymbol}[1]{\tikz[baseline=-0.65ex]{\fill[#1] circle (1.7pt);}}
+% Gaps in units of the em of the list's font, so they follow \shrinklists and
+% \small. I-IV are the nesting levels.
+\newcommand{\SMItemsepRatioI}{0.4}              % between two items of level I-IV
+\newcommand{\SMItemsepRatioII}{0.24}
+\newcommand{\SMItemsepRatioIII}{0.15}
+\newcommand{\SMItemsepRatioIV}{0.09}
+\newcommand{\SMItemizeLevelDropSpaceRatioI}{0.5}    % after a list of level I-IV closed
+\newcommand{\SMItemizeLevelDropSpaceRatioII}{0.3}
+\newcommand{\SMItemizeLevelDropSpaceRatioIII}{0.2}
+\newcommand{\SMItemizeLevelDropSpaceRatioIV}{0.5}
+\newcommand{\SMItemizeLevelOpenSpaceRatioI}{0.02}   % before a list of level II-IV opens
+\newcommand{\SMItemizeLevelOpenSpaceRatioII}{0.15}
+\newcommand{\SMItemizeLevelOpenSpaceRatioIII}{0.02}
+\newcommand{\SMTallItemBaseRatio}{0.3}          % the extra space \tallitem adds above an item
+\newlength{\SMLabelItemItemsep}
+\setlength{\SMLabelItemItemsep}{2.5pt}          % between two items of the lists with "a)" / "1." labels
+\newcommand{\SMLabelItemGap}{0.475em}           % the gap between such a label's box and the item's text (in em of the list's font)
+% The numerals of an enumerate inside another list (the box of the widest numeral is measured in the list's font):
+\newcommand{\SMEnumerateNestedSlotExtra}{0.04em}  % the clearance added to the widest numeral to make the slot a numeral sits in
+\newcommand{\SMEnumerateNestedLabelGap}{0.525em}  % the gap between that slot and the item's text
+\newlength{\SMEnumerateTextExtra}
+\setlength{\SMEnumerateTextExtra}{6.3pt}        % how far the text of a first-level enumerate sits right of a bullet's (27.9pt against 21.6pt from the page's edge)
+\newlength{\SMTightDisplaySkip}
+\setlength{\SMTightDisplaySkip}{3pt}            % above and below a display in \SMTightDisplaySkips
+\newcommand{\SMBesideFigureTopGap}{auto}        % how far besidefigure lowers its figure: "auto" (v0.14.24) to the text column's first ink (a letter's top, a table's rule), or a fixed length such as 0.2em
+
+% ---------------------------------------------------------------------------
+% Drawings, code
+% ---------------------------------------------------------------------------
+\newlength{\SMImageBorderWidth}
+\setlength{\SMImageBorderWidth}{2.5pt}          % line width of SMImageBorder
+\newlength{\SMWarningSignPadding}
+\setlength{\SMWarningSignPadding}{6pt}          % \SMWarningSign: space around the text
+\newlength{\SMWarningSignBorderWidth}
+\setlength{\SMWarningSignBorderWidth}{4.5pt}    % and the width of its border
+\newcommand{\SMCodeSize}{\fontsize{6.6}{8.2}\selectfont}      % the text of \SMCodeFile
+
+% ---------------------------------------------------------------------------
+% Optional theme features (all off: nothing visible changes until you use one)
+% ---------------------------------------------------------------------------
+% The SlideMage theme (beamerthemeSlideMage.sty) keeps four features of the
+% Gotham theme it was forked from. Use their commands here in the template,
+% between \input{SlideMage_setup} and \input{SlideMage_base}, never in a group.
+% They read the \part / \section / \subsection structure of the deck.
+%
+% Mini frames: one small mark per frame in a bar.
+%   \SMMiniFramesPosition{head|foot|left|right|none}     where the bar goes (none)
+%   \SMMiniFramesSpreading{spreading|centering|left|right}  how the marks are spread
+%   \SMMiniFramesSections{none|section|secsubsection}    names next to the marks
+%                                                         (section: beamer's own)
+%   \SMMiniFramesCompress{true|false}                    one row per section (true)
+%   \setbeamertemplate{mini frames}[SMBox|SMMiniBox|SMMiniBullet]   the mark (SMMiniBullet)
+%   \setbeamertemplate{mini frames bundle}[SMMini|SMNano]           the marks' set (SMMini)
+%
+% Progress bar: a bar that fills with the frame number.
+%   \SMProgressBarPosition{head|frametitle|foot|left|right|none}   where it goes (none)
+%   \SMProgressBarStyle{rectangle|rounded box}            its look (rectangle)
+%   \SMProgressBarDirection{tlbr|brlt}                    the direction it fills (tlbr)
+%   \SMProgressBarMiniFrames{true|false}                  mini frames inside the bar (false)
+%   \setlength{\SMProgressHeadFootLineheight}{1.2ex}      its thickness
+%   Left and right need a sidebar width: \setbeamersize{sidebar width left=1cm}.
+%   The bar counts to 100 frames (\inserttotalframenumber is 100, as in Gotham).
+%
+% Divider frames: beamer inserts a frame at each \part, \section, \subsection
+% or \subsubsection (SlideMage's own \sectionframe is a different thing).
+%   \SMDividerFrames{part,section,subsection,subsubsection|none}   the levels (none)
+%   \SMDividerLook{SMSimple|SMProgressbar|SMSplitvertSimple|SMSplitvertProgressbar|SMProgressvert}
+%                                                         how they look (SMProgressbar)
+%   \renewcommand{\SMSectionPageOptions}{...}              frame options per level (noframenumbering);
+%                                                         likewise \SMPartPageOptions,
+%                                                         \SMSubsectionPageOptions, ...
+%   \setlength{\SMSectionHOffset}{0pt}                     shifts the text of a divider
+%
+% Watermark: a text behind the frames.
+%   \SMWatermarkDefault{true|false}   on every frame (false); [watermark] and
+%                                     [nowatermark] switch single frames
+%   \SMWatermarkTemplate{SMDraft}     the background template to use; define your own
+%                                     with \defbeamertemplate{background}{<name>}{...}
+%
+% Background pictures: something drawn behind each kind of frame, under the page border
+% (\SMPageBorder, above) and the watermark. Kinds: content (every frame not named below), title
+% (\titleframe), section (sectionframe); [standout] and \quoteframe get none.
+%   \SMSetBackground, with {<kind>}{<TikZ code>}: what to draw (an overlay picture on the page)
+%   \SMBackgroundPicture[height=<length>, at=<coordinate>, shift={(<x>,<y>)}, opacity=<0..1>]{<file>}
+%       a picture of that height, centred on the coordinate (current page.center by default; e.g.
+%       current page.north west), clipped to the page. Each file and height is embedded in the
+%       PDF once, however many frames show it.
+% Example: \SMSetBackground{title}{\SMBackgroundPicture[height=\paperheight, opacity=0.07]{seal.pdf}}

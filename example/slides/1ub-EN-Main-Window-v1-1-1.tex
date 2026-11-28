@@ -1,0 +1,50 @@
+%% Included in decks: slidemage-manual, slidemage-manual-copy
+%%
+
+% SlideMage manual, chapter "Working in SlideMage": the main window, with
+% numbered callouts drawn over the screenshot (positions as fractions of the
+% image, so they stay put if the image is resized).
+\setSlideVersion{1-1-1}
+\providecommand{\callout}[2]{\node[circle, fill=c_primary_highlight, text=white, inner sep=1pt, minimum size=9pt, font=\tiny\bfseries] at (#1) {#2};}
+\begin{standardframe}{The main window}
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.59\linewidth}
+			\begin{tikzpicture}
+				\node[anchor=south west, inner sep=0pt] (shot) at (0,0) {\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=\dimexpr\linewidth-0.8pt\relax]{media/screenshot-slidemage-main-window.png}}};
+				\begin{scope}[x={(shot.south east)}, y={(shot.north west)}]
+					% beside each element (tools/manual/make_screenshots.py prints
+					% the elements' centres; a 1340 x 720 window at twice the pixels,
+					% 2026-10-05; 3 is the middle of the checkbox block, on the group heading)
+					% (a callout must stay inside the picture: one past its edge
+					% widens the column -- overfull box)
+					\callout{0.190,0.986}{1}
+					\callout{0.090,0.939}{2}
+					\callout{0.262,0.790}{3}
+					\callout{0.845,0.749}{4}
+					\callout{0.048,0.462}{5}
+					\callout{0.400,0.354}{6}
+					\callout{0.500,0.151}{7}
+					\callout{0.585,0.940}{8}
+						\callout{0.923,0.893}{9}
+				\end{scope}
+			\end{tikzpicture}
+		\end{column}
+		\begin{column}{0.38\linewidth}
+			\footnotesize
+			One row per deck: tick the versions you want and press \emph{Create PDF}.
+			\par\smallskip
+			\scriptsize
+			\begin{enumerate}
+				\item Menu bar
+				\item Tabs; editors open here
+				\item A checkbox per deck version
+				\item Deck actions: opening PDF or source, deck settings, managing tags, duplicating, archiving, PowerPoint export
+				\item \emph{Create PDF}: compile what is ticked
+				\item General compile options
+				\item The compile log
+				\item \emph{Slide name search}: open a slide by its ID or name
+				\item \emph{Project-wide full-text search\ldots}: find a word in any slide's text
+			\end{enumerate}
+		\end{column}
+	\end{columns}
+\end{standardframe}

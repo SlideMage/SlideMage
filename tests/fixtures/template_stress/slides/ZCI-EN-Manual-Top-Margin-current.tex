@@ -1,0 +1,13 @@
+%% Calibration deck: three frames the automatic Top Margin does not correct by their content
+%% (\SMManualTopMargin): a list first, a top-aligned columns environment first, a [T] columns
+%% environment first. The first line of each sits on the Top Margin by the measured \SMContentTopShift,
+%% \SMColumnsTopCorrection and \SMColumnsTTopCompensation (v10.9.0), whatever the font and template;
+%% tools/calibrate_font_profile.py and tools/check_layout.py check it.
+\setSlideVersion{1-0-0}
+\SMManualTopMargin
+\begin{standardframe}{Manual top margin: a list first}
+	\begin{itemize}
+		\item The first line sits on the Top Margin
+		\item Second item
+	\end{itemize}
+\end{standardframe}

@@ -1,0 +1,181 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""The persistent image process, including error recovery and frozen dispatch."""
+
+import base64
+import io
+import json
+import os
+import subprocess
+import sys
+from types import SimpleNamespace
+
+import pymupdf
+import pytest
+from PIL import Image
+
+from slidemage import cli, preview_raster, preview_raster_client
+
+
+def pdf_bytes(text="one"):
+    with pymupdf.open() as doc:
+        page = doc.new_page(width=320, height=180)
+        page.insert_text((30, 30), text)
+        return doc.tobytes()
+
+
+@pytest.fixture
+def client():
+    client = preview_raster_client._shared
+    client.close()
+    yield client
+    client.close()
+
+
+@pytest.mark.parametrize('rotation', [0, 90])
+def test_replaying_display_list_preserves_every_size_and_annotations(rotation):
+    sizes = [(1920, 1080), (168, 95), (1920, None), (1280, None), (320, 180, 'fit')]
+    with pymupdf.open() as doc:
+        page = doc.new_page(width=360, height=240)
+        page.insert_text((40, 45), 'Preview with text and transparency')
+        page.draw_rect((50, 70, 200, 150), color=(1, 0, 0), fill=(0, 0, 1), fill_opacity=.4)
+        page.add_rect_annot((60, 80, 190, 140)).update()
+        page.set_cropbox(pymupdf.Rect(10, 10, 330, 200))
+        page.set_rotation(rotation)
+        data = doc.tobytes()
+    with pymupdf.open(stream=data, filetype='pdf') as doc:
+        expected = []
+        for width, height, *fit in sizes:
+            page = doc[0]
+            zoom = min(width / page.rect.width, height / page.rect.height) if fit else width / page.rect.width
+            y = zoom if fit or height is None else height / page.rect.height
+            expected.append(page.get_pixmap(matrix=pymupdf.Matrix(zoom, y)).tobytes('png'))
+    assert preview_raster.raster(data, sizes, (1920, 1080)) == expected
+
+
+@pytest.mark.parametrize("failure", ["bad_pdf", "crash"])
+def test_helper_reuses_one_process_and_recovers_from_failure(client, failure):
+    data = pdf_bytes()
+    first = client.render(data, ((160, 90), (160, None)), (160, 90))
+    process = client._process
+    assert process.pid != os.getpid()
+    assert first[0] == first[1]
+    assert client.render(data, ((160, 90),), (160, 90))[0] == first[0]
+    assert client._process is process
+    if failure == "bad_pdf":
+        with pytest.raises(RuntimeError, match="Cannot prepare preview images"):
+            client.render(b"not a pdf", ((160, None),), (160, 90))
+        assert client._process is None
+        assert client.render(data, ((160, 90),), (160, 90))[0] == first[0]
+    else:
+        process.kill()
+        process.wait()
+        assert client.render(pdf_bytes("different"), ((160, 90),), (160, 90))
+    assert client._process is not process
+
+
+def test_image_process_flag_dispatches_before_gui_or_project_setup(monkeypatch):
+    seen = []
+    monkeypatch.setattr(preview_raster, "serve", lambda: seen.append("raster"))
+    monkeypatch.setattr(cli, "_prepare_gui", lambda root: pytest.fail("opened GUI"))
+    cli.main(["--preview-raster"])
+    assert seen == ["raster"]
+
+
+def test_frozen_dispatch_uses_the_same_executable_without_starting_a_window(client, monkeypatch):
+    image = preview_raster.raster(pdf_bytes(), ((160, 90),), (160, 90))[0]
+    commands = []
+
+    def popen(command, **kwargs):
+        commands.append((command, kwargs))
+        return SimpleNamespace(
+            stdin=io.StringIO(),
+            stdout=io.StringIO(json.dumps(dict(ok=True, images=[base64.b64encode(image).decode()])) + "\n"),
+            poll=lambda: None,
+            wait=lambda **kw: 0,
+            kill=lambda: None,
+        )
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(client.subprocess, "Popen", popen)
+    assert client.render(pdf_bytes(), ((160, 90),), (160, 90)) == (image,)
+    assert commands[0][0] == [sys.executable, "--preview-raster"]
+    assert commands[0][1]["env"]["PYINSTALLER_SUPPRESS_SPLASH_SCREEN"] == "1"
+
+
+def test_windowed_helper_restores_redirected_pipes_when_standard_streams_are_none(monkeypatch):
+    request = json.dumps(dict(pdf=base64.b64encode(pdf_bytes()).decode(),
+                              sizes=[[160, 90]], full_size=[160, 90])) + "\n"
+    incoming, outgoing = io.StringIO(request), io.StringIO()
+    monkeypatch.setattr(preview_raster, "_pipe_stream", lambda fd, mode: incoming if fd == 0 else outgoing)
+    # Monkeypatch context restores pytest's streams before it reports results.
+    with monkeypatch.context() as patch:
+        patch.setattr(sys, "stdin", None)
+        patch.setattr(sys, "stdout", None)
+        patch.setattr(sys, "stderr", None)
+        preview_raster.serve()
+    response = json.loads(outgoing.getvalue())
+    assert response["ok"] and len(response["images"]) == 1
+
+
+@pytest.mark.parametrize("reads_input", [True, False])
+def test_unresponsive_helper_is_killed_reaped_and_next_request_recovers(client, monkeypatch, reads_input):
+    # Exercise both a stalled response and a full request pipe.
+    script = "import sys,time; " + ("sys.stdin.readline(); " if reads_input else "") + "time.sleep(60)"
+    process = subprocess.Popen(
+        [sys.executable, "-c", script], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL, text=True, encoding="utf-8",
+    )
+    client._process = process
+    monkeypatch.setattr(client, "REQUEST_TIMEOUT", .15)
+    try:
+        with pytest.raises(RuntimeError, match="timed out"):
+            client.render(b"x" * (1024 * 1024), ((160, 90),), (160, 90))
+        assert process.poll() is not None and client._process is None
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=2)
+    monkeypatch.setattr(client, "REQUEST_TIMEOUT", 15)
+    assert client.render(pdf_bytes(), ((160, 90),), (160, 90))
+
+
+@pytest.mark.parametrize("response", [
+    [], {"ok": "yes", "images": []}, {"ok": True, "images": []},
+    {"ok": True, "images": ["not base64"]},
+    {"ok": True, "images": ["bm90IGEgcG5n"]},
+])
+def test_invalid_protocol_response_is_rejected_and_helper_closed(client, response):
+    client._process = SimpleNamespace(
+        stdin=io.StringIO(), stdout=io.StringIO(json.dumps(response) + "\n"),
+        poll=lambda: None, wait=lambda **kw: 0, kill=lambda: None,
+    )
+    with pytest.raises(RuntimeError, match="Cannot prepare preview images"):
+        client.render(pdf_bytes(), ((160, 90),), (160, 90))
+    assert client._process is None
+
+
+def test_fit_size_keeps_the_page_aspect_inside_the_box():
+
+    with pymupdf.open() as doc:
+        doc.new_page(width=200, height=400)         # taller than the 16:9 box
+        data = doc.tobytes()
+    for pdf, expected in ((pdf_bytes(), (320, 180)), (data, (90, 180))):
+        (image,) = preview_raster.raster(pdf, [(320, 180, "fit")], (1920, 1080))
+        assert Image.open(io.BytesIO(image)).size == expected
+
+
+def test_a_range_of_pages_is_written_as_a_pdf_of_its_own(tmp_path):
+    source = tmp_path / "all.pdf"
+    with pymupdf.open() as doc:
+        for number in range(5):
+            doc.new_page(width=320, height=180).insert_text((30, 30), f"page {number + 1}")
+        doc.save(source)
+    client = preview_raster_client.RasterClient()
+    try:
+        answer = client.read_document(source, "extract_pages", 2, 3, out=tmp_path / "part.pdf")
+        texts = client.read_document(tmp_path / "part.pdf", "pdf", 1, 10)
+    finally:
+        client.close()
+    assert answer["count"] == 5 and texts["count"] == 3
+    assert [t.split()[1] for t in texts["texts"]] == ["2", "3", "4"]

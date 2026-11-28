@@ -1,0 +1,851 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Scripted chat routes against the real window and editor."""
+from __future__ import annotations
+
+import gc
+import threading
+import time
+from functools import partial
+
+import pytest
+
+from slidemage import slide_versioning
+from agent_fakes import ScriptedProvider, call, reply
+from conftest import build_window, make_project, wait_until as _wait_until
+from PySide6.QtCore import QPoint, QRect
+from PySide6.QtWidgets import QApplication, QLabel, QMessageBox
+
+from slidemage import app_settings, compiler, deck_language
+from slidemage.ai import ai_profile
+from slidemage.ai.agent_types import EDIT_ASK, EDIT_AUTO, ToolCall
+from slidemage.ai.providers import Cancelled
+from slidemage.deck_scan import scan_decks
+from slidemage.ui.kit.widgets import PopoverMenu
+from slidemage.ui.workspace import compile_actions
+from slidemage.ui.workspace.assistant import AssistantArea
+from slidemage.ui.workspace.chat import view as chat_view
+from slidemage.ui.workspace.chat.cards import AssistantText, DiffCard, Notice, ToolCard, UserBubble
+from slidemage.ui.workspace.chat.format import summarize_call
+from slidemage.ui.workspace.side_panels import PANEL_MIN_HEIGHT
+from slidemage.project import ProjectContext
+
+SLIDE = "slides/abc-EN-Hello-current.tex"
+EDIT = dict(path=SLIDE, old_text="First point", new_text="1st point")
+
+
+wait_until = partial(_wait_until, seconds=10)
+
+
+def pump(seconds=0.0):
+    end = time.time() + seconds
+    QApplication.processEvents()
+    while time.time() < end:
+        QApplication.processEvents()
+        time.sleep(0.005)
+
+
+@pytest.fixture
+def env(qapp, tmp_path, monkeypatch, fake_routes):
+    root = make_project(monkeypatch, tmp_path / "project")
+    context = ProjectContext.at(root)
+    ai_profile.set_cloud_conn(context, fake_routes.cloud.id)
+    ai_profile.set_mode(context, ai_profile.CLOUD)
+    ai_profile.mark_cloud_seen(context)
+    ai_profile.set_model_choice(context, fake_routes.cloud.id, ai_profile.CHAT, "fake-1")
+    window = build_window(monkeypatch, context)
+    window.show()
+    window.state.set_mode("source")     # no Preview render thread to outlive the test
+    window.state.set_deck(next(d for d in scan_decks(window.project) if d.name == "test"))
+    window.state.set_focused_slide("abc")
+    providers = []
+    for route in (fake_routes.local, fake_routes.cloud):
+        monkeypatch.setattr(route, "provider", lambda _ctx, _route: providers.pop(0))
+
+    class Env:
+        pass
+
+    e = Env()
+    e.window, e.root, e.chat, e.providers = window, root, window.assistant.chat, providers
+    e.routes = fake_routes
+    e.path = root / SLIDE
+    yield e
+    e.chat.shutdown()
+
+
+def script(env, *steps, label="scripted"):
+    provider = ScriptedProvider(*steps)
+    provider.label = label
+    env.providers.append(provider)
+    return provider
+
+
+def wait_for_idle(env):
+    wait_until(lambda: not env.chat.session.running)
+    pump()
+
+
+def ask(env, text="Do it"):
+    env.chat.send(text)
+    wait_for_idle(env)
+
+
+def widgets(env, kind):
+    layout = env.chat._messages
+    return [w for i in range(layout.count()) if isinstance(w := layout.itemAt(i).widget(), kind)]
+
+
+def open_buffer(env, dirty=False):
+    env.window.open_slide_editor(env.path)
+    file = env.window.centre.source.file_for(env.path)
+    if dirty:
+        file.editor.replace_selection("% typed\n")
+    return file
+
+
+def wait_for_card(env, state):
+    wait_until(lambda: any(c.state == state for c in widgets(env, DiffCard)))
+    pump()      # a widget added to a shown layout is shown a moment later
+    return next(c for c in widgets(env, DiffCard) if c.state == state)
+
+
+def blocked():
+    def step(p):
+        while not p.aborted:
+            time.sleep(0.005)
+        raise Cancelled("Aborted.")
+    return step
+
+
+@pytest.mark.parametrize(("theme", "scope", "lines"), [
+    (None, "deck", 6), (False, "slide", 2), (True, "slide", 6),
+], ids=["native-deck", "light-slide", "dark-slide-picker"])
+def test_at_640px_every_suggestion_is_reachable_without_scrolling_and_the_controls_fit(env, monkeypatch, theme, scope, lines):
+    if theme is not None:
+        env.window.theme.set_dark(theme)
+        env.window.theme.apply()
+    env.window.state.set_lint_errors(1)
+    env.window.assistant.scope.set_current(scope)
+    env.chat._fill_empty()
+    env.chat.composer.setPlainText("\n".join(["A line of the message"] * lines))
+    env.window.resize(1280, 640)
+    pump()
+    chat, panels = env.chat, env.window.side_panels
+    assert panels.card.height() >= PANEL_MIN_HEIGHT
+    for control in (chat.composer, chat.mode_picker, chat.send_button):
+        assert control.isVisible() and chat.rect().contains(control.geometry())
+    assert chat._scroll.verticalScrollBar().maximum() == 0
+
+    asked = []
+    monkeypatch.setattr(chat, "ask", asked.append)
+    expected = list(chat_view.SUGGESTIONS[scope])
+    if scope == "slide":
+        expected.insert(0, chat_view.FIX_SUGGESTION)
+    if lines == 6 and scope == "slide":
+        assert chat._suggestion_picker.isVisible()
+    if chat._suggestion_picker.isVisible():
+        assert chat._scroll.viewport().rect().contains(
+            QRect(chat._suggestion_picker.mapTo(chat._scroll.viewport(), QPoint()), chat._suggestion_picker.size()))
+        chat._suggestion_picker.clicked.emit()
+        menu = next(m for m in chat.findChildren(PopoverMenu) if m.isVisible())
+        assert [e[1] for e in menu._entries if e[0] == "item"] == expected
+        menu.triggered.emit(expected[-1])
+        menu.close()
+    else:
+        assert all(w.isVisible() for w in chat._suggestion_widgets)
+        chat._suggestion_widgets[-1].click()
+    assert asked == [expected[-1]]
+
+    env.window.resize(1280, 1000)
+    pump()
+    assert not chat._suggestion_picker.isVisible()
+    assert all(w.isVisible() for w in chat._suggestion_widgets)
+    assert chat._scroll.verticalScrollBar().maximum() == 0
+
+
+def test_a_six_line_input_and_send_row_fit_at_640px(env):
+    env.window.resize(1280, 640)
+    env.chat.route_note.setText("Choose a model before sending a message.")
+    env.chat.route_note.show()
+    env.chat.composer.setPlainText("\n".join(["A line of the message"] * 6))
+    chat = env.chat
+    wait_until(lambda: chat.composer.geometry().bottom() < chat.mode_picker.geometry().top())
+    assert chat.route_note.isVisible() and chat.composer.isVisible() and chat.send_button.isVisible()
+    assert chat.composer.geometry().bottom() < min(chat.mode_picker.geometry().top(), chat.send_button.geometry().top())
+    assert chat.rect().contains(chat.send_button.geometry())
+    height = chat.composer.height()
+    chat.composer.clear()
+    wait_until(lambda: chat.composer.height() < height)
+
+
+def test_answers_and_tool_results_stream_into_chat_until_a_new_conversation(env):
+    script(env, reply("Looking.", call("read_file", path=SLIDE), call("read_file", path="nope.tex")),
+           reply("Done."), label="fake-1 · cloud")
+    ask(env)
+    assert [w.raw for w in widgets(env, AssistantText)] == ["Looking.", "Done."]
+    assert len(widgets(env, UserBubble)) == 1 and env.chat._empty.isHidden()
+    assert any(w.text() == "fake-1 · cloud" for w in widgets(env, QLabel))
+    assert env.chat.send_button.isVisible() and not env.chat.stop_button.isVisible()
+    ok, bad = widgets(env, ToolCard)
+    assert ok.result is not None and not ok.result.is_error and not ok.expanded
+    ok.set_expanded(True)
+    assert ok.expanded and "First point" in ok._body.text()
+    assert bad.result.is_error and bad.expanded
+    assert [type(w) for w in widgets(env, (AssistantText, ToolCard))] == [
+        AssistantText, ToolCard, ToolCard, AssistantText]
+    assert env.chat.session.history and slot(env) is None
+    env.chat.new_chat()
+    assert not env.chat.session.history and not widgets(env, AssistantText) and not env.chat._empty.isHidden()
+
+
+def test_a_failed_request_ends_in_a_notice_not_a_crash(env):
+    from slidemage.ai.providers import ProviderError
+    script(env, ProviderError("Fake route unreachable: boom"))
+    ask(env)
+    assert [n.text() for n in widgets(env, Notice)] == ["Fake route unreachable: boom"]
+    assert not env.chat.session.running
+
+
+def offer_edit(env):
+    provider = script(env, reply("", call("edit_file", **EDIT)), reply("Understood."))
+    env.chat.send("Rename the first point")
+    return provider, wait_for_card(env, "asking")
+
+
+def auto_edit(env):
+    env.chat._set_mode(EDIT_AUTO)
+    script(env, reply("", call("edit_file", **EDIT)), reply("Changed."))
+    ask(env)
+    return widgets(env, DiffCard)[-1]
+
+
+def test_ask_mode_rejects_or_applies_an_unsaved_undoable_edit(env):
+    file = open_buffer(env)
+    provider, card = offer_edit(env)
+    card.reject_button.click()
+    wait_for_idle(env)
+    assert card.state == "rejected" and not card.undo_button.isVisible()
+    assert "First point" in file.editor.text() and not file.dirty
+    result, = provider.sent[1][-1].results
+    assert result.is_error and "rejected" in result.text
+
+    _, card = offer_edit(env)
+    assert "First point" in file.editor.text()
+    card.apply_button.click()
+    wait_for_idle(env)
+    assert card.state == "applied" and card.undo_button.isVisible()
+    assert "1st point" in file.editor.text() and file.dirty
+    assert "First point" in env.path.read_text()
+    file.editor.undo()
+    assert "First point" in file.editor.text() and not file.dirty
+
+
+def test_auto_edits_can_be_undone_until_the_buffer_changes(env):
+    file = open_buffer(env)
+    card = auto_edit(env)
+    assert card.state == "applied" and "1st point" in file.editor.text()
+    card.undo_button.click()
+    assert card.state == "undone" and "First point" in file.editor.text() and not file.dirty
+
+    card = auto_edit(env)
+    file.editor.replace_selection("typed after")
+    card.undo_button.click()
+    assert card.state == "applied" and "changed since" in card._caption.text()
+    assert "1st point" in file.editor.text() and "typed after" in file.editor.text()
+
+
+def test_disk_edits_are_undoable_and_new_files_have_no_undo(env):
+    other = env.root / "slides" / "abd-EN-Second-current.tex"      # not the slide shown: no buffer
+    assert env.window.centre.source.file_for(other) is None
+    env.chat._set_mode(EDIT_AUTO)
+    env.chat.scope.set_current("deck")       # another slide: in the scope Slide the edit is refused
+    script(env, reply("", call("edit_file", **{**EDIT, "path": "slides/abd-EN-Second-current.tex"}),
+                       call("write_file", path="notes.txt", content="hello\n")), reply("Done."))
+    ask(env)
+    edited, created = widgets(env, DiffCard)
+    assert "1st point" in other.read_text() and "Saved to the file" in edited._caption.text()
+    assert (env.root / "slides" / ".backups").is_dir()
+    assert (env.root / "notes.txt").read_text() == "hello\n" and not created.undo_button.isVisible()
+    edited.undo_button.click()
+    assert edited.state == "undone" and "First point" in other.read_text()
+
+
+def test_changing_permission_mid_run_updates_the_agent_and_persists(env):
+    open_buffer(env)
+    assert env.chat.session.mode == EDIT_ASK
+    offer_edit(env)
+    env.chat._set_mode(EDIT_AUTO)
+    assert env.chat.session._agent.mode == EDIT_AUTO
+    assert app_settings.get(env.window.project, "chat_edit_mode") == EDIT_AUTO
+    env.chat.stop()
+    wait_for_idle(env)
+    area = AssistantArea(env.window, env.window.state)
+    assert area.chat.session.mode == EDIT_AUTO
+    area.shutdown()
+
+
+def test_running_chat_keeps_its_model_and_scope_until_stopped(env):
+    ai_profile.set_mode(env.window.project, ai_profile.LOCAL)
+    ai_profile.set_model_choice(env.window.project, env.routes.local.id, ai_profile.CHAT, "fake-1")
+    script(env, blocked()).is_local = True
+    env.chat.send("go")
+    assert slot(env) == "answering in the chat"
+    assert not env.chat.route_chip.isEnabled()
+    env.chat.ask("Which slides have errors?", "deck")
+    assert env.chat.scope.current() == "slide" and env.chat.composer.toPlainText() == "Which slides have errors?"
+    env.chat.stop_button.click()
+    wait_for_idle(env)
+    assert [n.text() for n in widgets(env, Notice)] == ["Stopped."]
+    assert env.chat.send_button.isVisible() and env.chat.route_chip.isEnabled()
+    assert slot(env) is None
+
+
+def test_stop_rejects_an_edit_that_waits_for_an_answer(env):
+    file = open_buffer(env)
+    _, card = offer_edit(env)
+    env.chat.stop()
+    # Regression (1c7e047): Stop settles the card immediately and rejects asks already on their way.
+    assert card.state == "rejected" and not card.apply_button.isVisible() and not card.reject_button.isVisible()
+    assert env.chat.workspace.confirm_edit("late", env.path, "a", "b") is False
+    wait_for_idle(env)
+    assert card.state == "rejected" and "First point" in file.editor.text()
+    assert widgets(env, Notice)[-1].text() == "Stopped."
+    env.chat.workspace.begin_request()                       # the next request asks again
+    assert env.chat.workspace._stopping is False
+
+
+def test_an_apply_that_cannot_be_carried_out_ends_the_card_and_tells_the_model(env):
+    file = open_buffer(env)
+    provider, card = offer_edit(env)
+    file.editor.replace_selection("% typed while the edit waited\n")      # the buffer is not what the edit was made on
+    card.apply_button.click()
+    assert card.state == "working" and not card.apply_button.isVisible()
+    wait_for_idle(env)
+    assert card.state == "rejected" and "typed while" in file.editor.text()
+    assert "was not changed" in provider.sent[1][-1].results[0].text
+
+
+@pytest.mark.parametrize("waiting_for", ["edit", "model"])
+def test_closing_the_window_mid_run_does_not_hang_and_releases_the_slot(env, waiting_for):
+    if waiting_for == "edit":
+        open_buffer(env)
+        offer_edit(env)
+    else:
+        script(env, blocked())
+        env.chat.send("go")
+        wait_until(lambda: env.chat.stop_button.isVisible())
+    started = time.time()
+    env.window.close()
+    assert time.time() - started < 5 and not env.chat.session.running
+    assert slot(env) is None
+    pump(0.2)
+
+
+def test_switching_the_deck_stops_the_run(env):
+    script(env, blocked())
+    env.chat.send("go")
+    wait_until(lambda: env.chat.stop_button.isVisible())
+    env.window.state.set_deck(None)
+    wait_for_idle(env)
+    assert widgets(env, Notice)[-1].text() == "Stopped."
+
+
+def open_route_menu(env):
+    env.chat._open_route_menu()
+    return next(w for w in QApplication.topLevelWidgets() if type(w).__name__ == "PopoverMenu" and w.isVisible())
+
+
+def items(menu):
+    return [(entry[1], entry[3], entry[4]) for entry in menu._entries if entry[0] == "item"]
+
+
+def test_route_model_picker_is_per_conversation_and_follows_the_active_route(env):
+    menu = open_route_menu(env)
+    assert items(menu)[:2] == [("fake-1", "default", "check"), ("fake-2", "this chat only", "")]
+    menu.close()
+    env.chat._set_route("fake-2")
+    assert env.chat.route().model == "fake-2"
+    assert ai_profile.model_choice(env.window.project, env.routes.cloud.id, ai_profile.CHAT) == "fake-1"
+    env.window.state.set_ai_route(ai_profile.LOCAL)
+    assert env.chat.route().model == "fake-1"
+    env.window.state.set_ai_route(ai_profile.CLOUD, env.routes.cloud.id)
+    assert env.chat.route().model == "fake-2"
+    env.chat.new_chat()
+    assert env.chat.route().model == "fake-1"
+
+
+def test_unavailable_route_explains_why_nothing_was_sent(env):
+    env.routes.cloud.problem_text = "The fake route is unavailable."
+    env.chat.refresh_route()
+    assert env.chat.route_note.text() == env.routes.cloud.problem_text
+    env.chat.send("go")
+    assert not env.chat.session.running and not widgets(env, UserBubble)
+    assert widgets(env, Notice)[-1].text() == env.routes.cloud.problem_text
+
+
+def test_chat_menu_focuses_the_slide_and_the_palette_sends_a_request(env):
+    env.chat.scope.set_current("deck")
+    env.window.focus_chat()
+    assert env.window.assistant._stack.currentWidget() is env.chat and env.chat.scope.current() == "slide"
+    assert not env.chat.session.running and not widgets(env, UserBubble)
+    env.chat.scope.set_current("deck")
+    script(env, reply("On it."))
+    palette = env.window.palette
+    palette.open()
+    palette.input.setText("shorten the bullets")
+    entry = palette._entries[-1]
+    assert entry.enabled and entry.label.startswith("Ask the chat:")
+    palette._run(len(palette._entries) - 1)
+    wait_for_idle(env)
+    assert env.window.assistant._stack.currentWidget() is env.chat and env.chat.scope.current() == "slide"
+    assert env.window.assistant.header.target.full_text() == "abc · Hello"
+    assert len(widgets(env, UserBubble)) == 1 and widgets(env, AssistantText)[0].raw == "On it."
+
+
+def slot(env):
+    return (env.window._route_tasks.get(env.window.state.ai_route) or (None,))[0]
+
+
+def test_a_busy_route_slot_keeps_the_chat_from_starting(env, monkeypatch):
+    ai_profile.set_mode(env.window.project, ai_profile.LOCAL)
+    ai_profile.set_model_choice(env.window.project, env.routes.local.id, ai_profile.CHAT, "fake-1")
+    warned = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args: warned.append(args[2]))
+    lease = env.window.acquire_route_task(env.routes.local.id, "drafting descriptions")
+    assert lease is not None
+    for trigger, text in ((env.chat.send, "go"), (env.chat.ask, "Make this slide more concise")):
+        script(env, reply("never"))
+        trigger(text)
+        assert not env.chat.session.running and not widgets(env, UserBubble)
+        assert env.chat.composer.toPlainText() == text
+        assert "Drafting descriptions is already running" in warned[-1]
+    lease.release()
+
+
+def test_a_start_that_fails_gives_the_slot_back_and_leaves_the_chat_idle(env, monkeypatch):
+    script(env, reply("never"))
+
+    def broken():
+        raise RuntimeError("no focus")
+
+    monkeypatch.setattr(env.chat.workspace, "begin_request", broken)
+    with pytest.raises(RuntimeError):
+        env.chat.send("go")
+    assert slot(env) is None and not env.chat.session.running and not env.chat.stop_button.isVisible()
+
+
+def on_thread(function):
+    """Run `function` on a thread (like the agent) while the test keeps the GUI going."""
+    box = {}
+    thread = threading.Thread(target=lambda: box.update(result=function()), daemon=True)
+    thread.start()
+    wait_until(lambda: not thread.is_alive())
+    return box["result"]
+
+
+def test_the_workspace_answers_from_the_buffers(env):
+    ws = env.chat.workspace
+    file = open_buffer(env, dirty=True)
+    ws.begin_request()
+    focus = ws.context()
+    assert (focus.slide_id, focus.deck.name, focus.path, focus.language, focus.view) == (
+        "abc", "test", env.path, "EN", "instructor")
+    assert on_thread(lambda: (ws.is_open(env.path), ws.is_dirty(env.path))) == (True, True)
+    text = on_thread(lambda: ws.buffer_text(env.path))
+    assert text == file.editor.text() and "typed" in text
+    assert on_thread(lambda: ws.apply_to_buffer(env.path, "stale", "x")) == "it changed while the edit waited for your answer"
+    assert on_thread(lambda: ws.apply_to_buffer(env.path, text, text + "% more\n")) is None
+    assert file.editor.text().endswith("% more\n")
+    other = env.root / "slides" / "abd-EN-Second-current.tex"
+    assert on_thread(lambda: (ws.is_open(other), ws.apply_to_buffer(other, "", "x"))) == (False, "it is not open for editing")
+
+
+@pytest.mark.parametrize("tool", ["read_buffer", "lint", "render_preview", "get_focus"])
+@pytest.mark.parametrize("dirty", [False, True])
+def test_tools_check_current_revision_before_disk_sync_polls(env, monkeypatch, tool, dirty):
+    from conftest import SLIDE_TEXT
+    from slidemage import latex_lint, preview_target, slide_snapshot
+    from slidemage.ai.tools import CLAUDE_CODE_TOOLS, build_toolbox
+
+    # Call the core tools directly, before a DiskSync poll can absorb the write.
+    ws = env.chat.workspace
+
+    def toolbox():
+        ws.on_gui(ws.begin_request)
+        return build_toolbox(ws, lambda _event: None, compiler.CancelToken(), tools=CLAUDE_CODE_TOOLS)
+
+    file = open_buffer(env, dirty=dirty)
+    before = file.editor.text()
+    disk_text = SLIDE_TEXT.replace("\r\n", "\n").replace("First point", "The new point") + "\\begin{itemize}\n"
+    env.path.write_bytes(disk_text.replace("\n", "\r\n").encode())
+    checked, reloaded = [], []
+    real_lint, real_reload = latex_lint.lint_text, env.window.centre.disk_changed
+
+    def lint(ctx, text, *args):
+        checked.append(text)
+        return real_lint(ctx, text, *args)
+
+    def reload(path):
+        assert threading.current_thread() is threading.main_thread()
+        outcome = real_reload(path)
+        if outcome == RELOADED:
+            reloaded.append(path)
+        return outcome
+
+    monkeypatch.setattr(latex_lint, "lint_text", lint)
+    monkeypatch.setattr(env.window.centre, "disk_changed", reload)
+    monkeypatch.setattr(preview_target, "render_text", lambda target, text, *a, **k:
+                        checked.append(text) or env.root / "fake.pdf")
+    monkeypatch.setattr(preview_target, "render", lambda target, *a, **k:
+                        checked.append(target.source_path.read_text()) or env.root / "fake.pdf")
+    from io import BytesIO
+    from PIL import Image
+    from slidemage.ui.workspace.source_file import RELOADED
+
+    png_buffer = BytesIO()
+    Image.new("RGB", (16, 9), "white").save(png_buffer, format="PNG")
+    png = png_buffer.getvalue()
+    monkeypatch.setattr(slide_snapshot, "prepare_preview_images", lambda *a: ((png, png), ()))
+    args = {"path": SLIDE} if tool in ("read_buffer", "lint") else {}
+    result = on_thread(lambda: toolbox().execute(call(tool, **args)))
+    assert not result.is_error, result.text
+    text = result.text
+    expected = before if dirty else disk_text
+    plusless = slide_versioning.without_plus
+    assert plusless(file.editor.text()) == expected and file.dirty == dirty   # an outside edit gets the "+"
+    assert plusless(env.path.read_text(encoding="utf-8")).replace("\r\n", "\n") == disk_text.replace("\r\n", "\n")
+    assert reloaded == ([] if dirty else [env.path])
+    if tool == "render_preview":
+        assert "captured source (including open editor buffers)" in text
+    else:
+        assert "editor (unsaved)" in text if dirty else "file" in text and "unsaved" not in text
+    if tool == "read_buffer":
+        assert "% typed" in text if dirty else "The new point" in text
+    else:
+        assert expected in [slide_versioning.without_plus(t) for t in checked]
+    if tool in ("lint", "get_focus"):
+        assert "never closed" in text if not dirty else "never closed" not in text
+
+
+def test_the_cloud_consent_is_the_windows_question(env, monkeypatch):
+    asked = []
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kw: asked.append(args[2]) or QMessageBox.StandardButton.Yes)
+    from fake_routes import FakeProvider
+    ws = env.chat.workspace
+    assert on_thread(lambda: ws.confirm_cloud(FakeProvider("fake-1", is_local=False))) is True
+    assert "cloud (fake-1)" in asked[0]
+    assert "rendered previews" in asked[0] and ai_profile.cloud_seen(env.window.project)
+
+
+def test_a_compile_runs_through_the_windows_flow_and_reports_its_rows(env, monkeypatch):
+    from types import SimpleNamespace
+    from slidemage.compile_status import DONE, FAILED
+    started = []
+
+    def fake_compile(_window, jobs):
+        started.append([job.jobname for job in jobs])
+        env.window.log("==== compiling ====")
+        run = SimpleNamespace(rows={"test-instructor": SimpleNamespace(state=DONE), "x": SimpleNamespace(state=FAILED)})
+        env.window.compile.settled.emit(run)
+        return True
+
+    monkeypatch.setattr(compile_actions, "compile_jobs", fake_compile)
+    deck = next(d for d in scan_decks(env.window.project) if d.name == "test")
+    log = []
+    results = on_thread(lambda: env.chat.workspace.compile_deck(deck, "instructor", compiler.CancelToken(), log.append))
+    assert results == {"test-instructor": True, "x": False} and started and log == ["==== compiling ===="]
+
+
+def test_the_chats_stop_ends_a_compile_without_asking(env, monkeypatch):
+    stopped = []
+    monkeypatch.setattr(compile_actions, "compile_jobs", lambda _window, jobs: True)
+    monkeypatch.setattr(compile_actions, "stop_now", lambda _window: stopped.append(True))
+    deck = next(d for d in scan_decks(env.window.project) if d.name == "test")
+    cancel = compiler.CancelToken()
+    box = {}
+    thread = threading.Thread(target=lambda: box.update(r=env.chat.workspace.compile_deck(deck, "instructor", cancel, print)),
+                              daemon=True)
+    thread.start()
+    pump(0.2)
+    cancel.request_stop()
+    wait_until(lambda: stopped)
+    env.chat.workspace.close()                                  # the run never settles: the window closes
+    wait_until(lambda: not thread.is_alive())
+    assert box["r"] == {}
+
+
+def refresh(env, cancel=None):
+    """What the agent's refresh_deck_previews asks of the window's workspace, on a thread: the result or the error."""
+    deck = next(d for d in scan_decks(env.window.project) if d.name == "test")
+
+    def call():
+        try:
+            return env.chat.workspace.refresh_deck_previews(deck, cancel or compiler.CancelToken())
+        except RuntimeError as exc:
+            return exc
+
+    return on_thread(call)
+
+
+def test_refreshing_a_decks_previews_runs_on_the_compile_slot_and_returns_its_result(env, monkeypatch):
+    from slidemage import batch_render
+    given = []
+
+    def render(service, requests, **options):
+        from slidemage.preview_requests import PreviewResult
+        given.append((service, requests))
+        return tuple(PreviewResult(spec, status='failed' if spec.target.bare_id == 'abd' else 'rendered')
+                     for spec in requests)
+
+    monkeypatch.setattr(batch_render, "render_batch", render)
+    result = refresh(env)
+    assert (result.refreshed, result.failed) == (["abc-EN-Hello"], ["abd-EN-Second"])
+    (service, requests), = given
+    assert service is env.window.centre.preview._renders
+    assert all(spec.target.deck.name == 'test' and not spec.options.force for spec in requests)
+    assert {spec.view for spec in requests} == set(batch_render.VIEWS)
+    row, = env.window.compile.run.rows.values()
+    assert row.state == 'failed'
+    assert not env.window.compile.running
+
+
+def test_refreshing_previews_says_when_the_window_is_busy_or_the_run_failed(env, monkeypatch):
+    from slidemage import batch_render
+    with monkeypatch.context() as patch:
+        patch.setattr(type(env.window.compile), "running", property(lambda _self: True))
+        assert "busy with another compile run" in str(refresh(env))
+
+    def broken(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(batch_render, "render_batch", broken)
+    assert "Log drawer" in str(refresh(env))
+
+
+def test_the_chats_stop_ends_a_preview_refresh_without_asking(env, monkeypatch):
+    from slidemage import batch_render
+    release = threading.Event()
+    stopped = []
+
+    def render(service, requests, **options):
+        release.wait(5)
+        return ()
+
+    monkeypatch.setattr(batch_render, "render_batch", render)
+    monkeypatch.setattr(compile_actions, "stop_now", lambda _window: stopped.append(True) or release.set())
+    cancel = compiler.CancelToken()
+    threading.Timer(0.2, cancel.request_stop).start()
+    result = refresh(env, cancel)
+    assert not isinstance(result, Exception), result
+    assert result.failed == [] and stopped == [True]
+
+
+def test_a_tool_call_is_summarised_in_a_few_words():
+    assert summarize_call(ToolCall("1", "read_file", {"path": "slides/a.tex"})) == "slides/a.tex"
+    assert summarize_call(ToolCall("1", "list_slides", {})) == ""
+
+
+@pytest.mark.parametrize(("language", "view"), [("EN", "instructor"), ("DE", "after-course")])
+def test_create_slide_shows_its_returned_preview_in_the_real_window(env, monkeypatch, language, view):
+    import pymupdf
+    from slidemage import preview_target
+    from slidemage.ai.tools import build_toolbox
+
+    env.window.state.set_view(view)
+    workspace = env.chat.workspace
+    workspace.begin_request()
+    rendered = []
+
+    def render(target, text, *args, **kwargs):
+        rendered.append(target)
+        pdf = env.root / "fake.pdf"
+        with pymupdf.open() as doc:
+            page = doc.new_page(width=320, height=180)
+            page.insert_text((30, 30), "Created slide")
+            doc.save(pdf)
+        return pdf
+    monkeypatch.setattr(preview_target, "render_text", render)
+    monkeypatch.setattr(preview_target, "render", lambda target, *a, **k: render(target, "", *a, **k))
+    box = build_toolbox(workspace, lambda _event: None, compiler.CancelToken(), EDIT_AUTO)
+    result = on_thread(lambda: box.execute(call("create_slide", title="New", slug="New", deck="test",
+        language=language, body="\\begin{standardframe}{New}\nContent.\n\\end{standardframe}\n")))
+    assert not result.is_error, result.text
+    path, = (env.root / "slides").glob(f"*-{language}-New-current.tex")
+    pane = env.window.centre.preview
+    assert env.window.state.focused_slide == path.name[:3]
+    assert path.name[:3] in {item.id for item in deck_language.active_calls(env.window.state.deck)}
+    assert env.window.state.mode == "split" and env.window.state.language == language
+    assert env.window.centre.path == path and pane._target.source_path == path
+    assert not pane._page.pixmap.isNull() and pane._page.message == ""
+    assert len(rendered) == 1 and result.images
+
+
+def test_show_slide_keeps_the_focused_occurrence(env):
+    from slidemage import deck_outline
+
+    deck = env.window.state.deck
+    key = deck_outline.resolve_slots(env.window.project, deck, 'instructor', 'EN')[0].key
+    env.window.state.set_focused_slide('abc', occurrence_key=key)
+    on_thread(lambda: env.chat.workspace.show_slide(env.path))
+    assert env.window.state.focused_occurrence == key
+    on_thread(lambda: env.chat.workspace.show_slide(env.root / 'slides/abd-EN-Second-current.tex'))
+    assert env.window.state.focused_occurrence == deck_outline.resolve_slots(
+        env.window.project, deck, 'instructor', 'EN')[1].key
+
+
+@pytest.mark.parametrize("dirty", [False, True])
+def test_modify_slide_uses_fresh_real_editor_snapshot(env, monkeypatch, dirty):
+    from slidemage import ai_review, preview_target, slide_snapshot
+    from slidemage.ai.tools import build_toolbox
+
+    ws = env.chat.workspace
+    file = open_buffer(env, dirty=dirty)
+    before = file.editor.text()
+    disk_text = env.path.read_text().replace("First point", "New disk point")
+    env.path.write_bytes(disk_text.replace("\n", "\r\n").encode())
+    rendered = []
+    monkeypatch.setattr(preview_target, "render_text", lambda target, text, *a, **k:
+                        rendered.append(text) or env.root / "fake.pdf")
+    monkeypatch.setattr(slide_snapshot, "prepare_preview_images", lambda *a: ((b"PNG", b"PNG"), ()))
+    monkeypatch.setattr(ws, "show_slide", lambda path: None)
+    expected = before if dirty else disk_text
+
+    def run():
+        ws.begin_request()
+        box = build_toolbox(ws, lambda event: None, compiler.CancelToken(), EDIT_AUTO)
+        return box.execute(call("modify_slide", slide="abc", expected=expected,
+                                edits=[{"old": "Hello", "new": "Changed title"}]))
+
+    result = on_thread(run)
+    after = expected.replace("Hello", "Changed title")
+    assert not result.is_error, result.text
+    assert ("base: editor (unsaved)" if dirty else "base: file") in result.text
+    assert slide_versioning.without_plus(file.editor.text()) == after and file.dirty
+    assert slide_versioning.without_plus(env.path.read_text()) == disk_text
+    assert [slide_versioning.without_plus(t) for t in rendered] == [after] and result.images == [b"PNG"]
+    assert ai_review.is_unreviewed(env.window.project, env.path)
+    file.editor.undo()
+    assert slide_versioning.without_plus(file.editor.text()) == expected
+
+
+def collect_garbage():
+    """Collect Qt wrappers on the GUI thread before their widgets are destroyed."""
+    pump()
+    gc.collect()
+
+
+def chips(env):
+    return [env.chat._chips.itemAt(i).widget() for i in range(env.chat._chips.count())]
+
+
+def test_attachments_copy_without_overwriting_and_send_only_remaining_files(env, tmp_path):
+    outside = tmp_path / "elsewhere" / "paper.pdf"
+    outside.parent.mkdir()
+    outside.write_bytes(b"%PDF one")
+    env.chat.attach_files([str(outside)])
+    outside.write_bytes(b"%PDF two")
+    env.chat.attach_files([str(outside), str(env.path), str(tmp_path / "missing.pdf")])
+    sources = env.root / "sources"
+    assert (sources / "paper.pdf").read_bytes() == b"%PDF one" and (sources / "paper-2.pdf").read_bytes() == b"%PDF two"
+    assert env.chat._attached == ["sources/paper.pdf", "sources/paper-2.pdf", SLIDE]
+    assert len(chips(env)) == 3
+    chips(env)[0].clicked.emit()
+    pump()
+    assert env.chat._attached == ["sources/paper-2.pdf", SLIDE] and len(chips(env)) == 2
+    collect_garbage()
+
+    provider = script(env, reply("Read it."))
+    ask(env, "Use these files")
+    assert provider.sent[0][-1].text.endswith(f"Use these files\n\nAttached: sources/paper-2.pdf, {SLIDE}")
+    assert env.chat._attached == [] and chips(env) == []
+    collect_garbage()
+
+
+def test_dropping_files_and_pasting_an_image_attach_them(env, tmp_path):
+    from PySide6.QtCore import QMimeData, QUrl
+    from PySide6.QtGui import QColor, QImage
+    dropped = tmp_path / "notes.txt"
+    dropped.write_text("hi")
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(str(dropped))])
+    assert env.chat.composer.canInsertFromMimeData(mime)
+    env.chat.composer.insertFromMimeData(mime)
+    assert env.chat._attached == ["sources/notes.txt"] and env.chat.composer.toPlainText() == ""
+    image = QImage(8, 8, QImage.Format.Format_RGB32)
+    image.fill(QColor("red"))
+    mime = QMimeData()
+    mime.setImageData(image)
+    env.chat.composer.insertFromMimeData(mime)
+    env.chat.composer.insertFromMimeData(mime)
+    assert env.chat._attached[1:] == ["sources/pasted-image.png", "sources/pasted-image-2.png"]
+    assert (env.root / "sources" / "pasted-image-2.png").read_bytes().startswith(b"\x89PNG")
+    del mime, image
+    collect_garbage()
+
+
+def test_version_notifications_keep_selection_rebuild_once_and_respect_live_render(env, monkeypatch):
+    from slidemage.ui.dialogs.settings import LIVE_RENDER_SETTING_KEY
+
+    window = env.window
+    for item in window.slide_list.tree.slide_items():
+        item.setSelected(True)
+    assert window.state.selection == ("abc", "abd")
+    paths = [env.path, env.root / "slides/abd-EN-Second-current.tex"]
+    rebuilds, renders = [], []
+    rebuild = window.slide_list.rebuild
+
+    def tracked_rebuild(**kwargs):
+        rebuilds.append(kwargs)
+        rebuild(**kwargs)
+
+    monkeypatch.setattr(window.slide_list, "rebuild", tracked_rebuild)
+    window.state.set_mode("preview")
+    monkeypatch.setattr(window.centre.preview, "render_after_save", lambda: renders.append(True))
+    app_settings.set(window.project, LIVE_RENDER_SETTING_KEY, False)
+    window._after_write.start()
+    rebuilds.clear()
+    window.after_version_updates([*paths, env.path])
+    assert window.state.selection == ("abc", "abd")
+    assert rebuilds == [{"preserve_focus": True}] and not window._after_write.isActive()
+    assert renders == []
+
+    app_settings.set(window.project, LIVE_RENDER_SETTING_KEY, True)
+    with monkeypatch.context() as patch:
+        visited = []
+        live_render = window._live_render
+
+        def tracked_render(path):
+            visited.append(path)
+            live_render(path)
+
+        patch.setattr(window, "_live_render", tracked_render)
+        window.after_version_updates([*paths, env.path])
+        assert visited == paths
+    assert renders == [True]
+
+
+def test_route_owned_surface_keeps_its_conversation_and_confirms_ending_it(env):
+    from fake_chat import FakeChatSurface
+
+    env.routes.cloud.surface_factory = FakeChatSurface
+    env.window.assistant.refresh_models()
+    surface = env.window.assistant.surface_for(env.routes.cloud.id)
+    env.window.assistant._show_body()
+    assert env.window.assistant._stack.currentWidget() is surface
+    surface.composer.setText("Hello")
+    surface.send()
+    assert surface.turns == ["Hello"]
+    env.window.ai_route.request(ai_profile.LOCAL)
+    assert env.window.ai_route.popover_kind == "session" and surface.session_live
+    env.window.ai_route._end_session()
+    assert surface.stopped and env.window.state.ai_mode == ai_profile.LOCAL
+    env.window.state.set_ai_route(ai_profile.CLOUD, env.routes.cloud.id)
+    assert surface.turns == ["Hello"]
+
+
+def test_a_long_file_name_wraps_inside_the_user_bubble(qapp):
+    from slidemage.ui.workspace.chat.cards import BUBBLE_WIDTH
+    bubble = UserBubble("Summarise this\n\nAttached: sources/Find_the_Good_Seek_the_Unity_A_Hidden_Message_in_Teams.pdf")
+    label = bubble.findChild(QLabel)
+    assert label.width() <= BUBBLE_WIDTH - 24
+    assert "Find_​the_​" in label.text()

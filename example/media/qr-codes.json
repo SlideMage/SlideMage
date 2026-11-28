@@ -1,0 +1,11 @@
+{
+  "media/qr-slidemage-org.pdf": {
+    "border": 4,
+    "caption_mode": "content",
+    "error": "M",
+    "fields": {
+      "url": "https://slidemage.org"
+    },
+    "kind": "url"
+  }
+}

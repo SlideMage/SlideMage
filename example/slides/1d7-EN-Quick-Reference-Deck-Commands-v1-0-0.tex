@@ -1,0 +1,42 @@
+%% Included in decks: slidemage-manual
+%%
+
+% SlideMage manual, appendix: everything that goes into a deck file.
+\setSlideVersion{1-0-0}
+\providecommand{\qrhead}[1]{\par\smallskip{\color{c_primary_highlight}\textbf{#1}}\par}
+\providecommand{\qritem}[2]{\par\noindent\hangindent=1em #1 \hfill #2\par}
+\begin{standardframe}{Quick reference: deck commands}
+	\scriptsize
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.48\linewidth}
+			\qrhead{In the preamble}
+			\qritem{\SMCmd{input}\SMCode{\{Slidemaster\_preamble\_<name>\}}}{the template}
+			\qritem{\SMCmd{FooterText}}{the footer's text}
+			\qritem{\SMCmd{deckversion}\SMCode{[...]}, in the override block}{the deck version}
+			\qritem{\SMCmd{decklanguage}\SMCode{[en|de]}}{language}
+			\qritem{\SMCmd{deckoutputfolder}\SMCode{[v]\{path\}}}{where PDFs go}
+			\qritem{\SMCmd{SMNavigationBar}\SMCode{[...]}}{footer navigation}
+			\qritem{\SMCmd{deckappendixtoc}}{always the appendix}
+			\qritem{\SMCmd{setfootnotesymbols}\SMCode{\{...\}}}{footnote markers}
+			\qritem{\SMCmd{SMShowCompileTimestampfalse}}{no timestamp}
+			\qritem{\SMCmd{SMAutoTopMarginfalse}}{no automatic Top Margin}
+			\qritem{\SMCode{\textbackslash colorlet\{SMHighlightColor\}\{...\}}}{\SMCode{highlightframe}}
+			\qritem{\SMCmd{decktags}\SMCode{\{...\}}}{the group}
+			\qritem{\SMCode{\%\% SlideMage course URL: ...}}{the course link}
+		\end{column}
+		\begin{column}{0.48\linewidth}
+			\qrhead{In the body}
+			\qritem{\SMCmd{section}\SMCode{\{Title\}}}{a chapter}
+			\qritem{\SMCmd{slide}\SMCode{\{id-slug\}}}{the current slide}
+			\qritem{\SMCmd{slideversion}\SMCode{\{id-slug\}\{1-0-0\}}}{a pinned version}
+			\qritem{\SMCmd{slidefinal}\SMCode{\{id-slug\}}}{fully revealed}
+			\qritem{\SMCmd{conditionalslide}\SMCode{[v]\{id-slug\}}}{in some versions}
+			\qritem{\SMCmd{slidestep}\SMCode{\{id-slug\}[v]\{steps\}}}{some steps}
+			\qritem{\SMCmd{omitslide}, \SMCmd{studentversion}}{the older system}
+			\par\medskip
+			\SMCode{[v]}: deck versions -- \SMCode{instructor}, \SMCode{during-course}, \SMCode{after-course}.
+			\par\medskip
+			SlideMage writes most of this for you: the version block, tags, language, output folders, course link and the slide calls.
+		\end{column}
+	\end{columns}
+\end{standardframe}

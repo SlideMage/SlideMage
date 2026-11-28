@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://slidemage.org/schema/plugins-index-1.json",
+  "type": "object",
+  "required": ["schema", "generated", "plugins_page", "plugins"],
+  "properties": {
+    "schema": {"const": 1},
+    "generated": {"type": "string", "format": "date-time"},
+    "plugins_page": {"type": "string", "format": "uri", "pattern": "^https://"},
+    "plugins": {"type": "array", "items": {"$ref": "#/$defs/plugin"}}
+  },
+  "$defs": {
+    "https": {"type": "string", "format": "uri", "pattern": "^https://"},
+    "lines": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 120}},
+    "plugin": {
+      "type": "object",
+      "required": ["id", "name", "summary", "homepage", "source", "license", "maintainer", "recommended",
+                   "needs", "network", "releases"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{1,31}$"},
+        "name": {"type": "string", "minLength": 1, "maxLength": 40},
+        "summary": {"type": "string", "minLength": 1, "maxLength": 120},
+        "homepage": {"$ref": "#/$defs/https"},
+        "source": {"$ref": "#/$defs/https"},
+        "icon": {"$ref": "#/$defs/https"},
+        "license": {"type": "string", "minLength": 1},
+        "maintainer": {"type": "string", "minLength": 1},
+        "recommended": {"type": "boolean"},
+        "needs": {"$ref": "#/$defs/lines"},
+        "network": {"$ref": "#/$defs/lines"},
+        "releases": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/release"}}
+      }
+    },
+    "release": {
+      "type": "object",
+      "required": ["version", "api_version", "requires_slidemage", "url", "sha256", "size", "published"],
+      "properties": {
+        "version": {"type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$"},
+        "api_version": {"type": "integer", "minimum": 1},
+        "requires_slidemage": {"type": "string",
+                               "pattern": "^(>=|<=|==|<|>)\\s*\\d+(\\.\\d+){0,2}(\\s*,\\s*(>=|<=|==|<|>)\\s*\\d+(\\.\\d+){0,2})*$"},
+        "url": {"type": "string", "pattern": "^https://github\\.com/[^/]+/[^/]+/releases/download/"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "size": {"type": "integer", "minimum": 1},
+        "published": {"type": "string", "format": "date"},
+        "notes_url": {"$ref": "#/$defs/https"}
+      }
+    }
+  }
+}

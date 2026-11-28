@@ -1,0 +1,413 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""What a compile read, so a later deck snapshot can tell whether that PDF is
+still current (v5.34.0, direct instruction: "Is there a way to check whether
+there were any changes since the last time a particular version was compiled,
+like a hash? That would avoid re-creating everything when fresh copies are
+already available.").
+
+After every successful whole-deck compile (compiler.py), SlideMage keeps a
+record of it in .build/compile-records/<jobname>.json:
+
+- the SHA-256 of every file the compile read -- latexmk's -recorder list
+  (.fls: deck, slides, snippets, media, image descriptions, template,
+  framework, TeX packages) plus the .bib files biber read (.blg);
+- the SHA-256 of the wrapper file the compile ran (deck version, presenter
+  mode and appendix choices, the generated appendix);
+- the TeX engine's version line;
+- the time it started, and the
+  published PDF's path and SHA-256.
+
+deck_snapshot.py asks fresh_output() for each version it needs: when every
+recorded file still has its hash, the wrapper and engine are the same, and
+the PDF is unchanged where it was published, that PDF is used as the
+snapshot's reference instead of compiling the version again.
+
+A file other than the deck that changed while the compile ran (v0.17.17, direct report: an 11-minute IA2
+compile left every preview unrendered because one slide was saved during it) is recorded with no hash and
+`changed_during_compile`: its PDF pages may show the older or the newer content, so every check treats that
+file as changed (the record is stale for snapshots, the render store takes no pages of the slides that read
+it), while the slides that did not read it keep their pages. Not recorded (the record is simply not written):
+a compile during which the deck file or one of its fragments changed (a page compile locates the deck's
+changes against the copy kept here, which would already hold them), and one whose bibliography wasn't built. luaotfload's font caches
+are left out of the hashes: they are derived files, rewritten by other
+compiles. A file a compile looked for but didn't find is not in the .fls;
+if it appears later, the record doesn't notice -- the snapshot then freezes
+the deck as of that compile, consistently.
+
+The records hold machine-specific paths (the TeX installation), so they live
+in .build/ ("Remove temp files" deletes them; the next snapshot then compiles
+every version again). Free of Qt and of compiler.py (which imports this).
+"""
+from __future__ import annotations
+
+import functools
+import json
+import logging
+import os
+import re
+import shutil
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+from typing import Callable, Optional
+
+from . import languages
+from .fileio import sha256_file as sha256, text_sha256, write_json
+from .processes import command_output
+from .project import ProjectContext
+
+_log = logging.getLogger("slidemage.compile")
+
+RECORD_FORMAT = 2
+RECORDS_DIRNAME = "compile-records"
+# The auxiliary files kept with a record (aux_dir()).
+DECK_COPY_NAME = "deck.tex"
+AUX_EXTENSIONS = (".aux", ".nav", ".toc", ".snm", ".out", ".bbl", ".top", ".ovl")
+
+# Matches the .log's "Package: beamer 2025/06/02 v3.75 ..." family of lines.
+LOG_FILE_LINE_RE = re.compile(
+    r"^(?:Package|Document Class|File): (\S+) (\d{4}[/-]\d\d[/-]\d\d)\s*(.*)$", re.MULTILINE)
+LOG_FORMAT_RE = re.compile(r"^(LaTeX2e <[^>]+>.*|L3 programming layer <[^>]+>.*)$", re.MULTILINE)
+BLG_SOURCE_RE = re.compile(r"Found BibTeX data source '([^']+)'")
+# biblatex's final-pass log says this when the .bbl is missing or stale, i.e.
+# biber failed -- the PDF then shows citation keys instead of references.
+BIBER_NEEDED_RE = re.compile(r"Package biblatex Warning: Please \(re\)run Biber")
+# Derived caches the engine may rewrite at any time -- never part of a hash.
+_SKIPPED_INPUT_PARTS = ("luatex-cache",)
+# Derived images (appendix thumbnails, TikZ pictures and PDF media pages):
+# copied into the record (DERIVED_DIRNAME) as read, never compared for freshness.
+DERIVED_DIRNAME = "derived"
+
+
+# --------------------------------------------------------------------------
+# Paths, hashes, .fls
+
+def norm(path: Path | str) -> str:
+    return os.path.normcase(os.path.normpath(str(path)))
+
+
+def is_within(path: Path | str, root: Path | str) -> bool:
+    """`path` is `root` or below it, compared the way the OS does (case-
+    insensitive on Windows, where .fls paths also mix "d:" and "D:")."""
+    p, r = norm(path), norm(root)
+    return p == r or p.startswith(r.rstrip("\\/") + os.sep)
+
+
+# --------------------------------------------------------------------------
+# The compile run a PDF belongs to (2026-10-08, direct instruction)
+
+RUN_INFO_KEY = "SlideMageRun"
+_RUN_LINE_RE = re.compile(r"^\\pdfextension info\{/" + RUN_INFO_KEY + r" \([^)]*\)\}\r?\n?",
+                          re.MULTILINE)
+
+
+def run_id_line(run_id: str) -> str:
+    """The wrapper line that puts `run_id` (the moment the compile was
+    started) into the PDF's info dictionary."""
+    return f"\\pdfextension info{{/{RUN_INFO_KEY} ({run_id})}}"
+
+
+def wrapper_sha256(wrapper_text: str) -> str:
+    """The hash a record keeps of a wrapper: without the run line, which
+    differs on every click but doesn't change the output."""
+    return text_sha256(_RUN_LINE_RE.sub("", wrapper_text))
+
+
+def read_run_id(pdf: Path) -> Optional[str]:
+    """The /SlideMageRun of a PDF's info dictionary, or None (a PDF from
+    before v5.34.0, or not made by SlideMage)."""
+    import pymupdf as fitz
+    try:
+        with fitz.open(pdf) as doc:
+            kind, ref = doc.xref_get_key(-1, "Info")
+            if kind != "xref":
+                return None
+            kind, value = doc.xref_get_key(int(ref.split()[0]), RUN_INFO_KEY)
+    except Exception:  # noqa: BLE001 -- an unreadable PDF just has no run
+        return None
+    return value if kind == "string" and value else None
+
+
+def stamp_run_id(doc, run_id: str) -> None:
+    """Set /SlideMageRun in an open PyMuPDF document's info dictionary (a
+    page compile patching a PDF makes it part of its own run)."""
+    kind, ref = doc.xref_get_key(-1, "Info")
+    if kind != "xref":
+        doc.set_metadata(doc.metadata or {})
+        kind, ref = doc.xref_get_key(-1, "Info")
+    xref = int(ref.split()[0])
+    doc.xref_set_key(xref, RUN_INFO_KEY, "(" + run_id.replace("(", "").replace(")", "") + ")")
+
+
+def parse_fls(fls: Path) -> list[Path]:
+    """Every file a compile read (INPUT lines of latexmk's -recorder .fls),
+    absolute and normalized, in first-read order, without duplicates.
+    Relative entries are relative to the .fls's own PWD line."""
+    pwd: Optional[Path] = None
+    seen: dict[str, Path] = {}
+    for line in fls.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.startswith("PWD "):
+            pwd = Path(line[4:].strip())
+        elif line.startswith("INPUT "):
+            raw = Path(line[6:].strip())
+            if not raw.is_absolute():
+                raw = (pwd or fls.parent) / raw
+            path = Path(os.path.normpath(str(raw)))
+            seen.setdefault(norm(path), path)
+    return list(seen.values())
+
+
+def parse_blg_sources(blg: Path, cwd: Optional[Path] = None) -> list[Path]:
+    """The .bib files biber read (its .blg log names them). A relative name is relative to the
+    folder latexmk ran in, `cwd`, and comes back absolute."""
+    try:
+        text = blg.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    return [Path(os.path.normpath(os.path.join(cwd, m.group(1)) if cwd else m.group(1)))
+            for m in BLG_SOURCE_RE.finditer(text)]
+
+
+def version_lines(log_text: str) -> str:
+    """The lines of a .log that name the LaTeX format and the package
+    versions -- what a snapshot records about the TeX distribution."""
+    lines = [m.group(0) for m in LOG_FORMAT_RE.finditer(log_text)]
+    lines += [m.group(0) for m in LOG_FILE_LINE_RE.finditer(log_text)]
+    return "\n".join(lines) + ("\n" if lines else "")
+
+
+@functools.lru_cache(maxsize=1)
+def engine_version() -> str:
+    """lualatex's version line ("This is LuaHBTeX, Version 1.22.0 (MiKTeX
+    25.4)"), once per run of SlideMage; "" if it can't be run."""
+    lines = (command_output(["lualatex", "--version"]) or "").splitlines()
+    return lines[0].strip() if lines else ""
+
+
+# --------------------------------------------------------------------------
+# Records
+
+@dataclass
+class FreshOutput:
+    """A recorded compile that is still current."""
+    jobname: str
+    pdf: Path
+    inputs: list[Path]
+    bib_sources: list[Path]
+    log_text: str            # the format and package lines of its .log
+    started: int              # Unix time the compile started
+    created: str              # ISO time the record was written
+    # norm(original path) -> the copy kept in the record (slide previews):
+    # what a snapshot must use instead of the current file
+    copies: dict[str, Path] = field(default_factory=dict)
+
+
+@dataclass
+class Staleness:
+    """Why a record can't be used (for the log)."""
+    reasons: list[str] = field(default_factory=list)
+
+    def __bool__(self) -> bool:
+        return bool(self.reasons)
+
+
+def records_dir(build_dir: Path) -> Path:
+    return build_dir / RECORDS_DIRNAME
+
+
+def record_path(build_dir: Path, jobname: str) -> Path:
+    return records_dir(build_dir) / f"{jobname}.json"
+
+
+def aux_dir(build_dir: Path, jobname: str) -> Path:
+    """Where a recorded compile's auxiliary files are kept."""
+    return records_dir(build_dir) / jobname
+
+
+def write_record(
+    ctx: ProjectContext, jobname: str, invocation_dir: Path, wrapper_path: Path, wrapper_text: str,
+    pdf: Path, started: float, inventory: dict, configuration: str, log: Optional[Callable[[str], None]] = None,
+    deck_path: Optional[Path] = None,
+) -> Optional[Path]:
+    """Record a successful compile whose output sits in `invocation_dir` and
+    whose PDF was published as `pdf`. Returns the record's path, or None when
+    it isn't recorded (see the module docstring); an old record of the same
+    job is removed then, so it can't vouch for a PDF it doesn't describe."""
+    log = log or (lambda _line: None)
+    target = record_path(ctx.build_dir, jobname)
+    try:
+        fls = invocation_dir / f"{jobname}.fls"
+        log_file = invocation_dir / f"{jobname}.log"
+        log_text = log_file.read_text(encoding="utf-8", errors="replace")
+        if not fls.is_file() or BIBER_NEEDED_RE.search(log_text):
+            _log.info("compile record %s not written: %s", jobname,
+                      "no .fls file" if not fls.is_file() else "the bibliography was not built (biber)")
+            target.unlink(missing_ok=True)
+            return None
+        bib_sources = parse_blg_sources(invocation_dir / f"{jobname}.blg",
+                                       deck_path.parent if deck_path is not None else None)
+        aux = aux_dir(ctx.build_dir, jobname)
+        shutil.rmtree(aux, ignore_errors=True)
+        aux.mkdir(parents=True)
+        entries = []
+        seen: set[str] = set()
+        changed_during: list[str] = []
+        inline_inputs = [deck_path] if deck_path is not None else []
+        deck_sources = list(inline_inputs)      # the deck and its fragments, not the slides they call
+        expanded_hash = None
+        if deck_path is not None and deck_path.is_file():
+            from . import deck_groups, deck_language, deck_scan
+            deck = next((d for d in deck_scan.scan_dir(deck_path.parent, False, deck_groups.load(ctx)) if d.path == deck_path), None)
+            if deck is not None:
+                expanded, fragments = deck_language.expand_fragments(deck)
+                expanded_hash = text_sha256(expanded.text)
+                inline_inputs.extend(fragments)
+                deck_sources.extend(fragments)
+                # Include dependencies in every language: the wrapper can inline
+                # a shared slide list instead of having TeX open its original file.
+                for language in languages.project_languages(ctx).codes:
+                    _resolved, inputs = deck_language.compile_deck(ctx, deck, language)
+                    inline_inputs.extend(inputs)
+        typeset_inputs = parse_fls(fls)
+        for path in [*typeset_inputs, *bib_sources, *inline_inputs]:
+            key = norm(path)
+            if key in seen or is_within(path, invocation_dir) or key == norm(wrapper_path):
+                continue
+            seen.add(key)
+            if any(part in key for part in _SKIPPED_INPUT_PARTS) or not path.is_file():
+                continue
+            if is_within(path, ctx.build_dir / "appendix-thumbs") or is_within(path, ctx.previews_dir):
+                # Keep the image as read, never a reason to call the PDF stale.
+                copy = Path(DERIVED_DIRNAME) / f"{len(entries)}-{path.name}"
+                (aux / copy).parent.mkdir(exist_ok=True)
+                shutil.copy2(path, aux / copy)
+                entries.append({"path": str(path), "sha256": sha256(aux / copy),
+                                "copy": copy.as_posix()})
+                continue
+            info = path.stat()
+            if max(info.st_mtime, info.st_ctime) >= started:
+                if key in {norm(source) for source in deck_sources}:     # the deck or a fragment: see the module docstring
+                    log(f"    (compile not recorded for snapshots: {path.name} changed during it)")
+                    _log.info("compile record %s not written: the deck file %s changed during the compile",
+                              jobname, path.name)
+                    shutil.rmtree(aux, ignore_errors=True)
+                    target.unlink(missing_ok=True)
+                    return None
+                # Which version TeX read is unknown: no hash, so every check sees the file as changed.
+                entries.append({"path": str(path), "sha256": None, "changed_during_compile": True})
+                changed_during.append(path.name)
+                continue
+            entry = {"path": str(path), "sha256": sha256(path)}
+            if path == deck_path and expanded_hash is not None:
+                entry["text_sha256"] = expanded_hash
+            if is_within(path, ctx.slides_dir) and path in typeset_inputs:
+                entry["text_sha256"] = text_sha256(path.read_text(encoding="utf-8", errors="replace"))
+            entries.append(entry)
+        record = {
+            "format": RECORD_FORMAT,
+            "jobname": jobname,
+            "created": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "started": started,
+            "inventory": inventory,
+            "configuration": configuration,
+            "engine": engine_version(),
+            "wrapper_sha256": wrapper_sha256(wrapper_text),
+            "pdf": str(pdf),
+            "pdf_sha256": sha256(pdf),
+            "bib_sources": [str(p) for p in bib_sources],
+            "log_lines": version_lines(log_text),
+            "inputs": entries,
+        }
+        target.parent.mkdir(parents=True, exist_ok=True)
+        # The compile's auxiliary files, for page-range compiles (partial_compile.py):
+        # cross-references, contents, the frame/page map, citations, layout fixes.
+        for ext in AUX_EXTENSIONS:
+            src = invocation_dir / f"{jobname}{ext}"
+            if src.is_file():
+                shutil.copy2(src, aux / src.name)
+        # the deck file as compiled: a page compile may go ahead when the deck
+        # changed only after the slides it compiles (partial_compile.plan)
+        if deck_path is not None and deck_path.is_file():
+            shutil.copy2(deck_path, aux / DECK_COPY_NAME)
+        write_json(target, record, indent=1, sort_keys=False, ensure_ascii=True)
+        if changed_during:
+            names = ", ".join(changed_during[:5]) + (f" and {len(changed_during) - 5} more" if len(changed_during) > 5 else "")
+            log(f"    (changed during the compile: {names}; the slides that read "
+                f"{'it' if len(changed_during) == 1 else 'them'} get no preview from this PDF)")
+            _log.info("compile record %s: %d file(s) changed during the compile: %s", jobname, len(changed_during), names)
+        return target
+    except (OSError, ValueError) as exc:
+        log(f"    (compile not recorded for snapshots: {exc})")
+        _log.info("compile record %s not written: %s", jobname, exc)
+        try:
+            target.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return None
+
+
+def read_record(build_dir: Path, jobname: str) -> Optional[dict]:
+    try:
+        data = json.loads(record_path(build_dir, jobname).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or data.get("format") != RECORD_FORMAT:
+        return None
+    return data
+
+
+def check_record(record: dict, wrapper_text: Optional[str], aux: Optional[Path] = None) -> Staleness:
+    """Why `record` no longer describes what a compile with `wrapper_text`
+    would produce now (empty when it still does). `aux`: the record's folder,
+    holding the copies of derived inputs. `wrapper_text` None: only the PDF
+    and the files the compile read are compared, not the wrapper and the
+    engine (the readability check asks whether the PDF is still current)."""
+    stale = Staleness()
+    if wrapper_text is not None:
+        if record.get("wrapper_sha256") != wrapper_sha256(wrapper_text):
+            stale.reasons.append("the deck's version settings changed")
+        current_engine = engine_version()
+        if current_engine and record.get("engine") != current_engine:
+            stale.reasons.append("the TeX engine changed")
+    pdf = Path(record.get("pdf", ""))
+    if not pdf.is_file():
+        stale.reasons.append(f"{pdf.name} is gone")
+    elif sha256(pdf) != record.get("pdf_sha256"):
+        stale.reasons.append(f"{pdf.name} was replaced")
+    if stale:
+        return stale
+    for entry in record.get("inputs", []):
+        path = Path(entry["path"])
+        if entry.get("copy"):
+            copy = (aux / entry["copy"]) if aux is not None else None
+            if copy is None or not copy.is_file() or sha256(copy) != entry["sha256"]:
+                stale.reasons.append(f"the kept copy of {path.name} is missing")
+        elif not path.is_file():
+            stale.reasons.append(f"{path.name} is gone")
+        elif sha256(path) != entry["sha256"]:
+            stale.reasons.append(f"{path.name} changed")
+        if len(stale.reasons) >= 3:
+            break
+    return stale
+
+
+def fresh_output(build_dir: Path, jobname: str, wrapper_text: str
+                 ) -> tuple[Optional[FreshOutput], str]:
+    """The recorded compile of `jobname` if it is still current, else None,
+    with a short reason for the log ("no record", "slide x changed", ...)."""
+    record = read_record(build_dir, jobname)
+    if record is None:
+        return None, "no compile on record"
+    aux = aux_dir(build_dir, jobname)
+    stale = check_record(record, wrapper_text, aux)
+    if stale:
+        return None, ", ".join(stale.reasons)
+    return FreshOutput(
+        jobname=jobname, pdf=Path(record["pdf"]),
+        inputs=[Path(e["path"]) for e in record["inputs"]],
+        bib_sources=[Path(p) for p in record.get("bib_sources", [])],
+        log_text=record.get("log_lines", ""),
+        started=int(record.get("started", 0)), created=str(record.get("created", "")),
+        copies={norm(e["path"]): aux / e["copy"] for e in record["inputs"] if e.get("copy")},
+    ), ""

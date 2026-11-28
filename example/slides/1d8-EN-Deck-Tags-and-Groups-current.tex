@@ -1,0 +1,28 @@
+%% Included in decks: slidemage-manual, slidemage-manual-copy
+%%
+
+% SlideMage manual, chapter "Decks and deck versions": the tagging system,
+% with SlideMage's deck switcher and Tags sheet (tools/manual/make_screenshots.py).
+\setSlideVersion{1-1-1+}
+\begin{standardframe}{Deck tags and groups}
+	\small
+	The deck switcher sorts your decks into groups, built-in or your own. A deck's groups are tags kept in the deck file itself, so they travel with the deck.
+	\par
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.52\linewidth}
+			{\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=\dimexpr0.8\linewidth-0.8pt\relax]{media/screenshot-slidemage-deck-switcher.png}}}\par\smallskip
+			{\footnotesize\SMCmd{decktags}\SMCode{\{course\}}, just before \SMCode{\textbackslash begin\{document\}}; LaTeX ignores it. This manual keeps a section of its own (\SMCode{manual})\par}
+		\end{column}
+		\begin{column}{0.45\linewidth}
+			\shrinklists{1}
+			\begin{itemize}
+				\item Built in: \SMCode{work}, \SMCode{course}, \SMCode{research}, \SMCode{test}
+				\item A deck in several groups is listed under each; \emph{Deck} $\rightarrow$ \emph{Tags\ldots}:
+			\end{itemize}
+			\hspace*{\SMItemStep}\includegraphics[width=0.36\linewidth]{media/screenshot-slidemage-tags-dialog.png}
+			\begin{itemize}
+				\item \emph{Edit groups\ldots} (\emph{Settings} $\rightarrow$ \emph{Project}): add, rename, reorder, remove groups
+			\end{itemize}
+		\end{column}
+	\end{columns}
+\end{standardframe}

@@ -1,0 +1,7 @@
+# A clean Fedora for tests/installer/run.py: a user with passwordless sudo and nothing else.
+FROM fedora:latest
+RUN dnf install -y -q sudo && dnf clean all \
+    && echo 'keepcache=True' >> /etc/dnf/dnf.conf \
+    && useradd -m -s /bin/bash tester && echo 'tester ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/tester
+USER tester
+WORKDIR /home/tester

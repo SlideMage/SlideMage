@@ -1,0 +1,31 @@
+%% Included in decks: slidemage-manual, slidemage-manual-copy
+%%
+
+% SlideMage manual, chapter "Content and layout": lists and formulas. The left
+% column is the live result of the code on the right (snippets/1sv-1.tex);
+% the variants that are not shown live are listed below it.
+\setSlideVersion{1-0-0}
+\begin{standardframe}{Lists and formulas}
+	{\small The framework sets bullets, indents and spacing; you only write
+	\SMCmd{item}. \SMCmd{tallitem} is an \SMCmd{item} with a little extra space
+	above it. Use it for an item that holds a tall formula, such as a fraction,
+	and for the item after it, so the formula has room above and below.\par}
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.44\linewidth}
+			\begin{itemize}
+				\item First level
+				\begin{itemize}
+					\item Second level
+					\item[\SMBulletEllipsis] an ellipsis label
+				\end{itemize}
+				\tallitem Sharpe ratio $S=\dfrac{E[R]-r_f}{\sigma}$
+				\tallitem The item after a fraction, too
+			\end{itemize}
+		\end{column}
+		\begin{column}{0.53\linewidth}
+			\SMCodeFile{snippets/1sv-1.tex}
+			\medskip
+			{\footnotesize Numbered and lettered lists, and smaller lists for a crowded slide, are on the \SMLink{1w4}{next slide}.\par}
+		\end{column}
+	\end{columns}
+\end{standardframe}

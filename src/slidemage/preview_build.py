@@ -1,0 +1,700 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Reusable latexmk builds for interactive previews.
+
+Keep TeX's own dependency graph and auxiliary files between edits. This caches
+build state, not slide pixels: latexmk settles cold builds and needed reruns. Each
+preamble/slide pair has a separate job and an interprocess lock.
+"""
+from __future__ import annotations
+
+from contextlib import contextmanager, suppress
+import dataclasses
+from collections import deque
+import hashlib
+import json
+import os
+import random
+from pathlib import Path
+from typing import Optional
+import shutil
+import shlex
+import subprocess
+import tempfile
+import time
+import re
+import threading
+from .fileio import atomic_write
+from .filelock import build_lock, check_cancel
+from .preview_metrics import measure, stage, record_line, finish_rules
+from . import app_settings, compiler, preview_format
+from .render_evidence import find_tool, search_inventory, without_package_dirs
+from .project import ProjectContext
+from .processes import no_console_kwargs
+
+DIRECT_LUALATEX = True
+SPARE_TEX_SETTING_KEY = 'prestarted_preview_tex'
+_FOCUSED = {}
+_SPARE_LOCK = threading.RLock()
+
+
+def set_focus(ctx: ProjectContext, focus) -> None:
+    """The focused (target, view, language), or None when its window is inactive."""
+    with _SPARE_LOCK:
+        state = _FOCUSED.get(ctx.root)
+        if state is not None and state['focus'] == focus:
+            return
+        discard_spare(ctx.root)
+        if focus is None:
+            _FOCUSED.pop(ctx.root, None)
+        else:
+            _FOCUSED[ctx.root] = dict(focus=focus, spare=None)
+
+
+def discard_spare(root: Path, cache: Path | None = None) -> None:
+    with _SPARE_LOCK:
+        state = _FOCUSED.get(root)
+        spare = state['spare'] if state is not None else None
+        if spare is not None and (cache is None or spare['cache'] == cache):
+            state['spare'] = None
+            spare['timer'].cancel()
+            compiler.CancelToken._kill(spare['process'])
+            spare['process'].wait()
+            with suppress(OSError):
+                spare['process'].stdin.close()
+            spare['output'].close()
+
+
+def _direct_env(env, recorded):
+    return {**{key: value for key, value in env.items()
+               if not re.match(r'^(?:TEX|BIB|LUA|MIKTEX|FONTCONFIG)|'
+                               r'^(?:PATH|OSFONTDIR|VARTEXFONTS|SOURCE_DATE_EPOCH)$', key)}, **recorded}
+
+
+_ACTIVE_LOCK = threading.RLock()
+_ACTIVE = {}
+
+
+@contextmanager
+def active_build(cache: Path, wrapper: Path, cancel=None, *, root: Optional[Path] = None):
+    """Reserve paths before mutation; maintenance cannot race a preview process. `root` is the project (or
+    background workspace) whose maintenance lock is taken; by default the folder above the wrapper's decks/."""
+    paths = (cache.resolve(), wrapper.resolve())
+    # This lock stays outside removable .build entries. POSIX readers may
+    # compile concurrently; Windows uses its exclusive byte-lock primitive.
+    with build_lock(maintenance_lock(root if root is not None else wrapper.parent.parent), shared=True, cancel=cancel):
+        with _ACTIVE_LOCK:
+            for path in paths:
+                _ACTIVE[path] = _ACTIVE.get(path, 0) + 1
+        try:
+            yield
+        finally:
+            with _ACTIVE_LOCK:
+                for path in paths:
+                    _ACTIVE[path] -= 1
+                    if not _ACTIVE[path]:
+                        del _ACTIVE[path]
+
+
+def is_active(path: Path) -> bool:
+    path = path.resolve()
+    with _ACTIVE_LOCK:
+        return any(path.is_relative_to(active) or active.is_relative_to(path) for active in _ACTIVE)
+
+
+def maintenance_lock(project_root: Path) -> Path:
+    from .project import ProjectContext
+    return ProjectContext.at(project_root).previews_dir / 'preview-maintenance.lock'
+
+
+@contextmanager
+def cleanup_guard(paths, project_root: Path):
+    """Check and delete under one reservation lock; skip live external builds."""
+    with _ACTIVE_LOCK:
+        if any(is_active(path) for path in paths):
+            yield False
+            return
+        with build_lock(maintenance_lock(project_root), blocking=False) as acquired:
+            yield acquired
+
+
+# Single-slide renders leave their PDF in a folder of its own under the OS temp directory (see
+# slide_preview.sweep_old_renders).
+RENDER_FOLDER_PREFIX = 'slidemage_preview_'
+WRAPPER_PREFIX = '_slidemage_preview-'
+# A project's preview wrappers live in .build/preview-wrappers/ (v8.58.0; before, in decks/ beside the decks, where
+# they piled up in the user's folder). latexmk still runs in decks/, so TeX sees the same folders (run_preview).
+# A background workspace keeps them in its own decks/, outside the project.
+WRAPPER_FOLDER = 'preview-wrappers'
+UNUSED_DAYS = 14
+
+
+def wrapper_dir(ctx: ProjectContext) -> Path:
+    """Where a project's preview wrappers are written."""
+    return ctx.build_dir / WRAPPER_FOLDER
+
+
+def recorded_inputs(fls: Path, database: Path, *, ctx: ProjectContext, cache: Path,
+                    extra=()) -> list[str]:
+    """TeX recorder plus latexmk's bibliography inputs, excluding generated output."""
+    cwd = ctx.decks_dir
+    names = list(extra)
+    if fls.is_file():
+        for line in fls.read_text(errors='replace').splitlines():
+            if line.startswith('PWD '):
+                cwd = Path(line[4:])
+            elif line.startswith('INPUT '):
+                names.append(line[6:])
+    if database.is_file():
+        # Recorded names are quoted, with spaces kept; unescape only quotes/backslashes. A source latexmk recorded
+        # as missing (size -1: a bibliography biber was never run for, named as the .bcf gives it) fed nothing.
+        for name, size in re.findall(r'^\s+"((?:[^"\\]|\\.)*)"\s+[\d.]+\s+(-?\d+)', database.read_text(errors='replace'),
+                                     re.M):
+            if size != '-1':
+                names.append(name.replace('\\"', '"').replace('\\\\', '\\'))
+    paths = set()
+    formats = ctx.build_dir / 'preview-formats'
+    # Normalize roots once. Path.is_relative_to walks every ancestor on some Python versions;
+    # doing that four times for thousands of recorder inputs delays the first preview pixels.
+    cache_roots = {os.path.normcase(str(root)) for root in
+                   (cache.absolute(), cache.resolve(), formats.absolute(), formats.resolve())}
+    prefixes = tuple(root.rstrip(os.sep) + os.sep for root in cache_roots)
+    for name in set(names):
+        # Keep the recorder's path spelling, normalizing . and .. without resolving symlinks.
+        # Dependency validation follows those links; cache exclusion uses the OS's case rules.
+        path = os.path.abspath(name if os.path.isabs(name) else os.path.join(cwd, name))
+        key = os.path.normcase(path)
+        if key not in cache_roots and not key.startswith(prefixes) and not os.path.basename(path).startswith(WRAPPER_PREFIX):
+            paths.add(path)
+    return sorted(paths)
+
+
+def write_inputs(pdf: Path, fls: Path, database: Path, *, ctx: ProjectContext, cache: Path,
+                extra=()):
+    pdf.with_suffix('.inputs.json').write_text(json.dumps(recorded_inputs(
+        fls, database, ctx=ctx, cache=cache, extra=extra)), encoding='utf-8')
+
+
+PRUNE_EVERY = 600.0      # seconds between two prune_unused passes over one folder (maybe_prune_unused)
+_PRUNED: dict[str, float] = {}
+_PRUNED_LOCK = threading.Lock()
+
+
+def maybe_prune_unused(project_root: Path, build_dir: Path, days=UNUSED_DAYS, *, clock=time.monotonic) -> bool:
+    """prune_unused, at most once per PRUNE_EVERY for a folder; whether it ran. A render ran it before every compile:
+    a pass looks at every wrapper under a lock each (the background workspace holds hundreds, three per slide since
+    v8.49.0), so the background workers queued behind one another there, could not stop when told to, and took the
+    time the window needed (v8.52.2). Once in ten minutes is enough for the age limit in days."""
+    key, now = str(project_root), clock()
+    with _PRUNED_LOCK:
+        last = _PRUNED.get(key)
+        if last is not None and now - last < PRUNE_EVERY:
+            return False
+        _PRUNED[key] = now
+    prune_unused(project_root, build_dir, days)
+    return True
+
+
+@measure('prune')
+def prune_unused(project_root: Path, build_dir: Path, days=UNUSED_DAYS):
+    """Delete preview wrappers, build caches and formats unused for days, skipping running builds.
+
+    A cached job keeps its wrapper so latexmk's dependency check keeps working, one per slide and preamble.
+    Wrappers are in build_dir/WRAPPER_FOLDER, in a background workspace's decks/, and, from before v8.58.0,
+    in a project's decks/."""
+    cache_root = build_dir / 'preview-cache'
+    limit = time.time() - days * 86400
+    wrappers = [*(project_root / 'decks').glob(WRAPPER_PREFIX + '*.tex'),
+                *(build_dir / WRAPPER_FOLDER).glob(WRAPPER_PREFIX + '*.tex')]
+    for wrapper in wrappers:
+        cache = cache_root / wrapper.stem[len(WRAPPER_PREFIX):]
+        lock = cache / 'build.lock'
+        with cleanup_guard((cache, wrapper), project_root) as permitted:
+            if not permitted:
+                continue
+            try:
+                # A missing cache alone does not make another root's wrapper old.
+                if lock.exists():
+                    if lock.stat().st_mtime > limit:
+                        continue
+                elif wrapper.stat().st_mtime > limit:
+                    continue
+                wrapper.unlink(missing_ok=True)
+            except FileNotFoundError:
+                continue
+            shutil.rmtree(cache, ignore_errors=True)
+    for directory in (build_dir / 'preview-formats').glob('*'):
+        with cleanup_guard((directory,), project_root) as permitted:
+            if not permitted or not directory.is_dir():
+                continue
+            lock = directory / 'build.lock'
+            try:
+                if (lock if lock.exists() else directory).stat().st_mtime > limit:
+                    continue
+            except FileNotFoundError:
+                continue
+            shutil.rmtree(directory, ignore_errors=True)
+
+
+# latexmk settings of SlideMage's own, for preview builds only (passed with -r after the project's rc files; deck
+# compiles never see them). Without them a slide's first render runs LuaLaTeX three times where two settle it:
+# * biblatex writes the checksum of the .bbl it read into the .aux ("nohash" in the first run), and the logreq flags
+#   in .run.xml flip after biber ran; latexmk saw the .aux/.run.xml change and ran once more. It tracks the .bbl
+#   itself, so those lines are left out of its checksums.
+# * latexmk's name normalisation turns the build folder into Git-for-Windows Perl's /c/..., /tmp/... spelling while
+#   LuaLaTeX's .fls says C:/...; latexmk then saw every helper file twice and the second name as newly in use.
+#   Previews give -outdir/-auxdir themselves, so nothing needs normalising.
+# Perl single quotes: '\\\\' is a regex backslash.
+PREVIEW_LATEXMKRC = r"""# Written by SlideMage (preview_build.PREVIEW_LATEXMKRC) for preview builds; rewritten when it differs.
+$hash_calc_ignore_pattern{'aux'} = '^\\\\abx\@aux\@read\@bbl(?:\@mdfivesum|rerun)';
+$hash_calc_ignore_pattern{'xml'} = '^\s*<(?:internal|external) package="biblatex"';
+$normalize_names = 0;
+# Capture the expanded command at the point latexmk would execute it, without running it twice.
+push @{$hooks{'before_xlatex'}}, sub {
+    return unless $rule eq 'lualatex';
+    eval { require JSON::PP; };
+    return if $@;
+    local *Run = sub {
+        my $cwd = Cwd::getcwd();
+        $cwd = Cygwin::posix_to_win_path($cwd) if defined &Cygwin::posix_to_win_path;
+        my %env = map { $_ => $ENV{$_} } grep {
+            /^(?:TEX|BIB|LUA|MIKTEX|FONTCONFIG)/ || /^(?:PATH|OSFONTDIR|VARTEXFONTS|SOURCE_DATE_EPOCH)$/
+        } keys %ENV;
+        my $source = $quote.($Psource ? $$Psource : $texfile_name).$quote;
+        $source =~ s(/)(\\)g if ($^O eq 'MSWin32') && $MSWin_back_slash;
+        if (open my $fh, '>', "${aux_dir1}${root_filename}.direct.json") {
+            print $fh JSON::PP->new->utf8->encode({command => $_[0], source => $source, cwd => $cwd, env => \%env});
+            close $fh;
+        }
+        return (0, 0);
+    };
+    Run_subst(undef, 0);
+};
+"""
+# biblatex reads .run.xml silently at the end of the document, so latexmk learned of it only when the second run read
+# it, and ran a third to be safe. A missing one now prints the line LaTeX prints for a missing .aux, which latexmk
+# reads (the framework does the same for .ovl and .top). After \begin{document}: what precedes it may be the format.
+RUN_XML_NOTE = (r'\ifcsname ver@biblatex.sty\endcsname\IfFileExists{\jobname.run.xml}{}'
+                r'{\typeout{No file \jobname.run.xml.}}\fi' '\n')
+
+
+def preview_latexmkrc(build_dir: Path) -> Path:
+    """The PREVIEW_LATEXMKRC file in `build_dir`, written if missing or different."""
+    path = build_dir / 'preview.latexmkrc'
+    try:
+        current = path.read_text(encoding='utf-8')
+    except OSError:
+        current = None
+    if current != PREVIEW_LATEXMKRC:
+        atomic_write(path, PREVIEW_LATEXMKRC)
+    return path
+
+
+def with_run_xml_note(wrapper_text: str) -> str:
+    return wrapper_text.replace('\\begin{document}', '\\begin{document}' + RUN_XML_NOTE, 1)
+
+
+# The view and language lines of a slide wrapper (slide_preview._deck_version_line, deck_language.language_lines).
+# Instructor writes no .ovl, the student views do, so a view change flips helper files and makes latexmk run LuaLaTeX
+# again. A project with languages of its own has two more lines: \SMProjectLanguages[en]{EN,DE,FR} and \SMPdfLang{fr-FR}.
+_VIEW_LINES = re.compile(r'^\\(?:deck(?:version|language)\[[^\]\n]*\]|SMProjectLanguages\[[^\]\n]*\]\{[^}\n]*\}'
+                         r'|SMPdfLang\{[^}\n]*\})$', re.M)
+
+
+def view_variant(wrapper_text: str) -> str:
+    """The view and language a wrapper sets after \\begin{document}, ahead of its \\setSlideID: with the slide,
+    the identity of a build folder. (The presenter mode is a line before the preamble, so the preamble's key has it.)"""
+    body = wrapper_text.partition(r'\begin{document}')[2]
+    return '|'.join(_VIEW_LINES.findall(body.partition(r'\setSlideID')[0]))
+
+
+@measure('cache_configuration')
+def configuration_key(wrapper_text, id_slug, project_root: Path, env):
+    preamble = wrapper_text.partition(r'\begin{document}')[0]
+    rc_paths = [project_root / name for name in ('.latexmkrc', 'decks/.latexmkrc')]
+    # latexmk also reads user/system rc files. Changes must not reuse old state.
+    user_home = Path(env.get('HOME') or env.get('USERPROFILE') or Path.home())
+    rc_paths += [user_home / '.latexmkrc',
+                 Path(env.get('XDG_CONFIG_HOME', str(user_home / '.config'))) / 'latexmk/latexmkrc',
+                 Path('/etc/LatexMk')]
+    if env.get('LATEXMKRCSYS'):
+        rc_paths.append(Path(env['LATEXMKRCSYS']))
+    tools = {}
+    for name in ('latexmk', 'lualatex', 'pdflatex', 'xelatex', 'biber', 'bibtex'):
+        executable = find_tool(name, env.get('PATH'))
+        if executable:
+            path = Path(executable).resolve()
+            info = path.stat()
+            tools[name] = (str(path), info.st_size, info.st_mtime_ns)
+    search = {name: value for name, value in env.items() if name.startswith(
+        ('TEX', 'LUA', 'BIB', 'FONTCONFIG', 'LATEXMK', 'MIKTEX')) or name in
+        ('SLIDEMAGE_LATEX', 'PATH', 'SOURCE_DATE_EPOCH', 'OSFONTDIR', 'VARTEXFONTS')}
+    # Installed packages change TEXINPUTS but no render's preamble (what it reads from them is recorded: issue #251).
+    if 'TEXINPUTS' in search and (texinputs := without_package_dirs(search.pop('TEXINPUTS'))):
+        search['TEXINPUTS'] = texinputs      # an empty value is the same as none
+    configuration = {
+        'schema': 3,                    # 3: PREVIEW_LATEXMKRC and RUN_XML_NOTE
+        'preview_rc': PREVIEW_LATEXMKRC, 'run_xml_note': RUN_XML_NOTE,
+        'root': str(project_root.resolve()), 'slide': id_slug, 'preamble': preamble,
+        'search': search,
+        'tools': tools,
+        'rc': [(str(path), path.read_text(errors='replace') if path.is_file() else '') for path in rc_paths],
+    }
+    return hashlib.sha256(json.dumps(configuration, sort_keys=True).encode()).hexdigest()[:24]
+
+
+def compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, cancel=None, force=False,
+                   workspace: Optional[Path] = None):
+    """Build with the preamble precompiled when that works, else the ordinary way.
+
+    A run that fails only with the format is repeated without it, so a preamble
+    the format cannot reproduce costs one slower build, never a wrong preview.
+
+    `force` makes latexmk rerun every rule (-g), but only when the slide's wrapper is unchanged: a changed wrapper
+    reruns LuaLaTeX alone, which reads every input again. Accepted edge case: a .bib (or other input) edited with
+    its time and size restored in the same render as a slide text change is not seen by biber, as with latexmk itself.
+    """
+    check_cancel(cancel)
+    if workspace is not None:
+        # Background renders keep everything of theirs outside the project: the wrapper, the build caches and
+        # the precompiled format live in `workspace`; TeX still runs in the project's decks/ folder.
+        ctx = dataclasses.replace(ctx, build_dir=workspace / 'build')
+    root = workspace if workspace is not None else ctx.root
+    maybe_prune_unused(root, ctx.build_dir, 2 if workspace is not None else UNUSED_DAYS)
+    folder = workspace / 'decks' if workspace is not None else wrapper_dir(ctx)
+    with active_build(ctx.build_dir, folder, cancel, root=root):
+        preamble, marker, body = wrapper_text.partition(r'\begin{document}')
+        format_dir = None
+        if marker:
+            format_dir = preview_format.ensure(
+                preamble, configuration_key(wrapper_text, '', ctx.root, env),
+                project_root=ctx.root, build_dir=ctx.build_dir, env=env, log=log, lock=build_lock, cancel=cancel)
+        if format_dir is not None:
+            try:
+                return _compile_cached(marker + body, id_slug, log, ctx=ctx, env=env,
+                                       key_text=wrapper_text, format_dir=format_dir, cancel=cancel, force=force, workspace=workspace)
+            except FontCacheBusy:
+                raise                       # not the format's fault: keep it
+            except RuntimeError as exc:
+                check_cancel(cancel)
+                log(f'    (precompiled preamble run failed: {str(exc).splitlines()[0][:100]}; retrying without it)')
+        pdf = _compile_cached(wrapper_text, id_slug, log, ctx=ctx, env=env, key_text=wrapper_text, format_dir=None, cancel=cancel,
+                              force=force, workspace=workspace)
+        if format_dir is not None:
+            # The slide builds without the format but not with it: stop using it.
+            preview_format.disable(format_dir)
+        return pdf
+
+
+def _compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, key_text, format_dir, cancel=None,
+                    force=False, workspace: Optional[Path] = None):
+    # One build folder per view: the format key (compile_cached) stays per preamble.
+    variant = view_variant(key_text)
+    key = configuration_key(key_text, id_slug + '|' + variant if variant else id_slug, ctx.root, env)
+    if format_dir is not None:
+        # A rebuilt format means changed preamble inputs, which latexmk's own
+        # dependency list (only the slide's) cannot see: use fresh state.
+        built = (format_dir / 'preamble.fmt').stat().st_mtime_ns
+        key = key[:16] + hashlib.sha256(f'{built}'.encode()).hexdigest()[:8]
+    cache = ctx.build_dir / 'preview-cache' / key
+    with _SPARE_LOCK:
+        state = _FOCUSED.get(ctx.root)
+        if (state is not None and state['spare'] is not None and cancel is not None
+                and state['focus'] == cancel.preview_focus and state['spare']['cache'] != cache):
+            discard_spare(ctx.root)
+    check_cancel(cancel)            # told to stop while waiting: before the build, not after it
+    jobname = 'preview-' + key
+    folder = workspace / 'decks' if workspace is not None else wrapper_dir(ctx)
+    wrapper = folder / ('_slidemage_' + jobname + '.tex')
+    cache.mkdir(parents=True, exist_ok=True)
+    (cache / 'build.lock').touch()
+    wrapper.parent.mkdir(parents=True, exist_ok=True)
+    with build_lock(cache / 'build.lock', cancel=cancel):
+        return _compile_reserved(wrapper_text, id_slug, log, ctx=ctx, env=env,
+                                 cache=cache, wrapper=wrapper, jobname=jobname,
+                                 format_dir=format_dir, cancel=cancel, force=force)
+
+
+def _compile_reserved(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, cache, wrapper, jobname, format_dir=None, cancel=None, force=False):
+    unstable = cache / 'rerun-limit'
+    if unstable.exists():
+        # Retaining oscillating layout state changes the next preview.
+        # Start this job fresh until it manages to converge again.
+        for generated in cache.glob(jobname + '.*'):
+            generated.unlink(missing_ok=True)
+    wrapper_text = with_run_xml_note(wrapper_text)
+    # Leave the source and outputs in place: rewriting an unchanged wrapper
+    # would defeat latexmk's normal dependency check.
+    changed = not wrapper.exists() or wrapper.read_bytes() != wrapper_text.encode('utf-8')
+    if changed:
+        with stage('wrapper_write'):
+            wrapper.write_text(wrapper_text, encoding='utf-8', newline='')
+    # Returned previews contain only a temporary PDF, so a SyncTeX file in
+    # this private build directory cannot be used by the external viewer.
+    options = ['-synctex=0', '-r', preview_latexmkrc(ctx.build_dir).as_posix()]
+    previous_log = cache / (jobname + '.log')
+    failed_before = (not changed and previous_log.is_file()
+                     and compiler.FATAL_ERROR_RE.search(previous_log.read_text(errors='replace')))
+    if (force or failed_before) and not changed:
+        # Go mode: a changed wrapper makes latexmk run LuaLaTeX, which reads every input again, so only an
+        # unchanged one needs -g to see an input edited with its time and size restored. Also discard latexmk's
+        # remembered error: a missing input restored in another search folder may not invalidate its old graph.
+        options.append('-g')
+    if format_dir is not None:
+        # The project's .latexmkrc command line plus -fmt; the wrapper is the slide only.
+        fmt, env = preview_format.fmt_option(format_dir, env)
+        options.append('-lualatex=lualatex ' + fmt + ' -interaction=nonstopmode -file-line-error %O %S')
+    log(f'==== Rendering {id_slug} (reusable build) ====')
+    try:
+        pdf, rerun_limit = run_preview(ctx, wrapper, jobname, id_slug, cache, log, env=env, reusable=True,
+                                      options=options, cancel=cancel)
+    except RuntimeError as exc:
+        exc.preview_inputs = list(getattr(exc, 'preview_inputs', ())) + preview_format.inputs(format_dir)
+        raise
+    if rerun_limit:
+        unstable.touch()
+        log('    (PDF produced, but latexmk reached its rerun limit; layout may not be stable)')
+    else:
+        unstable.unlink(missing_ok=True)
+    result = publish_preview(ctx, pdf, id_slug, cache, jobname,
+                             extra=preview_format.inputs(format_dir) if format_dir is not None else ())
+    with _SPARE_LOCK:
+        state = _FOCUSED.get(ctx.root)
+        if (rerun_limit or not DIRECT_LUALATEX or cancel is None or cancel.is_set() or cancel.low_priority
+                or state is None or state['focus'] != cancel.preview_focus or state['spare'] is not None
+                or not app_settings.get(ctx, SPARE_TEX_SETTING_KEY, True)):
+            return result
+        try:
+            invocation = json.loads((cache / (jobname + '.direct.json')).read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            return result
+        source = re.search(r'(?:^|\s)("[^"]*"|[^\s]+)\s*$', invocation['command'])
+        if source is None or source[1] != invocation.get('source'):
+            return result
+        wait = r"\directlua{token.set_macro('smnext', io.read('l'))}\input{\smnext}"
+        quoted = '"' + wait + '"' if os.name == 'nt' else shlex.quote(wait)
+        command = invocation['command'][:source.start(1)] + quoted
+        try:
+            output = tempfile.TemporaryFile(mode='w+t', encoding='utf-8', errors='replace')
+        except OSError:
+            return result
+        started = time.time()
+        try:
+            inventory = search_inventory(ctx.root, compiler.build_env(ctx))
+            proc = subprocess.Popen(
+                command if os.name == 'nt' else ['/bin/sh', '-c', command], shell=os.name == 'nt',
+                cwd=invocation['cwd'], env=_direct_env(env, invocation['env']),
+                stdin=subprocess.PIPE, stdout=output, stderr=subprocess.STDOUT, text=True,
+                encoding='utf-8', errors='replace', **no_console_kwargs(),
+                **({'start_new_session': True} if os.name != 'nt' else {}))
+        except (OSError, ValueError):
+            output.close()
+            return result
+        spare = dict(process=proc, output=output, started=started, inventory=inventory, cache=cache, invocation=invocation)
+
+        def expire():
+            with _SPARE_LOCK:
+                if state['spare'] is spare:
+                    discard_spare(ctx.root)
+
+        spare['timer'] = threading.Timer(600, expire)
+        spare['timer'].daemon = True
+        state['spare'] = spare
+        spare['timer'].start()
+    return result
+
+
+FONT_CACHE_ATTEMPTS = 3
+_FONT_CACHE_RACE = preview_format._FONT_CACHE_RACE
+
+
+class FontCacheBusy(RuntimeError):
+    """Every attempt lost luaotfload's font-cache race (font_cache_race): a failure of the moment, not the slide's
+    or the precompiled preamble's."""
+
+
+def font_cache_race(log_text: str) -> bool:
+    """Did luaotfload give up because it found its font cache "not writable"? It tests that by creating and
+    deleting a file of one fixed name in the cache folder, so LuaLaTeX runs that start at the same moment can make
+    each other fail it (Windows refuses to open a file that is being deleted). Without luaotfload every font is
+    missing, and MiKTeX spends about a second per font trying to make one. TeX wraps log lines, so line breaks are
+    ignored."""
+    return _FONT_CACHE_RACE in log_text.replace('\r', '').replace('\n', '')
+
+
+def _pause(seconds: float, cancel=None) -> None:
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        check_cancel(cancel)
+        time.sleep(min(0.05, max(0.0, deadline - time.monotonic())))
+
+
+def run_preview(ctx: ProjectContext, wrapper: Path, jobname: str, id_slug: str, outdir: Path, log, *, env, reusable: bool,
+                options=(), cancel=None) -> tuple[Path, bool]:
+    """latexmk on a preview wrapper into `outdir`: the one execution of a fresh build (a folder of its
+    own, .build/) and a reusable one (its cache folder, keeping latexmk's state between edits).
+    Returns the PDF and whether latexmk gave up at its rerun limit. Raises RuntimeError (with the
+    log's tail) unless the run produced a good PDF.
+
+    Only a reusable build can hold a previous run's PDF, so only it also fails on a nonzero exit; it
+    accepts one a TeX-clean PDF is produced for when latexmk reaches its rerun limit (the manual's
+    oscillating .top correction), and never returns a previous successful PDF after an unsuccessful
+    edit. A fresh build keeps latexmk's auxiliary files where .latexmkrc puts them ($aux_dir is
+    this same .build/), so it passes no -auxdir."""
+    check_cancel(cancel)
+    pdf = outdir / (jobname + '.pdf')
+    previous_pdf = pdf.stat().st_mtime_ns if pdf.exists() else None
+    output_tail = deque(maxlen=200)
+
+    def on_line(line):
+        output_tail.append(line)
+        record_line(line)
+
+    if Path(os.path.abspath(wrapper.parent)) != Path(os.path.abspath(ctx.decks_dir)):
+        # The wrapper is not in decks/: in .build/preview-wrappers/, or outside the project (a background render).
+        # latexmk's rc files make it change into the source's folder, so it is told not to, and runs in decks/
+        # itself: TeX then sees the same folders as for a wrapper in decks/ (the ../ of the deck preambles). The
+        # project's own rc file is read from there.
+        ctx.decks_dir.mkdir(parents=True, exist_ok=True)       # latexmk's folder, even before the first deck
+        rc = ctx.decks_dir / '.latexmkrc'
+        # -cd- after the -r: latexmk applies its arguments in order, and a project rc file may set $do_cd.
+        extra = (['-r', str(ctx.root / '.latexmkrc')] if not rc.is_file() and (ctx.root / '.latexmkrc').is_file() else []) + ['-cd-']
+        command = compiler.latexmk_command(wrapper, jobname, outdir, '-f', *extra, *options, cwd=ctx.decks_dir, aux=reusable,
+                                           absolute=True)
+        run_cwd = ctx.decks_dir
+    else:
+        command = compiler.latexmk_command(wrapper, jobname, outdir, '-f', *options, cwd=ctx.root, aux=reusable)
+        run_cwd = ctx.root
+    # Never bypass an explicit -g: unchanged text may hide a repaired or otherwise changed input.
+    direct = outdir / (jobname + '.direct.json')
+    log_path = outdir / (jobname + '.log')
+    if (DIRECT_LUALATEX and reusable and previous_pdf is not None and '-g' not in options
+            and log_path.is_file() and not compiler.FATAL_ERROR_RE.search(log_path.read_text(errors='replace'))):
+        try:
+            invocation = json.loads(direct.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            invocation = None
+        if invocation is not None:
+            # TeX reads the .bbl, not its .bib sources; let latexmk notice bibliography edits/deletions.
+            bibs = [Path(name) for name in recorded_inputs(
+                outdir / (jobname + '.fls'), outdir / (jobname + '.fdb_latexmk'), ctx=ctx, cache=outdir)
+                    if Path(name).suffix == '.bib']
+            if any(not path.is_file() or path.stat().st_mtime_ns > direct.stat().st_mtime_ns for path in bibs):
+                invocation = None
+        if invocation is not None:
+            # Include the framework's layout/reveal helpers and bibliography control file as well.
+            auxiliaries = [outdir / (jobname + ext) for ext in
+                           ('.aux', '.nav', '.toc', '.bbl', '.bcf', '.out', '.snm', '.ovl', '.top')]
+            before = [path.read_bytes() if path.is_file() else None for path in auxiliaries]
+            log('    (direct LuaLaTeX pass)')
+            with stage('lualatex'):
+                try:
+                    with _SPARE_LOCK:
+                        state = _FOCUSED.get(ctx.root)
+                        spare = state['spare'] if state is not None else None
+                        if (spare is not None and cancel is not None and not cancel.low_priority
+                                and state['focus'] == cancel.preview_focus and spare['cache'] == outdir
+                                and spare['invocation'] == invocation
+                                and app_settings.get(ctx, SPARE_TEX_SETTING_KEY, True)):
+                            state['spare'] = None   # focus loss now leaves this render to its cancel token
+                            spare['timer'].cancel()
+                        else:
+                            spare = None
+                    build = None
+                    if spare is not None:
+                        proc = spare['process']
+                        cancel._set_process(proc)
+                        try:
+                            try:
+                                proc.stdin.write(wrapper.as_posix() + '\n')
+                                proc.stdin.flush()
+                            except OSError:
+                                compiler.CancelToken._kill(proc)
+                                proc.wait()
+                            else:
+                                if cancel.preview_evidence is not None:
+                                    cancel.preview_evidence.update(started=spare['started'], inventory=spare['inventory'])
+                                log('    (pre-started LuaLaTeX pass)')
+                                returncode = proc.wait()
+                                spare['output'].seek(0)
+                                for line in spare['output']:
+                                    on_line(line)
+                                    log(line.rstrip('\n'))
+                                build = compiler.Build(returncode, pdf, log_path,
+                                                       log_path.read_text(encoding='utf-8', errors='replace'),
+                                                       cancel.job_stopped())
+                        finally:
+                            cancel._remove_process(proc)
+                            with suppress(OSError):
+                                proc.stdin.close()
+                            spare['output'].close()
+                    if build is None:
+                        discard_spare(ctx.root, outdir)
+                        build = compiler.run_latexmk(
+                            invocation['command'] if os.name == 'nt' else ['/bin/sh', '-c', invocation['command']],
+                            jobname=jobname, outdir=outdir,
+                            cwd=Path(invocation['cwd']), env=_direct_env(env, invocation['env']), log=log,
+                            on_line=on_line, bufsize=-1, cancel=cancel)
+                except OSError:
+                    build = None
+            check_cancel(cancel)
+            after = [path.read_bytes() if path.is_file() else None for path in auxiliaries]
+            if (build is not None and build.ok and not build.returncode and before == after
+                    and pdf.stat().st_mtime_ns != previous_pdf
+                    and not re.search(r'Rerun to get|Label\(s\) may have changed|Please\s+(?:re|\(re\))?run|'
+                                      r'rerun (?:LaTeX|Biber|BibTeX)', build.log_text, re.I)):
+                return pdf, False
+            # latexmk must reread the outputs of the direct pass, even if it remembers this wrapper.
+            command.insert(command.index('-f') + 1, '-g')
+            output_tail.clear()
+            log('    (direct pass needs latexmk)')
+    discard_spare(ctx.root, outdir)
+    for attempt in range(1, FONT_CACHE_ATTEMPTS + 1):
+        with stage('latexmk'):
+            try:
+                build = compiler.run_latexmk(
+                    command, jobname=jobname, outdir=outdir, cwd=run_cwd, env=env, log=log, on_line=on_line, bufsize=-1, cancel=cancel)
+            except FileNotFoundError as exc:
+                raise RuntimeError('latexmk not found on PATH -- is a TeX distribution installed?') from exc
+            finish_rules()
+        check_cancel(cancel)
+        if attempt == FONT_CACHE_ATTEMPTS or not font_cache_race(build.log_text):
+            break
+        # luaotfload lost a race for its font cache (see font_cache_race): the slide is fine, the run is not. Again,
+        # all passes, after a moment so the processes that started with it are past their start.
+        log('    (font cache busy: several LuaLaTeX runs started at once; running this one again)')
+        _pause(random.uniform(0.2, 1.0), cancel)
+        if '-g' not in command:
+            command.insert(command.index('-f') + 1, '-g')
+        output_tail.clear()
+    tail = ''.join(output_tail)
+    rerun_limit = bool(reusable and build.returncode and pdf.exists() and pdf.stat().st_mtime_ns != previous_pdf
+                       and 'Maximum runs of' in tail and 'needed too many passes' in tail)
+    if not build.ok or (reusable and build.returncode and not rerun_limit):
+        error = FontCacheBusy if font_cache_race(build.log_text) else RuntimeError
+        # The first error leads: the log's last lines are LuaTeX's statistics, after an error in nonstop mode too.
+        first = compiler.first_tex_error(build.log_text)
+        failure = error(f'Render failed for {id_slug}:\n' + (first + '\n...\n' if first else '')
+                        + '\n'.join(build.log_text.splitlines()[-25:]))
+        # Carry this job's dependencies to the background worker. Looking for the newest recorder in a shared
+        # build tree can pick another concurrent render, and background jobs build outside the project entirely.
+        try:
+            failure.preview_inputs = recorded_inputs(outdir / (jobname + '.fls'), outdir / (jobname + '.fdb_latexmk'),
+                                                     ctx=ctx, cache=outdir)
+        except OSError:
+            failure.preview_inputs = []
+        failure.missing_inputs = compiler.MISSING_INPUT_RE.findall(build.log_text)
+        raise failure
+    return pdf, rerun_limit
+
+
+def publish_preview(ctx: ProjectContext, pdf: Path, id_slug: str, outdir: Path, jobname: str, *, extra=(), copy=shutil.copy2) -> Path:
+    """Copy a built preview PDF to a folder of its own in the temp directory (named after the slide
+    for a sane viewer title) and write its recorded inputs beside it."""
+    dest = Path(tempfile.mkdtemp(prefix=RENDER_FOLDER_PREFIX)) / (id_slug + '.pdf')
+    with stage('pdf_copy'):
+        copy(pdf, dest)
+    with stage('dependencies'):
+        write_inputs(dest, outdir / (jobname + '.fls'), outdir / (jobname + '.fdb_latexmk'),
+                     ctx=ctx, cache=outdir, extra=extra)
+    return dest

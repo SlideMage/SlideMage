@@ -1,0 +1,26 @@
+%% Included in decks: slidemage-manual
+%%
+
+% SlideMage manual, chapter "Content and layout": QR codes (the QR button of the
+% Source view). The slide shows its own result: the code in the bottom-right
+% corner opens slidemage.org.
+\setSlideVersion{1-0-0}
+\begin{standardframe}{QR codes}
+	\cornerfigure[corner=se]{\SMQRCode[0.45\textheight]{media/qr-slidemage-org.pdf}{\url{https://slidemage.org}}}
+	\begin{minipage}[t]{0.66\linewidth}
+		\small\SMLineTop
+		The \emph{QR} button in the Source view, after \emph{Insert} and
+		\emph{Cite}, makes a code and puts it on the slide; the one in the
+		corner opens SlideMage's website.
+		\par\smallskip
+		\shrinklists{3}
+		\begin{itemize}
+			\item \emph{What the code holds}: a URL, an email, a contact, a calendar event or a map location
+			\item A live preview shows the code and the height it needs in a seminar room and in a lecture hall
+			\item \emph{Caption}: none, its text, or your own, such as \SMCode{QR 1}; \emph{On the slide}: at the cursor or in a corner
+			\item A PDF or PNG in \SMCode{media/}; \emph{Also save a copy\ldots} writes PDF, PNG, SVG or EPS elsewhere
+			\item Cursor on a code's line, \emph{QR}: change it
+		\end{itemize}
+		\SMCodeFile{snippets/1a4-1.tex}
+	\end{minipage}
+\end{standardframe}

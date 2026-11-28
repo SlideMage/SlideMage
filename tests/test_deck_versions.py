@@ -1,0 +1,109 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Edits made outside the app get the "+", and a deck's changed slides are found (slide_versioning)."""
+import pytest
+
+from slidemage import app_settings, compiler, deck_scan, partial_compile
+from slidemage import slide_versioning as sv
+from slidemage.slide_source import read_slide_source
+
+HEADER = "%% Included in decks: talk\n%%\n\n"
+CURRENT = "abc-EN-Demo-current.tex"
+
+
+def _project(tmp_path, current, frozen=None):
+    slides = tmp_path / "slides"
+    (slides / ".backups").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "decks").mkdir()
+    (slides / CURRENT).write_text(current, encoding="utf-8")
+    if frozen is not None:
+        (slides / "abc-EN-Demo-v1-0-0.tex").write_text(frozen, encoding="utf-8")
+    (tmp_path / "decks" / "talk.tex").write_text("\\documentclass{x}\n\\begin{document}\n\\slide{abc-EN-Demo}\n\\end{document}\n",
+                                                 encoding="utf-8")
+    return slides / CURRENT
+
+
+def _plan(ctx, deck, version=None, **overrides):
+    job = compiler.CompileJob(deck, version, None, **overrides)
+    return partial_compile.PartialPlan(ctx, job, [], [], [], ctx.root / "full.pdf", ctx.root / "aux", {})
+
+
+def test_an_outside_edit_of_a_frozen_slide_gets_the_plus(ctx, tmp_path):
+    current = _project(tmp_path, HEADER + "\\setSlideVersion{1-0-0}\nedited\n", HEADER + "\\setSlideVersion{1-0-0}\noriginal\n")
+    assert sv.mark_external_edit(ctx, current)
+    assert sv.parse_marker(read_slide_source(current)[0]) == ((1, 0, 0), True)
+    assert not sv.mark_external_edit(ctx, current)           # already marked
+
+
+def test_no_plus_when_unchanged_or_never_frozen(ctx, tmp_path):
+    same = HEADER + "\\setSlideVersion{1-0-0}\nsame\n"
+    current = _project(tmp_path, same, same)
+    assert not sv.mark_external_edit(ctx, current)
+    assert sv.parse_marker(read_slide_source(current)[0]) == ((1, 0, 0), False)
+    (tmp_path / "slides" / "abc-EN-Demo-v1-0-0.tex").unlink()
+    assert not sv.mark_external_edit(ctx, current)            # nothing to compare with
+
+
+def test_a_deck_compile_takes_the_last_version_of_a_changed_slide_unless_the_setting_says_otherwise(ctx, tmp_path):
+    _project(tmp_path, HEADER + "\\setSlideVersion{1-0-0+}\nedited\n", HEADER + "\\setSlideVersion{1-0-0}\noriginal\n")
+    deck = next(d for d in deck_scan.scan_decks(ctx) if d.name == "talk")
+    substitution = r"\declare@file@substitution{slides/abc-EN-Demo-current.tex}{slides/abc-EN-Demo-v1-0-0.tex}"
+    assert sv.saved_version_lines(ctx, deck, "EN") == [r"\makeatletter", substitution, r"\makeatother"]
+    plan = _plan(ctx, deck)
+    job = plan.job
+    for text in (compiler.wrapper_text(ctx, job), partial_compile.wrapper_text(plan)):
+        assert substitution in text                                   # the default: the last version
+    assert sv.saved_versions(ctx, deck, "EN") == {"abc-EN-Demo": "abc-EN-Demo-v1-0-0.tex"}
+    assert compiler.uses_saved_versions(ctx, job)
+    assert sv.changed_slides(ctx, deck, "en") == ["abc-EN-Demo"]
+    job.current_edits = True                                          # this run only (issue #97)
+    assert not compiler.uses_saved_versions(ctx, job)
+    for text in (compiler.wrapper_text(ctx, job), partial_compile.wrapper_text(plan)):
+        assert substitution not in text
+    job.current_edits = False
+    app_settings.set(ctx, sv.RENDER_CHANGES_SETTING_KEY, True)
+    for text in (compiler.wrapper_text(ctx, job), partial_compile.wrapper_text(plan)):
+        assert substitution not in text                               # the slide as it is now
+    assert not compiler.uses_saved_versions(ctx, job)
+    app_settings.set(ctx, sv.RENDER_CHANGES_SETTING_KEY, False)
+    (tmp_path / "slides" / "abc-EN-Demo-v1-0-0.tex").unlink()
+    assert sv.saved_version_lines(ctx, deck, "EN") == []                # no frozen file: the current one
+    assert r"\declare@file@substitution" not in partial_compile.wrapper_text(plan)
+    (tmp_path / "slides" / "abc-EN-Demo-v1-0-0.tex").write_text(
+        HEADER + "\\setSlideVersion{1-0-0}\noriginal\n", encoding="utf-8")
+    (tmp_path / "slides" / CURRENT).write_text(HEADER + "\\setSlideVersion{1-0-0}\nx\n", encoding="utf-8")
+    assert sv.saved_version_lines(ctx, deck, "EN") == [] and not sv.changed_slides(ctx, deck, "en")
+    assert r"\declare@file@substitution" not in partial_compile.wrapper_text(plan)
+
+
+@pytest.mark.parametrize("version, overrides, header", [
+    (None, {}, ""),
+    ("instructor", {"presenter": True, "appendix_toc": True, "run_id": "run", "language": "DE"},
+     "\\def\\deckversionoverride{instructor}\n\\def\\SMPresenterModeOverride{1}\n"
+     "\\def\\SMAppendixTocOverride{1}\n\\pdfextension info{/SlideMageRun (run)}\n"
+     "\\def\\decklanguageoverride{de}\n"),
+])
+def test_full_and_partial_wrappers_keep_the_same_override_header(ctx, tmp_path, monkeypatch, version, overrides, header):
+    _project(tmp_path, HEADER + "\\setSlideVersion{1-0-0}\nsame\n")
+    deck = next(d for d in deck_scan.scan_decks(ctx) if d.name == "talk")
+    plan = _plan(ctx, deck, version=version, **overrides)
+    job = plan.job
+    monkeypatch.setattr(compiler.appendix_toc, "generate_appendix_tex", lambda *_, **kwargs: "GENERATED APPENDIX")
+    full, partial = compiler.wrapper_text(ctx, job), partial_compile.wrapper_text(plan)
+    assert full.partition(r"\documentclass")[0] == partial.partition(r"\documentclass")[0] == header
+    assert ("GENERATED APPENDIX" in full) == job.appendix_toc
+    assert "GENERATED APPENDIX" not in partial                        # only the footer link remains
+
+
+def test_partial_wrapper_substitutes_the_language_selected_for_the_job(ctx, tmp_path):
+    _project(tmp_path, HEADER + "\\setSlideVersion{1-0-0+}\nedited\n", HEADER + "\\setSlideVersion{1-0-0}\noriginal\n")
+    for suffix, text in (("current", "\\setSlideVersion{2-0-0+}\nNeu\n"), ("v2-0-0", "Alt\n")):
+        (ctx.slides_dir / f"def-DE-Demo-{suffix}.tex").write_text(
+            "%% Translation of: abc-EN-Demo\n" + text, encoding="utf-8")
+    deck = next(d for d in deck_scan.scan_decks(ctx) if d.name == "talk")
+    plan = _plan(ctx, deck, language="DE")
+    job = plan.job
+    substitution = r"\declare@file@substitution{slides/def-DE-Demo-current.tex}{slides/def-DE-Demo-v2-0-0.tex}"
+    for text in (compiler.wrapper_text(ctx, job), partial_compile.wrapper_text(plan)):
+        assert substitution in text
+        assert r"\declare@file@substitution{slides/abc-EN-Demo-current.tex}" not in text

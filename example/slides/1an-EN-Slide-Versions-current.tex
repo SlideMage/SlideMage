@@ -1,0 +1,30 @@
+%% Included in decks: slidemage-manual, slidemage-manual-copy
+%%
+
+% SlideMage manual, chapter "Slides": versions, with SlideMage's Update version dialog
+% (media/screenshot-slidemage-save-dialog.png, made by tools/manual/make_screenshots.py).
+\setSlideVersion{1-0-1+}
+\begin{standardframe}{Slide versions}
+	\small
+	A slide changes over the years, but last year's deck should still compile as it was. So SlideMage keeps
+	old versions: \SMCode{...-current.tex} is the live slide, every \SMCode{...-v1-2-0.tex} beside it a frozen
+	copy. Edits are saved as you type, and the footer shows a ``+'' (v1.2.0+) until \emph{Update version} in
+	the Source view asks how big the change is:
+	\par
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.36\linewidth}
+			{\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=\dimexpr\linewidth-0.8pt\relax]{media/screenshot-slidemage-save-dialog.png}}}
+		\end{column}
+		\begin{column}{0.60\linewidth}
+			\shrinklists{1}
+			\begin{itemize}
+				\item \emph{Major}, \emph{Minor}, \emph{Patch}: frozen under the higher number
+				\item \emph{New slide\ldots}: a new slide here and in decks you tick
+				\item Typos need no version; reveal steps alone are a \emph{Patch}
+				\item A deck's PDF shows a ``+'' slide as its last version; \emph{Settings} $\rightarrow$ General can include the changes
+				\item Several: select, right-click $\rightarrow$ \emph{Update versions\ldots}
+				\item \SMCmd{slideversion} keeps an old one in a deck (\emph{Six ways\ldots})
+			\end{itemize}
+		\end{column}
+	\end{columns}
+\end{standardframe}

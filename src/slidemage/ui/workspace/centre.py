@@ -1,0 +1,1702 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""The workspace's centre column: a strip of tabs over Preview, Source, Split (both side by side) and
+Details (docs/UI_REDESIGN_PLAN.md, step 5; docs/plans/centre-tabs.md).
+
+Each open deck has a working tab (tab-contexts.md): it follows that deck's focused slide, and showing a tab of
+another deck brings that deck's slide list, panels and top bar with it. A file opened on purpose -- a deck's own
+source, SlideMage.bib, test-slides.tex, or a slide's file (search, the slide list's Open in new tab, a frozen
+version from Details) -- has a tab of its own until it is closed (centre_tabs.py); opening a file that has a tab
+shows that tab. Every tab remembers the mode it was last shown in; a file that is no slide has the Source view alone.
+The top bar's mode switch (WorkspaceState.mode) says which of the views are shown for the tab on show; the focused
+slide, view and language come from the same state. This class decides *what* each view shows and keeps them in step:
+
+* the Source view shows the file of the tab on show: for the slide tab the file of the focused slide (the one the
+  deck calls, so a pinned version opens as the frozen snapshot it is), or a slide's file opened on purpose -- a
+  frozen version -- until another slide is focused; for a file tab its file, which the Source view keeps open
+  while another tab is shown (and shares with the slide tab when both show the same file);
+* the Preview shows the slide of the tab on show: the slide tab's as the deck typesets it, a slide file tab's as the
+  deck calls it (found by id-slug, the occurrence it was opened from) or, when the deck does not use it, alone; a
+  frozen version always alone. Saving re-renders it while it is visible. Its language chip shows the slide's file in
+  the other language instead (the top bar's language stays), typeset in that language as the deck calls it;
+* Details shows the slide of the tab on show the same way.
+
+Focusing a slide shows the slide tab; the file tabs stay open. Showing a slide file tab does not focus its slide: the
+slide list, the side panels and the background renders stay on the focused slide, while the chat, Ctrl+S, Ctrl+R and
+the readability and AI tasks act on the file shown (`path`, `shown_slide`). Views that are not visible are not updated, only
+brought up to date when they are shown. Unsaved edits are kept per file by the Source view, whichever tab is
+shown, and counted in WorkspaceState.dirty.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Callable, NamedTuple, Optional
+
+from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal
+from PySide6.QtWidgets import (
+    QApplication, QCheckBox, QFrame, QHBoxLayout, QMessageBox, QSplitter, QSplitterHandle, QVBoxLayout)
+
+from ... import app_settings, fileio, deck_editor, deck_language, deck_outline, languages, open_path, preview_build, slide_branch, slide_language, slide_source, slide_usage, slide_versioning
+from ...ai.tools.slidemage import slide_target
+from ...preview_target import PreviewTarget, for_call, for_path
+from ...slide_language import MULT, bare_id, current_path_for_bare_id, own_language
+from ..dialogs.new_slide_version import NewSlideVersionSheet
+from ..dialogs.slide_usage_dialog import ask_deck_versions, ask_overwrite, revision_summary
+from .. import layout_settings
+from ..kit.tokens import SPACE
+from ..kit import kit_qss as q
+from ..kit.widgets import CurrentPageStack, ResetSplitterHandle, Surface
+from .centre_tabs import DECK, FILE, FOLLOW, CentreTab, CentreTabs, TabStrip
+from .details_view import DetailsPane
+from .preview_view import PreviewPane
+from .source_file import NEW_SLIDE, OVERWRITE, RELOADED, autosave_on, prompt_version_level
+from .source_view import SourcePane
+from ...deck_editor import VIEW_INSTRUCTOR, VIEWS
+from .state import MODES, DeckWork, WorkspaceState
+
+
+# Settings key of the share of the width the Source view gets in the Split view.
+SPLIT_SETTING = "source_preview_split"
+DEFAULT_SPLIT = 0.5
+
+# app_settings key (per project, D7 of the plan): the open file tabs' paths relative to the project, each one's
+# mode and which was active, so they come back when the project opens again.
+CENTRE_TABS_SETTING = "centre_tabs"
+# layout_settings key (this user and machine, not the project, direct instruction 2026-11-04): whether restore_tabs()
+# runs at startup at all. On by default; save_tabs() always runs regardless, so switching this back on later still
+# has the last session's tabs to restore.
+RESUME_TABS_SETTING = "resume_tabs"
+
+
+class _SourcePreviewSplitter(QSplitter):
+    """Source | Preview; a double-click on the divider gives each half the width again."""
+    reset_requested = Signal()
+
+    def createHandle(self) -> QSplitterHandle:
+        return ResetSplitterHandle(self.orientation(), self)
+
+
+def ask_update_on_leave(parent, slide_id: str, version: slide_versioning.Version) -> tuple[bool, bool]:
+    """The question when leaving a changed slide: (Update Version chosen, "Don't ask again" ticked)."""
+    box = QMessageBox(parent)
+    box.setWindowTitle("Update version")
+    box.setText(f"{slide_id} has changed since v{slide_versioning.format_dot(version)}.\n\n"
+                "Make the changes a version of their own now?")
+    update = box.addButton("Update version…", QMessageBox.ButtonRole.AcceptRole)
+    later = box.addButton("Not now", QMessageBox.ButtonRole.RejectRole)
+    box.setDefaultButton(later)
+    stop = QCheckBox("Don't ask again (Settings → General)")
+    box.setCheckBox(stop)
+    box.exec()
+    return box.clickedButton() is update, stop.isChecked()
+
+
+def _is_slide_file(path: Path) -> bool:
+    try:
+        slide_language.call_for_slide_path(path)
+    except ValueError:
+        return False
+    return True
+
+
+class _CtrlWatch(QObject):
+    """While a Ctrl+Tab series runs: says when it is over, the Ctrl key released (or another key pressed)."""
+
+    released = Signal()
+
+    def eventFilter(self, _obj, event) -> bool:  # noqa: N802 -- Qt's name
+        kind = event.type()
+        if kind == QEvent.Type.KeyRelease and event.key() in (Qt.Key.Key_Control, Qt.Key.Key_Meta):
+            self.released.emit()
+        elif kind == QEvent.Type.KeyPress and not event.modifiers() & (
+                Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.MetaModifier):
+            self.released.emit()
+        return False
+
+
+def _work_to_json(work) -> dict:
+    """A working tab's DeckWork as the saved tabs hold it (tab-contexts.md section 6)."""
+    return {"focus": work.focused_slide,
+            "occurrence": list(work.focused_occurrence) if work.focused_occurrence is not None else None,
+            "view": work.view, "language": work.language, "scroll": work.list_scroll,
+            "collapsed": list(work.collapsed), "filter": work.list_filter}
+
+
+def _freeze(value):
+    """A saved occurrence key back to the tuple it was (JSON writes tuples as lists)."""
+    return tuple(_freeze(item) for item in value) if isinstance(value, list) else value
+
+
+def _work_from_json(data) -> Optional[DeckWork]:
+    """The DeckWork saved by `_work_to_json`; None when there is none or it does not read."""
+    if not isinstance(data, dict):
+        return None
+    focus, occurrence = data.get("focus"), data.get("occurrence")
+    scroll, collapsed, text = data.get("scroll"), data.get("collapsed"), data.get("filter")
+    return DeckWork(
+        focused_slide=focus if isinstance(focus, str) else None,
+        focused_occurrence=_freeze(occurrence) if isinstance(occurrence, list) else None,
+        view=data["view"] if data.get("view") in VIEWS else VIEW_INSTRUCTOR,
+        language=data["language"] if isinstance(data.get("language"), str) else None,
+        list_scroll=scroll if isinstance(scroll, int) and not isinstance(scroll, bool) else 0,
+        collapsed=tuple(c for c in collapsed if isinstance(c, str)) if isinstance(collapsed, list) else (),
+        list_filter=text if isinstance(text, str) else "")
+
+
+class ListPlaceholder(NamedTuple):
+    """What the slide list shows in place of the list (CentreColumn.list_placeholder)."""
+    text: str
+    back: str = ""              # the button that shows the working tab again; "" for none
+    decks: tuple = ()           # the decks that use the slide of a tab with no deck, each offered as "Open in <deck>"
+    note: str = ""              # a second line under the text ("No deck uses this slide yet.")
+
+
+# The most decks a placeholder offers; a slide used in more says how many are left out.
+MAX_PLACEHOLDER_DECKS = 8
+
+
+class CentreColumn(QFrame):
+    versions_changed = Signal()   # a slide was restored or frozen as a version
+    duplicate_requested = Signal(str)   # the details pane's Duplicate: the id-slug of the slide
+    context_changed = Signal(object)    # the CentreTab now on show: the left column follows its context (None: placeholder)
+    source_only_changed = Signal(bool)  # the tab shown has a file that is no slide: the Source view alone
+
+    def __init__(self, app, state: WorkspaceState) -> None:
+        super().__init__()
+        self.app = app
+        self.state = state
+        self._slide_file: Optional[Path] = None   # the slide tab's file: the focused slide's, or one opened on purpose
+        self._opening = False               # open_file() is changing the focus itself
+        self._edited: set[Path] = set()     # files written from the Source view since they were last left
+        self._leaving = False               # _before_focus_changes is asking: nothing nested asks again
+        self.state.leave_check = self._before_focus_changes
+        self._switching = False             # a tab is being shown: its mode is set, then the views refresh once
+        self.rescanning = False             # a deck rescan is under way: a focus it moves is not the user's, so no tab switch
+        self._holding = 0                   # > 0: showing another tab does not refresh, the caller does
+        self._adopting = False              # _follow() is switching the deck under the tab on show, which stays
+        self._closing = 0                   # > 0: a deck is being closed, so the tabs it activates do not switch the deck yet
+        self.tabs = CentreTabs(state.mode, self)
+        # A file tab's mode (D2) is shown through state.mode too (_on_tab_active), but is never the deck's own:
+        # only a working tab's mode is remembered for its deck (the bug fix of centre-tabs.md step 3).
+        state.remember_mode = lambda: self.tabs.active.kind == DECK
+        state.work_of = self._work_of           # a deck opened from anywhere comes back as its working tab left it
+        state.before_switch = self._keep_work   # and the deck it replaces is kept in its working tab (the window adds the list's part)
+        self._shown = self.tabs.active      # the tab the views show (to write its file when it is left)
+        self._ctrl = _CtrlWatch(self)       # watches for the end of a Ctrl+Tab series
+        self._ctrl.released.connect(self.end_tab_cycle)
+        self.tab_strip = TabStrip()
+
+        self.source = SourcePane(app)
+        self.preview = PreviewPane(app, state, self._preview_buffer)
+        self.preview.neighbours = self._neighbour_targets
+        self.preview.deck_targets = self._deck_targets
+        self.preview.slide_requested.connect(self._go_adjacent)
+        self.details = DetailsPane(app, state, self.unsaved)
+        self.details.duplicate_requested.connect(self.duplicate_requested)
+        self.details.open_requested.connect(self._open_from_details)
+        self.details.renamed.connect(self.retarget_slide)
+        ratio = layout_settings.get(SPLIT_SETTING)
+        self._split_ratio = (ratio if isinstance(ratio, (int, float)) and not isinstance(ratio, bool)
+                             and 0.1 <= ratio <= 0.9 else DEFAULT_SPLIT)
+        self._split = _SourcePreviewSplitter(Qt.Orientation.Horizontal)
+        self._split.setChildrenCollapsible(False)
+        self._split.setHandleWidth(9)   # a thin line (kit_qss) with room to grab
+        self._split.splitterMoved.connect(self._remember_split)
+        self._split.reset_requested.connect(self._reset_split)
+        self._split.setObjectName(q.SURFACE)
+        self._split.addWidget(self.source)
+        self._split.addWidget(self.preview)
+        self._pages = CurrentPageStack()
+        self._pages.setObjectName(q.SURFACE)
+        self._pages.addWidget(self._split)
+        self._pages.addWidget(self.details)
+        # A row of its own under the views for the background renders' dial and status (background_previews):
+        # floating over the views it covered the Preview's slide id and the editor's last lines.
+        self.status_row = Surface()
+        row = QHBoxLayout(self.status_row)
+        row.setContentsMargins(SPACE.xl, 0, SPACE.xl, SPACE.md)
+        row.setSpacing(SPACE.md)
+        row.addStretch(1)
+        self.status_row.hide()
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addWidget(self.tab_strip)
+        layout.addWidget(self._pages, 1)
+        layout.addWidget(self.status_row)
+        self.setObjectName(q.CARD)   # the white card on the grey page
+
+        self.source.dirty_changed.connect(self._update_dirty)
+        self.source.written.connect(self._edited.add)
+        self.source.buffer_changed.connect(self.preview.buffer_changed)
+        self.source.lint_errors_changed.connect(state.set_lint_errors)
+        self.source.written.connect(lambda _path: state.drop_outline())   # before anything below reads a row
+        self.source.saved.connect(self._on_saved)
+        self.source.render_requested.connect(self.render_buffer)
+        self.source.restore_requested.connect(lambda path: self.revise("restore", [path]))
+        self.source.revert_requested.connect(lambda path: self.revise("revert", [path]))
+        self.source.version_requested.connect(lambda path: self.revise("update", [path]))
+        self.source.version_level_requested.connect(lambda path, level: self.revise(level, [path]))
+        # The Preview's version buttons (Split and Preview views) do what the Source view's button and caret menu do.
+        self.source.version_state.connect(self._source_version_state)
+        self.preview.version_new_slide_requested.connect(lambda slug: self.revise(NEW_SLIDE, [self._current_path(slug)]))
+        self.preview.version_level_requested.connect(lambda slug, level: self.revise(level, [self._current_path(slug)]))
+        self.preview.version_overwrite_requested.connect(lambda slug: self.revise(OVERWRITE, [self._current_path(slug)]))
+        self.preview.version_revert_requested.connect(lambda slug: self.revise("revert", [self._current_path(slug)]))
+        self.source.file_requested.connect(self._show_file)
+        self.preview.partner_requested.connect(self._open_partner)
+        self.tab_strip.activate_requested.connect(self.tabs.activate)
+        self.tab_strip.close_requested.connect(self.close_tab)
+        self.tab_strip.close_others_requested.connect(self.close_other_tabs)
+        self.tab_strip.close_right_requested.connect(self.close_tabs_to_the_right)
+        self.tab_strip.reveal_requested.connect(self.reveal_tab)
+        self.tab_strip.show_in_deck_requested.connect(self.show_deck_of)
+        self.tab_strip.duplicate_requested.connect(self.duplicate_tab)
+        self.tabs.tabs_changed.connect(self._update_strip)
+        self.tabs.active_changed.connect(self._on_tab_active)
+        self._update_strip()
+        state.deck_changed.connect(self._on_deck_changed)
+        state.focused_slide_changed.connect(self._on_focus)
+        state.view_changed.connect(lambda _view: self.refresh())
+        state.language_changed.connect(self._on_language)
+        state.mode_changed.connect(self._on_mode)
+        self.refresh()
+
+    # -- what the window asks ----------------------------------------------------------
+
+    def open_file(self, path: Path, on_saved: Optional[Callable[[tuple[str, str]], None]] = None,
+                  line: Optional[int] = None, *, keep_mode: bool = False, tab: bool = False,
+                  occurrence: Optional[tuple] = None) -> None:
+        """Show `path` in the Source view. A file that is no slide (a deck's source, SlideMage.bib, test-slides.tex)
+        has a tab of its own, which is shown (opened first unless it has one) in the Source view alone; `keep_mode`
+        does not apply to it. A slide's file is the slide tab's: the slide tab is shown, the slide of the project is
+        focused, and the Source view is switched to unless it is on show or `keep_mode`. With `tab` a slide's file
+        gets a tab of its own instead (selected when it has one), which does not change the focused slide; it opens in
+        the Source view when `line` says where to go or the file is a frozen version, else in the mode of the tab it
+        was asked from. `occurrence` is the deck row (SlideRow.key) it was opened from.
+        `on_saved((before, after))` runs after each save of it; `line`
+        puts the cursor there. With the Preview alone on show (`keep_mode`) the file only becomes the centre's path:
+        its editor is built when the Source view is shown (refresh()), unless `on_saved` or `line` need it now, as
+        they live on the editor. The views are refreshed unless the focus click had already put them there."""
+        if not _is_slide_file(path):
+            self._open_file_tab(path, on_saved, line)
+            return
+        if tab:
+            self._open_file_tab(path, on_saved, line, slide=True, occurrence=occurrence)
+            return
+        flipped = self._show_slide_tab()
+        changed = path != self._path or flipped
+        mode = self.state.mode
+        self._opening = True
+        try:
+            if path.parent == self.state.project.slides_dir and bare_id(path.name) != self.state.focused_slide:
+                self.state.set_focused_slide(bare_id(path.name))     # the focused slide keeps its occurrence
+                changed = True
+            self._set_path(path)
+            if self.state.mode not in ("source", "split") and not keep_mode:
+                self.state.set_mode("source")
+        finally:
+            self._opening = False
+        if self.state.mode in ("source", "split") or on_saved is not None or line is not None:
+            self.source.show_path(path, on_saved)
+        if changed or self.state.mode != mode:
+            self.refresh()
+        if line is not None and self.source.current is not None:
+            self.source.current.editor.go_to_line(line)
+
+    def _open_file_tab(self, path: Path, on_saved: Optional[Callable[[tuple[str, str]], None]], line: Optional[int], *,
+                       slide: bool = False, occurrence: Optional[tuple] = None) -> None:
+        """Show the file tab of `path`, opening it (at the end of the strip) unless it has one. A slide's tab starts in
+        the Source view when there is a line to go to or the file is a frozen version, else in the mode shown now."""
+        tab = self.tabs.tab_for(path)
+        if tab is None:
+            frozen = slide and self._file_slide(path)[1] is not None
+            mode = "source" if line is not None or frozen else self.state.mode
+            context = self._file_context(path, slide, opened_from=self.tabs.active)
+            tab = self.tabs.add_file(path, on_saved, slide=slide, occurrence=occurrence, mode=mode)
+            tab.context = context
+            self.tabs.regroup()             # a deck's tabs stay together (E7)
+            self._update_strip()
+            self.source.hold(path)
+        else:
+            if on_saved is not None:
+                tab.on_saved = on_saved
+            if slide and occurrence is not None:
+                tab.occurrence = occurrence
+            if tab.slide and line is not None and tab.mode not in ("source", "split"):
+                if tab is self.tabs.active:
+                    self.state.set_mode("source")        # records it in the tab, refreshes
+                else:
+                    tab.mode = "source"
+        if tab is self.tabs.active:
+            self.refresh()                   # the hook or the line are for the file on show already
+        else:
+            self.tabs.activate(tab)          # refreshes
+        if line is not None and self.source.current is not None and self.source.current.path == path:
+            self.source.current.editor.go_to_line(line)
+
+    def _show_file(self, path: Path) -> None:
+        """The Source view asks for another file (the chip of edits elsewhere): its tab, if it has one."""
+        self.open_file(path, tab=self.tabs.tab_for(path) is not None)
+
+    def _open_from_details(self, path: Path) -> None:
+        """Details' Open: a frozen version gets a read-only tab of its own, so that it and the current slide can be
+        compared by switching (D6); the other language opens as the slide tab's."""
+        self.open_file(path, tab=slide_language.FROZEN_RE.search(path.name) is not None)
+
+    def _open_partner(self, path: Path) -> None:
+        """The Preview's language chip: the slide's file in the other language. A slide file tab keeps its own slide
+        and opens the partner in a tab of its own."""
+        tab = self.tabs.active
+        if tab.slide:
+            self.open_file(path, keep_mode=True, tab=True, occurrence=tab.occurrence)
+        else:
+            self.open_file(path, keep_mode=True)
+
+    @property
+    def path(self) -> Optional[Path]:
+        """The file of the tab on show, which the Source view shows (in Preview it is not loaded): the slide tab's
+        slide, the focused one or one opened on purpose, or a file tab's file."""
+        return self._path
+
+    @property
+    def _path(self) -> Optional[Path]:
+        tab = self.tabs.active
+        return tab.path if tab.kind == FILE else self._slide_path
+
+    @property
+    def _slide_path(self) -> Optional[Path]:
+        return self._slide_file
+
+    @_slide_path.setter
+    def _slide_path(self, path: Optional[Path]) -> None:
+        """The slide tab's file is held by the Source view while the slide tab has it, so that a file tab of the same
+        file shares its editor, and closing that tab (or leaving the slide) never drops what the other still shows."""
+        old, self._slide_file = self._slide_file, path
+        if path != old:
+            if path is not None:
+                self.source.hold(path)
+            if old is not None:
+                self.source.unhold(old)
+                self.source.prune()             # as show_path would, which a Preview on show does not call
+
+    @property
+    def shown_slide(self) -> tuple[Optional[str], Optional[tuple]]:
+        """(bare id, occurrence key) of the slide on show, which the chat and the tasks act on: the focused slide for the
+        slide tab (and the tabs of files that are no slide), the tab's own slide for a slide file tab -- the focused
+        slide's row is not its row."""
+        tab = self.tabs.active
+        if not tab.slide:
+            return self.state.focused_slide, self.state.focused_occurrence
+        row = self._tab_row(tab)
+        return bare_id(tab.path.name), (row.key if row is not None else None)
+
+    @property
+    def shown_occurrence(self) -> Optional[tuple]:
+        return self.shown_slide[1]
+
+    def tab_deck(self, tab: CentreTab):
+        """The deck a tab belongs to (docs/plans/tab-contexts.md): `state.deck` for a tab not bound to a deck yet, the
+        deck of that path for a tab with a deck of its own (whether it is the one on show or not), None for a tab with
+        no deck or whose deck is gone."""
+        context = tab.context
+        if context is FOLLOW:
+            return self.state.deck
+        return self._deck_for(context)
+
+    def _deck_for(self, context):
+        """The scanned deck whose file is `context` (a Path), the one on show first."""
+        if not isinstance(context, Path):
+            return None
+        deck = self.state.deck
+        if deck is not None and deck.path == context:
+            return deck
+        return next((d for d in getattr(self.app, "decks", ()) if d.path == context), None)
+
+    def _working_tab(self) -> CentreTab:
+        """The working tab of the deck on show (the first one while no deck is bound yet)."""
+        deck = self.state.deck
+        tab = self.tabs.working_tab(deck.path) if deck is not None else None
+        return tab or self.tabs.slide_tab
+
+    def _bind_working_tab(self, deck) -> CentreTab:
+        """The working tab of `deck`, opened (after the last tab of any deck) unless it has one; the very first one,
+        which no deck was bound to yet, becomes the first deck's."""
+        tab = self.tabs.working_tab(deck.path)
+        if tab is None:
+            unbound = next((t for t in self.tabs.working_tabs if t.context is FOLLOW), None)
+            if unbound is not None:
+                unbound.context = deck.path
+                tab = unbound
+            else:
+                tab = self.tabs.add_deck(deck.path, self.state.mode)
+        self.tabs.deck_color(deck.path)
+        self._update_strip()
+        return tab
+
+    def _work_of(self, deck) -> Optional[object]:
+        """The work (focus, selection, scroll, ...) the working tab of `deck` kept when its deck was left."""
+        tab = self.tabs.working_tab(deck.path)
+        return tab.work if tab is not None else None
+
+    def _keep_work(self, work=None) -> None:
+        """The deck on show is about to be replaced: its working tab keeps it as it is (`work`, else the state's part)."""
+        deck = self.state.deck
+        tab = self.tabs.working_tab(deck.path) if deck is not None else None
+        if tab is not None:
+            tab.work = work if work is not None else self.state.snapshot()
+
+    def show_deck_of(self, tab: CentreTab) -> None:
+        """The tab menu's Show in deck: the working tab of the deck `tab` belongs to."""
+        work = self.tabs.working_tab(tab.context)
+        if work is not None:
+            self.tabs.activate(work)
+
+    def _follow(self, tab: CentreTab) -> None:
+        """Make the deck of `tab` the one on show (tab-contexts.md R3, I2): the tab stays, the deck under it changes, with
+        what was typed saved first (state.before_switch) and the deck back as it was left (state.work_of). A tab with no
+        deck leaves the deck on show as it is (E3)."""
+        if self._closing or not isinstance(tab.context, Path):
+            return
+        deck = self._deck_for(tab.context)
+        current = self.state.deck
+        if deck is None or (current is not None and current.path == deck.path):
+            return
+        self._adopting = True
+        try:
+            self.state.set_deck(deck)
+        finally:
+            self._adopting = False
+        self._set_path(self._focused_path())
+        self._switching = True
+        try:
+            self.state.set_mode("source" if tab.source_only else tab.mode)   # the tab's own mode, not the deck's remembered one
+        finally:
+            self._switching = False
+
+    def _shown_deck(self):
+        """The deck of what the Preview shows: a slide file tab's own, else the focused slide's, in `state.deck` (a tab
+        with no deck, a .bib, shows no slide of its own)."""
+        tab = self.tabs.active
+        return self.tab_deck(tab) if tab.slide else self.state.deck
+
+    def _file_context(self, path: Path, slide: bool, opened_from: Optional[CentreTab] = None):
+        """The context of a new file tab (tab-contexts.md O4 to O8): the deck's path, or None. A file that is no slide and
+        not the source of the deck on show (SlideMage.bib, test-slides.tex, a theme's template) belongs to no deck. A
+        slide belongs to the deck on show when it uses it, and to none when it does not (Go to slide and text hits outside
+        the deck); a frozen version has the context of the tab it was opened from."""
+        deck = self.state.deck
+        if not slide:
+            return deck.path if deck is not None and path == deck.path else None    # the source of the deck on show; any other file has no deck
+        id_slug, version = self._file_slide(path)
+        if version is not None and opened_from is not None and opened_from.context is not FOLLOW:
+            return opened_from.context
+        if deck is None:
+            return None
+        if not id_slug or deck.is_test_deck:
+            return deck.path                # no deck to be outside of: as before
+        return deck.path if self._deck_uses(deck, bare_id(id_slug)) else None
+
+    def _deck_uses(self, deck, slide_id: str) -> bool:
+        """Whether `deck` uses the slide `slide_id` (a bare id): a row of it in the view and language on show (which
+        knows the slide's partner in the other language), or a call of it that this view hides."""
+        state = self.state
+        rows = deck_outline.outline_rows(state.project, deck, state.view, state.language,
+                                         outline=state.outline if deck is state.deck else None)
+        if any(row.matches(slide_id) for row in rows):
+            return True
+        return any(bare_id(call.id_slug) == slide_id for call in deck_language.active_calls(deck))
+
+    def _has_list(self, tab: CentreTab) -> bool:
+        """Whether the slide list is the tab's: it follows the deck on show, or has a deck of its own that is open."""
+        return tab.context is FOLLOW or self.tab_deck(tab) is not None
+
+    def list_placeholder(self, tab: Optional[CentreTab] = None) -> Optional[ListPlaceholder]:
+        """What the slide list shows in place of the list for `tab` (default: the one on show); None when it shows the
+        list, because the tab belongs to the deck on show. A file that is no slide says so; a slide outside the deck
+        names the decks that use it, each of which `adopt_deck` opens for this tab (tab-contexts.md section 5). The
+        back button names the deck the working tab shows."""
+        tab = tab or self.tabs.active
+        if self._has_list(tab):
+            return None
+        deck = self.state.deck
+        back = f"Back to {deck.name}" if deck is not None else ""
+        if not tab.slide:
+            return ListPlaceholder(f"{tab.path.name if tab.path else 'This tab'} has no slide list.", back)
+        name = self._slide_file_label(tab.path)
+        decks = self.decks_using(tab)
+        note = "" if decks else "No deck uses this slide yet."
+        if len(decks) > MAX_PLACEHOLDER_DECKS:
+            note = f"and {len(decks) - MAX_PLACEHOLDER_DECKS} more: see Used in decks."
+            decks = decks[:MAX_PLACEHOLDER_DECKS]
+        return ListPlaceholder(f"{name} is not in an open deck.", back, tuple(decks), note)
+
+    def decks_using(self, tab: CentreTab) -> list:
+        """The decks that call the slide of the slide file tab `tab` (the current one for a frozen version), in scan
+        order, as the Used in decks panel lists them."""
+        id_slug, _version = self._file_slide(tab.path) if tab.slide else ("", None)
+        if not id_slug:
+            return []
+        decks = getattr(self.app, "decks", None)
+        return list({d.path: d for u in slide_usage.find_usage(self.state.project, id_slug, decks)
+                     for d in (u.decks if u.block else [u.deck])}.values())
+
+    def adopt_deck(self, deck, tab: Optional[CentreTab] = None) -> None:
+        """The placeholder's "Open in <deck>" (tab-contexts.md E6): `tab` (default: the one on show) gets `deck` as its
+        context and the deck opens underneath it. The tab stays on show with its editor, its undo history and its
+        mode; the slide list shows the deck, and the tab previews as the deck calls its slide."""
+        tab = tab or self.tabs.active
+        if tab.kind != FILE:
+            return
+        tab.context = deck.path
+        self._bind_working_tab(deck)            # the deck's working tab exists (I1), in the background unless it is shown
+        self.tabs.regroup()
+        mode = tab.mode
+        if tab is self.tabs.active:
+            self._follow(tab)                   # the deck replaces the one on show; this tab stays (_on_deck_changed)
+            tab.mode = mode
+        elif self.state.deck is None or self.state.deck.path != deck.path:
+            self._adopting = True
+            try:
+                self.state.set_deck(deck)
+            finally:
+                self._adopting = False
+        if tab is self.tabs.active:
+            self.context_changed.emit(tab)
+            self.refresh()
+        self._update_strip()
+
+    def tab_slide(self) -> Optional[tuple[Path, Optional[deck_outline.SlideRow], object]]:
+        """(path, row, deck) of the slide file tab on show, which the side panels follow (D9); None for the slide tab and
+        the tabs of files that are no slide, where they follow the focused slide. The row is `_tab_row`'s, the deck the
+        tab's (`tab_deck`)."""
+        tab = self.tabs.active
+        return (tab.path, self._tab_row(tab), self.tab_deck(tab)) if tab.slide else None
+
+    def retarget_file(self, old: Path, new: Path) -> None:
+        """The file `old` was renamed to `new` (Rename in Details, Set language): its tab, if it has one, follows it
+        with its hold, instead of being closed as a tab whose file is gone (D11). The caller refreshes."""
+        tab = self.tabs.tab_for(old)
+        if tab is None or old == new:
+            return
+        tab.path = new
+        self.source.hold(new)
+        self.source.unhold(old)
+        self.tab_strip.set_label(tab, *self._tab_label(tab))
+
+    def retarget_slide(self, old_id_slug: str, new_id_slug: str) -> None:
+        """A slide's id-slug changed and its files with it (slide_rename): every tab of its current file or a frozen
+        version follows its file (`retarget_file`)."""
+        for tab in self.tabs.tabs:
+            if tab.kind != FILE or not tab.slide or tab.path.parent != self.state.project.slides_dir:
+                continue
+            id_slug, version = self._file_slide(tab.path)
+            if id_slug == old_id_slug:
+                name = (slide_language.current_name(new_id_slug) if version is None
+                        else slide_language.frozen_name(new_id_slug, version))
+                self.retarget_file(tab.path, tab.path.parent / name)
+
+    @property
+    def slide_file_shown(self) -> bool:
+        """A slide file tab is on show: its slide is not necessarily the focused one."""
+        return self.tabs.active.slide
+
+    def save(self) -> bool:
+        """Ctrl+S: write the file of the tab on show now (and render it). Whether it is saved."""
+        file = self.source.file_for(self._path) if self._path is not None else None
+        return file is not None and file.write_now(explicit=True)
+
+    @property
+    def source_only(self) -> bool:
+        """The tab on show has a file that is no slide: it has the Source view alone."""
+        return self.tabs.active.source_only
+
+    def is_dirty(self, path: Path) -> bool:
+        """The Source view's buffer of `path` differs from the file: briefly between a keystroke and its
+        autosave, for good when it cannot be saved. For a display; `unsaved` is the question before a change."""
+        file = self.source.file_for(path)
+        return file is not None and file.dirty
+
+    def is_blocked(self, path: Path) -> bool:
+        """The Source view holds edits of `path` that cannot be saved (a conflict, read-only, an AI fix
+        running), not just the ones an autosave is about to write."""
+        file = self.source.file_for(path)
+        return file is not None and file.blocked
+
+    def unsaved(self, path: Path) -> bool:
+        """Whether the Source view holds edits of `path` that could not be saved (a conflict with a change
+        on disk, a read-only buffer, an AI fix running). The edits that can be are written first."""
+        file = self.source.file_for(path)
+        return file is not None and not file.write_now(force=True) and file.dirty
+
+    def sync_source(self, path: Path) -> None:
+        """Show the file again if it changed on disk elsewhere in the app, unless it has unsaved edits."""
+        file = self.source.file_for(path)
+        if file is not None:
+            file.sync()
+
+    def file_written(self, path: Path) -> None:
+        """A file was written on disk outside the Source view (by the chat): an open buffer takes it in
+        (disk_changed), and the Preview renders the slide if it is the one shown and not open."""
+        if self.disk_changed(path) is None and path in (self._path, self._slide_path):
+            self._on_saved(path)
+
+    def disk_changed(self, path: Path) -> Optional[str]:
+        """A file may have changed on disk behind the app's back (Claude Code in the terminal). What the
+        Source view did with its buffer of `path`: SAME / RELOADED / CONFLICT (source_file.py), None if the
+        file is not open."""
+        file = self.source.file_for(path)
+        if file is None:
+            return None
+        outcome = file.disk_changed()
+        if outcome == RELOADED and path in (self._path, self._slide_path):
+            self._on_saved(path)
+        return outcome
+
+    def _preview_buffer(self) -> Optional[str]:
+        """The Source view's buffer of the previewed slide, never that of another slide."""
+        path = self.preview.target_path
+        return self.source.buffer(path) if path is not None else None
+
+    def slide_text(self, path: Path) -> str:
+        """The text of a slide file as the Source view has it, edits not yet written included, else the saved file."""
+        file = self.source.file_for(path)
+        return file.editor.text() if file is not None else slide_source.read_slide_source(path)[0]
+
+    def edit_slide_text(self, path: Path, change: Callable[[str], str], *, show: bool = False) -> bool:
+        """Apply `change(text) -> text` to the Source view's buffer of `path`, as one undo step, and
+        leave it to the Source view's autosave, so that an edit made from a panel is never written by
+        another route. False when the file is not editable (a frozen version, until it is unlocked).
+        The file becomes the Source view's own if `show` or it is shown already; else (a slide the focus
+        has left) it is changed off-stage and written at once (SourcePane.edit_off_stage), so the Source
+        view does not go back to it."""
+        current = self.source.current
+        if not show and (current is None or current.path != path):
+            return self.source.edit_off_stage(path, change)
+        if show and self._path != path:
+            self.show_slide_tab()      # the slide is the Source view's, so it is the tab on show (unless that has it)
+        self.source.show_path(path)
+        file = self.source.current
+        if file is None or file.editor.is_read_only():
+            return False
+        file.editor.replace_all_text(change(file.editor.text()))
+        return True
+
+    def _source_version_state(self, state):
+        if self.state.mode != "preview" or (self.source.current and self.source.current.path == self.preview.target_path):
+            self.preview.set_version_state(state)
+
+    def _disk_version_state(self, target):
+        """Version buttons for the selected preview, including a buffer held off screen."""
+        if target is None or target.version or target.hidden:
+            return None
+        path = target.source_path
+        if not path.is_file():
+            return None
+        file = self.source.file_for(path)
+        try:
+            text = file.editor.text() if file else slide_source.read_slide_source(path)[0]
+            return SourcePane.version_hint(path, target.id_slug, text, dirty=bool(file and file.dirty))
+        except (OSError, ValueError):
+            return None
+
+    def _current_path(self, slug: str) -> Path:
+        return self.state.project.slides_dir / slide_language.current_name(slug)
+
+    def require_clean(self, paths) -> bool:
+        dirty = [str(p) for p in paths if self.is_dirty(p)]
+        if dirty:
+            QMessageBox.warning(self.app, "Edits not saved", "Save your edits before revising:\n" + "\n".join(dirty))
+        return not dirty
+
+    def revise(self, action: str, paths, *, jobs=(), title="Update version", label="") -> bool:
+        project = self.state.project
+        paths = tuple(dict.fromkeys(paths))
+        if action == "restore":
+            selected, = paths
+            match = slide_language.FROZEN_RE.search(selected.name)
+            if not match:
+                return False
+            paths = (selected.with_name(slide_language.current_name(selected.name[:match.start()])), selected)
+        while self.require_clean(dict.fromkeys((*paths, *(job.deck.path for job in jobs)))):
+            try:
+                cap = slide_versioning.capture(project, action, paths, jobs=jobs)
+                if not self.require_clean(cap.inputs):
+                    return False
+                targets = paths or cap.changed
+                if not targets:
+                    QMessageBox.information(self.app, title, f"No slide {label} has changes since its last version.")
+                    return False
+                if action == "compile" and set(targets) != {p for p in cap.changed if cap.base_file(p) in cap.frozen}:
+                    raise ValueError("The slides to update have changed. Start Compile again.")
+                confirmed = self._confirm_revision(action, cap, targets, title, label)
+                if confirmed is None:
+                    return False
+                kind, proposal, open_after = confirmed
+                stamp = fileio.writer_stamp()
+                try:
+                    fresh = slide_versioning.capture(project, action, paths, jobs=jobs, approved=proposal)
+                except (OSError, ValueError) as exc:
+                    raise fileio.StaleFileError(f"Could not recheck the approved inputs: {exc}") from exc
+                if not proposal.same_inputs(fresh):
+                    raise fileio.StaleFileError("The inputs to this revision have changed.")
+                if not self.require_clean(proposal.inputs.keys() | proposal.edits.keys()):
+                    return False
+                if kind == "revert":
+                    path, = targets
+                    before, after = proposal.edits[path]
+                    file = self.source.buffer_for_edit(path)
+                    if file.editor.is_read_only():
+                        raise ValueError(f"{path.name} is read-only.")
+                    if (fileio.writer_stamp() != stamp or file.raw_text != before
+                            or file.editor.text() != slide_source.editor_text(before)[0]):
+                        raise fileio.StaleFileError(f"The editor for {path.name} has changed.")
+                    file.editor.replace_all_text(slide_source.editor_text(after)[0])
+                    return True
+                fileio.write_texts(proposal.edits, expected_stamp=stamp)
+            except fileio.StaleFileError as exc:
+                if QMessageBox.question(self.app, title, f"{exc}\n\nReopen the revision?",
+                                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+                                        QMessageBox.StandardButton.Cancel) == QMessageBox.StandardButton.Yes:
+                    continue
+                return False
+            except (OSError, ValueError) as exc:
+                # PartialWriteError includes the kept paths, in publication order.
+                QMessageBox.warning(self.app, title, str(exc))
+                return False
+            for path, (_, after) in proposal.edits.items():
+                if file := self.source.file_for(path):
+                    file.adopt_text(after)
+            self._revision_done(kind, proposal, targets, open_after)
+            return True
+        return False
+
+    def _confirm_revision(self, action, cap, paths, title, label):
+        current = paths[0]
+        root = self.state.project.root
+        slug = current.name.removesuffix(slide_language.CURRENT_SUFFIX)
+        raw = cap.inputs[current]
+        base = slide_versioning.parse_version(raw) or slide_versioning.DEFAULT_BASELINE
+        open_after = None
+        if action == "update":
+            new, _ = cap.update(current, "patch")
+            action = prompt_version_level(self.app, base) if new != base else "patch"
+            if action is None:
+                return None
+        if action == "restore":
+            selected = paths[1]
+            proposal = cap.with_edits(slide_versioning.restore(cap, current, selected))
+            summary = revision_summary(proposal, current, root)
+            reply = QMessageBox.question(
+                self.app, "Make this the current version",
+                f"Replace the content of {current.name} with this version?\n\n"
+                "What is current now is archived first as a version of its own, "
+                "and the restored content gets a new, higher version number."
+                + (f"\n\n{summary}" if summary else ""))
+            if reply != QMessageBox.StandardButton.Yes:
+                return None
+            open_after = current
+        elif action == "revert":
+            proposal = cap.with_edits(slide_versioning.revert_edits(cap, current))
+            if not self._confirm_revert(current, raw, slug, base, revision_summary(proposal, current, root)):
+                return None
+        elif action == OVERWRITE:
+            proposal = cap.with_edits(slide_versioning.overwrite_edits(cap, current))
+            # Asked only when another deck (or a pinned call, or a translation) is affected: with the slide in no
+            # other deck there is nothing to confirm (user, 2026-11-25). The version buttons follow the same rule in
+            # ask_deck_versions, which returns the default answer without a dialog in that case.
+            if slide_usage.needs_dialog(cap.usages, cap.translations) and not ask_overwrite(self.app, root, proposal, current):
+                return None
+        elif action == NEW_SLIDE:
+            proposal = self._confirm_branch(cap, current, slug, base)
+            return (action, proposal, proposal.created.path) if proposal else None
+        elif action in ("batch", "compile"):
+            level = self._batch_level(paths, title, label)
+            if level is None:
+                return None
+            proposal = cap.with_edits(slide_versioning.batch_edits(cap, paths, level))
+        else:
+            answer = ask_deck_versions(self.app, root, cap, current, action)
+            if answer is None:
+                return None
+            proposal = cap.with_edits(slide_versioning.patch_edits(cap, current, action, answer.choices))
+            open_after = answer.open_translation
+        return action, proposal, open_after
+
+    def _confirm_revert(self, current, raw, slug, base, summary):
+        if file := self.source.file_for(current):
+            if file.raw_text != raw or file.editor.text() != slide_source.editor_text(raw)[0]:
+                raise fileio.StaleFileError(f"The editor for {current.name} differs from disk.")
+        name = f"v{slide_versioning.format_dot(base)}"
+        box = QMessageBox(QMessageBox.Icon.Question, "Revert",
+                          f"Revert {slug} to {name}? Your changes since then are discarded. "
+                          "Undo (Ctrl+Z) brings them back.", parent=self)
+        if summary:
+            box.setInformativeText(summary)
+        revert = box.addButton(f"Revert to {name}", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.exec()
+        return box.clickedButton() is revert
+
+    def _confirm_branch(self, cap, current, slug, base):
+        if cap.created is None:
+            cap = slide_branch.capture_identity(self.state.project, cap, current)
+            if not self.require_clean(cap.inputs):
+                return None
+        default = cap.created.id_slug.split("-", 2)[2]
+        registry = self.state.project.slide_ids_csv
+        root = self.state.project.root
+
+        def propose(name, selected):
+            return slide_branch.branch(cap, current, registry, name, selected)
+
+        propose(default, ())  # validate before opening the sheet
+        deck = self._shown_deck()
+        sources = slide_branch.switch_sources(cap, slug)
+        sheet = NewSlideVersionSheet(self.app, slug, base, default, sources, deck.path if deck else None, root,
+                                     lambda name, selected: revision_summary(propose(name, selected), current, root))
+        if not sheet.exec():
+            return None
+        return propose(sheet.slug, sheet.sources)
+
+    def _revision_done(self, action, proposal, paths, open_after):
+        current = paths[0]
+        slug = current.name.removesuffix(slide_language.CURRENT_SUFFIX)
+        number = slide_versioning.version_text(proposal.edits[current][1])
+        switched = {u.deck.path: proposal.edits[u.deck.path] for u in proposal.usages if u.deck.path in proposal.edits}
+        if action == NEW_SLIDE:
+            sources = slide_branch.switch_sources(proposal, slug)
+            count = len({deck for path in switched for deck in sources[path][1]})
+            summary = f"Created library slide {proposal.created.id_slug}. {count} deck{'s' if count != 1 else ''} switched."
+            if switched:
+                summary += " Undo keeps the library slide."
+        elif action == "restore":
+            summary = f"Restored {paths[1].name} as the current version of {slug}: now v{number}"
+            archive = next(iter(proposal.edits))
+            if proposal.edits[archive][0] is None:
+                summary += f"; the previous content is archived as {archive.name}"
+        elif action == OVERWRITE:
+            summary = f"Overwrote v{number} of {slug} with its current content"
+        else:
+            lines = []
+            for path in paths:
+                slug = path.name.removesuffix(slide_language.CURRENT_SUFFIX)
+                version = slide_versioning.parse_version(proposal.edits[path][1])
+                frozen = slide_versioning.frozen_path(path, slug, version)
+                lines.append(f"{slug} is now v{slide_versioning.format_dot(version)}, frozen as {frozen.name}")
+            summary = "\n".join(lines)
+        self.app.log(summary)
+        if switched:
+            self.app.adopt_deck_revisions(switched)
+        self.state.drop_outline()
+        if open_after is not None:
+            if self.tabs.active.slide and self.tabs.tab_for(open_after) is not None:
+                self._show_file(open_after)
+            else:
+                self.open_file(open_after)
+        self.app.after_version_updates([p for p in proposal.edits if p.parent == current.parent
+                                        and slide_language.is_current_file(p)])
+        self.versions_changed.emit()
+        if action == NEW_SLIDE:
+            if switched:
+                anchor = self.state.deck.path if self.state.deck else next(iter(switched))
+                self.app.slide_list.deck_edited(anchor, summary, deck_editor.DeckUndo("Undo switched calls", switched))
+            else:
+                self.app.toast.show_message(summary)
+
+    def _deck_jobs(self):
+        from ...compiler import CompileJob
+        deck = self.state.deck
+        return [CompileJob(deck, self.state.view, None, language=self.state.language)] if deck else []
+
+    def update_deck_versions(self) -> None:
+        if jobs := self._deck_jobs():
+            self.revise("batch", (), jobs=jobs, title="Update version of all changed slides",
+                        label=f"in {jobs[0].deck.name}")
+
+    def update_selected_versions(self) -> None:
+        paths = [self._current_path(row.call.id_slug) for row in self.app.slide_list.targets()]
+        if paths:
+            self.revise("batch", paths, jobs=self._deck_jobs(), title="Update versions", label="selected")
+
+    def _batch_level(self, paths, title, label):
+        shown = ", ".join(bare_id(p.name) for p in paths[:12]) + (", …" if len(paths) > 12 else "")
+        box = QMessageBox(self)
+        box.setWindowTitle(title)
+        box.setText(f"Update versions of {len(paths)} slide(s) {label}:\n{shown}\n\n"
+                    "How significant are the changes? Each slide is frozen as the next version of that size, "
+                    "or Overwrite replaces the version each slide is based on.")
+        levels = {level: box.addButton(level.capitalize(), QMessageBox.ButtonRole.AcceptRole)
+                  for level in ("major", "minor", "patch", "overwrite")}
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(levels["patch"])
+        box.exec()
+        return next((name for name, button in levels.items() if box.clickedButton() is button), None)
+
+    # -- leaving a changed slide -------------------------------------------------------
+
+    def _set_path(self, path: Optional[Path]) -> None:
+        """Make `path` the slide tab's file; leaving another slide that was edited may offer Update Version for it
+        (once the switch is done). Showing a file tab and coming back is not leaving the slide."""
+        left = self._slide_path
+        self._slide_path = path
+        if left is not None and left != path:
+            # Its edits still waiting for their autosave are written now: the Source view does not do it
+            # when it is hidden (Preview), as it shows the new file only when it is on show.
+            file = self.source.file_for(left)
+            if file is not None:
+                file.write_now()
+            # after the switch
+            QTimer.singleShot(0, lambda: self._offer_version(left))
+
+    def _before_focus_changes(self, new_slide: Optional[str]) -> None:
+        """Another slide is about to take the focus: the slide tab's slide, if it was edited, is written and asked about
+        now, so the choice comes before the new slide is shown. The Update Version it may lead to follows the switch (the
+        slide list is still handling the selection). Switches that are not the user's own (opening a file, a deck switch,
+        a rescan) are left to `_set_path`, which asks after them."""
+        left = self._slide_path
+        if (left is None or self._leaving or self._opening or self._adopting or self.rescanning
+                or left.parent != self.state.project.slides_dir or bare_id(left.name) == new_slide):
+            return
+        self._leaving = True
+        try:
+            file = self.source.file_for(left)
+            if file is not None:
+                file.write_now()
+            self._offer_version(left, leaving=True)
+        finally:
+            self._leaving = False
+
+    def offer_versions_on_close(self) -> None:
+        """Closing the window (or switching projects, or restarting for an update) leaves every slide edited on
+        this visit, the one on show included: each is offered Update Version as if it were left."""
+        for path in sorted(self._edited):
+            self._offer_version(path, closing=True)
+
+    def _offer_version(self, path: Path, *, closing: bool = False, leaving: bool = False) -> None:
+        """Settings -> General, "Ask about Update Version when leaving a changed slide": the slide's current
+        file `path` was edited in the Source view and now carries a "+" -- ask whether to make it a version
+        (Update Version, as its button does). Asked once per visit with edits; "Not now" leaves the "+".
+        Edits that were discarded instead of saved (AutoSave off) are not asked about: they cannot be written."""
+        if path not in self._edited or (
+                not closing and ((path == self._slide_path and not leaving) or self.tabs.tab_for(path) is not None)):
+            return                        # not edited on this visit, or a tab shows it still (offered when that closes)
+        self._edited.discard(path)
+        if not app_settings.get(self.state.project, slide_versioning.ASK_ON_LEAVE_SETTING_KEY, False):
+            return
+        if not path.is_file() or not slide_versioning.is_current_slide(path):
+            return
+        if self.is_dirty(path):
+            return
+        marker = slide_versioning.parse_marker(slide_source.read_slide_source(path)[0])
+        if marker is None or not marker[1]:
+            return                         # no "+": nothing changed since the last version
+        id_slug = path.name[:-len(slide_language.CURRENT_SUFFIX)]
+        update, stop = ask_update_on_leave(self.app, bare_id(id_slug), marker[0])
+        if stop:
+            app_settings.set(self.state.project, slide_versioning.ASK_ON_LEAVE_SETTING_KEY, False)
+        if update and leaving:
+            QTimer.singleShot(0, lambda: self.revise("update", [path]))     # after the switch
+        elif update:
+            self.revise("update", [path])
+
+    # -- keeping the views in step -----------------------------------------------------
+
+    def _update_dirty(self, _dirty: bool = False) -> None:
+        self.state.set_dirty(bool(self.source.blocked_files()))   # saved as you type: only edits that cannot be saved
+
+    def _on_deck_changed(self, deck) -> None:
+        # A deck was opened from somewhere (tab-contexts.md O1): its working tab is shown, opened first unless it has one;
+        # the other decks' tabs stay with their state. The new deck's remembered mode is the state's already.
+        work = self._bind_working_tab(deck) if deck is not None else self.tabs.slide_tab
+        work.mode = self.state.mode
+        if self._adopting:                  # _follow(): the tab on show stays, and refreshes when the switch is done
+            self._set_path(None)
+            return
+        self._show_slide_tab()
+        self._set_path(None)
+        self.refresh()
+        self.context_changed.emit(self.tabs.active)     # a tab of another deck's may be on show no longer
+
+    # -- tabs ----------------------------------------------------------------------------
+
+    def _show_slide_tab(self) -> bool:
+        """Show the working tab of the deck on show, without refreshing the views (the caller does). Whether another tab
+        was shown."""
+        slide = self._working_tab()
+        if self.tabs.active is slide:
+            return False
+        self._holding += 1
+        try:
+            self.tabs.activate(slide)
+        finally:
+            self._holding -= 1
+        return True
+
+    def show_slide_tab(self) -> None:
+        """Show the working tab of the deck on show, in the mode it was last shown in (what focusing a slide does)."""
+        if self._show_slide_tab():
+            self.refresh()
+
+    def _on_tab_active(self, tab: CentreTab) -> None:
+        """Another tab is on show: its file is the Source view's, its mode the state's (a file that is no slide has
+        the Source view alone). The file tab left is written, as a file out of view is, as the Source view does not
+        show it when the new tab is in Preview."""
+        left, self._shown = self._shown, tab
+        if left is not tab and left.kind == FILE:
+            file = self.source.file_for(left.path)
+            if file is not None:
+                file.write_now()
+        self.tab_strip.set_active(tab)
+        self._follow(tab)                       # the left side, the panels and the top bar show this tab's deck
+        self._switching = True
+        try:
+            self.state.set_mode("source" if tab.source_only else tab.mode)
+        finally:
+            self._switching = False
+        if not tab.source_only and self.state.mode not in ("source", "split"):
+            self.source.show_path(None)         # as for the slide tab in Preview before: no file is "shown"
+        self.source_only_changed.emit(tab.source_only)
+        self.context_changed.emit(tab)
+        if not self._holding:
+            self.refresh()
+
+    def _update_strip(self) -> None:
+        self.tab_strip.set_tabs(self.tabs.tabs, self._tab_label, self._deck_style)
+        self.tab_strip.set_active(self.tabs.active)
+
+    def _deck_style(self, tab: CentreTab) -> Optional[tuple[int, str]]:
+        """(stripe, deck name) of the deck a tab belongs to; None for a tab with no deck."""
+        color = self.tabs.deck_color(tab.context)
+        if color is None:
+            return None
+        deck = self.tab_deck(tab)
+        return color, deck.name if deck is not None else Path(tab.context).stem
+
+    def _tab_label(self, tab: CentreTab) -> tuple[str, str]:
+        """(text, tooltip) of a tab: a file tab names its file (a slide's as "1y8 · Title", a frozen version as
+        "1y8 v1.2"); a working tab names its deck's slide (E7), the deck's name when none is chosen. With several decks
+        open the tooltip names the deck."""
+        deck = self.tab_deck(tab)
+        named = deck.name if deck is not None and len(self.tabs.working_tabs) > 1 else ""
+        if tab.kind == FILE:
+            text = self._slide_file_label(tab.path) if tab.slide else tab.path.name
+            return text, f"{tab.path}\nDeck: {named}" if named else str(tab.path)
+        text = self._slide_label(tab)
+        return text, f"{named}: {text}" if named and text != named else ""
+
+    def _slide_file_label(self, path: Path) -> str:
+        id_slug, version = self._file_slide(path)
+        if not id_slug:
+            return path.name
+        if version is not None:
+            return f"{bare_id(id_slug)} v{version.replace('-', '.')}"
+        title = deck_outline.slide_file_title(self.state.project, path, id_slug)
+        return f"{bare_id(id_slug)} · {title}" if title else bare_id(id_slug)
+
+    def _slide_label(self, tab: Optional[CentreTab] = None) -> str:
+        """"1y8 · Market efficiency": the working tab's slide; the deck's name when no slide is chosen. A working tab of a
+        deck that is not on show reads its slide from the work it kept."""
+        tab = tab or self._working_tab()
+        deck = self.tab_deck(tab)
+        name = deck.name if deck is not None else "Slide"
+        if deck is not None and self.state.deck is not None and deck.path != self.state.deck.path:
+            work = tab.work
+            if work is None or work.focused_slide is None:
+                return name
+            row = deck_outline.slide_row(self.state.project, deck, work.focused_slide, work.view, work.language,
+                                         occurrence_key=work.focused_occurrence, outline=work.outline)
+            return f"{bare_id(work.focused_slide)} · {row.title}" if row is not None and row.title else bare_id(work.focused_slide)
+        path = self._slide_path
+        if path is None:
+            return name
+        id_slug, _version = self._file_slide(path)
+        row = self._focused_row()
+        title = row.title if row is not None and id_slug == row.call.id_slug else deck_outline.slide_file_title(self.state.project, path, id_slug)
+        return f"{bare_id(id_slug)} · {title}" if title else bare_id(id_slug)
+
+    def close_tab(self, tab: CentreTab) -> bool:
+        """Close a file tab (its "x", the middle button, Ctrl+W). Edits that would be lost are asked about: Save,
+        Discard or Cancel (False: it stays open), unless the slide tab shows the same file: the buffer stays there, and
+        Discard would take the edits from it too. Then the tab used before comes back, in the mode it was last shown in."""
+        if not tab.closable or tab not in self.tabs.tabs:
+            return False
+        if tab.kind == DECK:
+            return self._close_deck(tab)
+        file = self.source.file_for(tab.path)
+        shared = tab.path == self._slide_path
+        if file is not None and not shared and file.dirty and not (autosave_on() and file.write_now(force=True)):
+            answer = self._ask_save(file.path.name)
+            if answer == "save":
+                if not file.write_now(force=True):
+                    return False               # a conflict with a change on disk: its notice says so
+            elif answer == "discard":
+                file.reload()
+            else:
+                return False
+        self._remove_tab(tab)
+        return True
+
+    def _close_deck(self, work: CentreTab) -> bool:
+        """Closing a working tab closes its deck (tab-contexts.md E2): the deck's other tabs close with it, each with edits
+        that could not be saved asked about as close_tab() asks, and Cancel keeps the whole deck open. The deck on show
+        gives way to the one used before."""
+        group = [t for t in self.tabs.tabs if t.kind == FILE and t.context == work.context]
+        paths = [t.path for t in group]
+        if self.state.deck is not None and self.state.deck.path == work.context and self._slide_path is not None:
+            paths.append(self._slide_path)          # the working tab's own slide
+        answers = []
+        for path in dict.fromkeys(paths):
+            file = self.source.file_for(path)
+            if file is not None and file.dirty and not (autosave_on() and file.write_now(force=True)):
+                answer = self._ask_save(file.path.name)
+                if answer is None:
+                    return False                    # Cancel: nothing was closed
+                answers.append((file, answer))
+        for file, answer in answers:
+            if answer == "save":
+                if not file.write_now(force=True):
+                    return False                    # a conflict with a change on disk: its notice says so
+            else:
+                file.reload()
+        self._closing += 1
+        self._holding += 1
+        try:
+            for tab in group:
+                self._remove_tab(tab)
+            self.tabs.close(work)
+        finally:
+            self._holding -= 1
+            self._closing -= 1
+        active = self.tabs.active
+        self._follow(active)
+        shown = self.state.deck
+        if shown is not None and shown.path == work.context:    # a tab with no deck is on show: the closed deck was the deck on show
+            other = next((t for t in self.tabs.mru if t.kind == DECK), None)
+            if other is not None:
+                self._follow(other)
+        self.refresh()
+        self.context_changed.emit(self.tabs.active)
+        return True
+
+    def decks_rescanned(self, old_names: dict, decks: list, closing: frozenset = frozenset()) -> None:
+        """The decks were scanned again (tab-contexts.md O12): each working tab follows its deck by path, then by name (an
+        archived deck moved); the working tab of a deck that is gone closes, and its other tabs lose their deck (what was
+        typed in them is not lost). `old_names` is {path: name} of the decks before the scan; the decks named in `closing`
+        (archived by the user) are not followed."""
+        by_path = {d.path for d in decks}
+        by_name = {d.name: d for d in decks}
+        self._closing += 1
+        try:
+            for work in self.tabs.working_tabs:
+                old = work.context
+                if not isinstance(old, Path) or old in by_path:
+                    continue
+                moved = None if old_names.get(old, "") in closing else by_name.get(old_names.get(old, ""))
+                if moved is not None and self.tabs.working_tab(moved.path) is None:
+                    self.tabs.retarget_deck(old, moved.path)
+                    continue
+                for tab in self.tabs.tabs:
+                    if tab.kind == FILE and tab.context == old:
+                        tab.context = None
+                if work.closable:
+                    self.tabs.close(work)
+                else:
+                    work.context = FOLLOW            # the last one stays: the deck that takes the place is bound to it
+                    work.work = None
+        finally:
+            self._closing -= 1
+        self.tabs.regroup()
+        self._update_strip()
+
+    def close_active_tab(self) -> bool:
+        """Ctrl+W: close the tab on show; a working tab closes its deck, unless it is the last deck's."""
+        return self.close_tab(self.tabs.active)
+
+    def close_other_tabs(self, tab: CentreTab) -> None:
+        """The tab strip's context menu's Close others: every other closable tab, each asked about as close_tab()
+        asks."""
+        for other in self.tabs.close_others(tab):
+            self.close_tab(other)
+
+    def close_tabs_to_the_right(self, tab: CentreTab) -> None:
+        """Close all to the right: the closable tabs after `tab` in strip order."""
+        for other in self.tabs.close_right(tab):
+            self.close_tab(other)
+
+    def duplicate_tab(self, tab: CentreTab) -> None:
+        """Duplicate tab: the slide the slide tab shows, in a tab of its own (what Slide > Open in new tab was)."""
+        if tab.kind != DECK or tab is not self._working_tab() or self._slide_path is None:
+            return
+        self.app.open_slide_editor(self._slide_path, tab=True)
+
+    def reveal_tab(self, tab: CentreTab) -> None:
+        """Reveal in Explorer: open the folder of the tab's file (the focused slide's for the slide tab) in the
+        OS's file manager."""
+        deck = self.tab_deck(tab)
+        path = tab.path if tab.kind == FILE else (
+            self._slide_path if tab is self._working_tab() and self._slide_path is not None
+            else deck.path if deck is not None else None)
+        if path is None:
+            return
+        try:
+            open_path.open_in_default_app(path.parent)
+        except OSError as exc:
+            QMessageBox.warning(self.app, "Cannot open the folder", f"Could not open {path.parent}: {exc}")
+
+    def _remove_tab(self, tab: CentreTab) -> None:
+        self.tabs.close(tab)                   # shows the tab used before when this was on show
+        if tab.path is not None:
+            self.source.release(tab.path)      # the file goes (and `file_closed` tells the window), edits kept aside
+        if tab.slide:
+            # Closing is leaving the slide (switching away was not), unless the slide tab shows the file still;
+            # asked after the switch.
+            QTimer.singleShot(0, lambda path=tab.path: self._offer_version(path))
+
+    def _forget_missing_tabs(self) -> None:
+        """A file tab whose file was renamed or deleted meanwhile is closed without asking: there is nothing to save to."""
+        gone = [tab for tab in self.tabs.tabs if tab.kind == FILE and not tab.path.is_file()]
+        if not gone:
+            return
+        self._holding += 1                      # the refresh that found them goes on
+        try:
+            for tab in gone:
+                self._remove_tab(tab)
+        finally:
+            self._holding -= 1
+
+    def cycle_tabs(self, step: int) -> None:
+        """Ctrl+Tab (`step` 1) and Ctrl+Shift+Tab (-1): the next (previous) tab in most-recently-used order. The
+        series goes on until Ctrl is released."""
+        if len(self.tabs.tabs) < 2:
+            return
+        if not self.tabs.cycling:
+            QApplication.instance().installEventFilter(self._ctrl)
+        self.tabs.cycle(step)
+
+    def end_tab_cycle(self) -> None:
+        """The Ctrl+Tab series is over: the tab it stopped at is the most recently used."""
+        QApplication.instance().removeEventFilter(self._ctrl)
+        self.tabs.end_cycle()
+
+    def step_tab(self, direction: int) -> None:
+        """Ctrl+PgDn (`direction` 1) and Ctrl+PgUp (-1): the next (previous) tab in strip order, unlike Ctrl+Tab's
+        most-recently-used order -- each press is its own switch, not a series."""
+        if len(self.tabs.tabs) > 1:
+            self.tabs.step(direction)
+
+    def _rel(self, path: Optional[Path]) -> Optional[str]:
+        """`path` relative to the project as a posix string; None when it is none or not under the project."""
+        if path is None:
+            return None
+        try:
+            return path.relative_to(self.state.project.root).as_posix()
+        except ValueError:
+            return None
+
+    def save_tabs(self) -> None:
+        """Remember the open tabs for this project (D7 of the plan), in the format of docs/plans/tab-contexts.md section 6:
+        `{"v": 2, "active": index, "tabs": [...]}`, one entry per tab. A working tab is `{"kind": "deck", "deck", "mode",
+        "color", "work"}` (the deck's file and what it was left as: focus, view, language, list scroll, closed sections,
+        Find text), a file tab `{"kind": "file", "path", "mode", "deck"}` with the deck it belongs to (None for none).
+        They come back when the project opens again. Called when the window closes."""
+        slide_list = getattr(self.app, "slide_list", None)
+        self._keep_work(slide_list.work() if slide_list is not None else None)      # the deck on show, as it is now
+        saved, active = [], None
+        for tab in self.tabs.tabs:
+            context = tab.context if isinstance(tab.context, Path) else None
+            entry = {"kind": tab.kind, "deck": self._rel(context), "mode": tab.mode}
+            if tab.kind == FILE:
+                rel = self._rel(tab.path)
+                if rel is None:
+                    continue       # not under the project (should not happen): nothing to restore it from
+                entry["path"] = rel
+            elif context is None:
+                continue           # a working tab no deck was bound to
+            else:
+                entry["color"] = self.tabs.deck_color(context)
+                if tab.work is not None:
+                    entry["work"] = _work_to_json(tab.work)
+            if tab is self.tabs.active:
+                active = len(saved)
+            saved.append(entry)
+        app_settings.set(self.state.project, CENTRE_TABS_SETTING, {"v": 2, "active": active, "tabs": saved})
+
+    def restore_tabs(self) -> None:
+        """Reopen the tabs this project had last time (D7, tab-contexts.md O13): a working tab for each deck that is still
+        there, with what it was left as, and the file tabs with the deck each belonged to, each in the mode it was shown
+        in. A file that no longer exists is skipped silently; the tabs of a deck that is gone have no deck. Reads the
+        format of `save_tabs` (`v` 2), the one of the steps before it (a "slide" entry for the last deck only) and the
+        oldest (file tabs only, `active` a path); in the old formats a deck's source belongs to that deck and a slide to the
+        deck on show if it uses it. Called once, after the first deck has opened."""
+        project = self.state.project
+        remembered = app_settings.get(project, CENTRE_TABS_SETTING, {})
+        entries = remembered.get("tabs") if isinstance(remembered, dict) else None
+        if not entries:
+            return
+        active = remembered.get("active")
+        new_format = remembered.get("v", 1) >= 2
+        decks = {d.path: d for d in getattr(self.app, "decks", ())}
+        if self.state.deck is not None:
+            decks[self.state.deck.path] = self.state.deck
+        made: dict[int, CentreTab] = {}
+        onshow = self.state.deck
+        for index, entry in enumerate(entries):                  # the working tabs first: the file tabs belong to them
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("kind") == "slide" and onshow is not None:
+                made[index] = self._working_tab()
+            elif entry.get("kind") == DECK and isinstance(entry.get("deck"), str):
+                deck = decks.get(project.root / entry["deck"])
+                if deck is None:
+                    continue                                    # the deck is gone: its working tab is dropped
+                tab = self._bind_working_tab(deck)
+                if entry.get("mode") in MODES:
+                    tab.mode = entry["mode"]
+                tab.work = _work_from_json(entry.get("work"))
+                if isinstance(entry.get("color"), int) and not isinstance(entry.get("color"), bool):
+                    self.tabs.set_deck_color(deck.path, entry["color"])
+                made[index] = tab
+        for index, entry in enumerate(entries):
+            rel = entry.get("path") if isinstance(entry, dict) and entry.get("kind", FILE) == FILE else None
+            if not rel:
+                continue
+            path = project.root / rel
+            if not path.is_file():
+                continue       # skipped silently: gone since this project was last open
+            slide = _is_slide_file(path)
+            tab = self.tabs.add_file(path, slide=slide,
+                                     mode=entry.get("mode") if entry.get("mode") in MODES else "source")
+            if path in decks and not slide:                     # a deck's source belongs to that deck, whichever is on show
+                self._bind_working_tab(decks[path])
+                tab.context = path
+            elif new_format and isinstance(entry.get("deck"), str) and project.root / entry["deck"] in decks \
+                    and self.tabs.working_tab(project.root / entry["deck"]) is not None:
+                tab.context = project.root / entry["deck"]
+            elif new_format and "deck" in entry:
+                tab.context = None                              # saved with no deck, or its deck is gone
+            else:
+                tab.context = self._file_context(path, slide)   # the old formats had none saved
+            self.source.hold(path)
+            if (index == active) if new_format else (rel == active):
+                made[index] = tab
+        self.tabs.order_decks([t.context for index, t in sorted(made.items()) if t.kind == DECK])
+        self._update_strip()
+        if onshow is not None:
+            work = self._work_of(onshow)
+            if work is not None:
+                self._apply_work(work)                          # the deck on show comes back as it was left
+        active_tab = made.get(active) if new_format and isinstance(active, int) else next(
+            (t for t in made.values() if t.kind == FILE and self._rel(t.path) == active), None)
+        if active_tab is not None:
+            self.tabs.activate(active_tab)      # refreshes (_on_tab_active); another deck's tab brings that deck
+
+    def _apply_work(self, work) -> None:
+        """Put the deck on show back as `work` says (restore at start): view, language, the list's closed sections, Find
+        text and scroll, and the focused slide when it is still in the deck."""
+        state, slide_list = self.state, getattr(self.app, "slide_list", None)
+        if work.view != state.view:
+            state.set_view(work.view)
+        if work.language and work.language != state.language:
+            state.set_language(work.language)
+        if slide_list is not None:
+            slide_list.apply_work(work)
+        elif work.focused_slide is not None:
+            state.set_focused_slide(work.focused_slide, occurrence_key=work.focused_occurrence)
+
+    def _ask_save(self, name: str) -> Optional[str]:
+        """"save", "discard" or None (Cancel) for the unsaved changes of the file `name`."""
+        box = QMessageBox(QMessageBox.Icon.Question, "Unsaved changes", f"Save the changes to {name}?",
+                          parent=self.app)
+        save = box.addButton("Save", QMessageBox.ButtonRole.AcceptRole)
+        discard = box.addButton("Discard", QMessageBox.ButtonRole.DestructiveRole)
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(save)
+        box.exec()
+        return "save" if box.clickedButton() is save else "discard" if box.clickedButton() is discard else None
+
+    def _on_mode(self, mode: str) -> None:
+        """The mode of the tab on show changed. A file that is no slide has the Source view alone (D3 of the plan):
+        another mode, asked for by whatever route, is put back."""
+        tab = self.tabs.active
+        if self._adopting:                  # the deck's own mode, which is the working tab's (adopt_deck puts this tab's back)
+            return
+        if tab.source_only and mode != "source":
+            self.state.set_mode("source")
+            return
+        if self._switching:
+            return
+        if not tab.source_only:
+            tab.mode = mode                    # the tab comes back in this mode
+        self.refresh()
+
+    def _on_focus(self, _slide_id: Optional[str]) -> None:
+        if self._adopting:                  # the new deck's first slide: the working tab's, the tab on show stays
+            self._set_path(self._focused_path())
+            return
+        if not self._opening:
+            if not self.rescanning:     # the rescan after a save moves the focus off a slide that is gone: stay on the tab
+                self._show_slide_tab()
+            self._set_path(self._focused_path())
+            self.refresh()
+
+    def _on_language(self, _language: str) -> None:
+        # SourcePane retains each file's buffer, including pending edits. The file tabs stay as they are.
+        if self._focused_row() is not None:
+            self._set_path(self._focused_path())
+        self.refresh()
+
+    def _on_saved(self, path: Path) -> None:
+        self.state.drop_outline()
+        if self.state.mode in ("preview", "split") and path == self.preview.target_path:
+            self.preview.render_after_save()
+        self.refresh()
+
+    def render_buffer(self) -> None:
+        """Render the editor's buffer, saved or not (Ctrl+Enter, Ctrl+R in the Source view). A file that is no slide
+        has nothing to render."""
+        if self.source_only:
+            return
+        if self.state.mode == "source":
+            self.state.set_mode("split")   # the page is where the render shows
+        self.preview.render_buffer()
+
+    def _focused_row(self) -> Optional[deck_outline.SlideRow]:
+        state = self.state
+        deck = state.deck
+        if deck is None or deck.is_test_deck or state.focused_slide is None:
+            return None
+        return deck_outline.slide_row(state.project, deck, state.focused_slide, state.view, state.language,
+                                      occurrence_key=state.focused_occurrence, outline=state.outline)
+
+    def _tab_row(self, tab: CentreTab) -> Optional[deck_outline.SlideRow]:
+        """The row of the open deck that a slide file tab previews as, or None when it previews alone: the deck does not
+        use the slide (any more), it is a frozen version, or there is no deck. A slide used more than once keeps the
+        occurrence the tab was opened from."""
+        state, deck = self.state, self.tab_deck(tab)
+        if not tab.slide or deck is None or deck.is_test_deck:
+            return None
+        id_slug, version = self._file_slide(tab.path)
+        if not id_slug or version is not None:
+            return None
+        return deck_outline.slide_row(state.project, deck, bare_id(id_slug), state.view, state.language,
+                                      occurrence_key=tab.occurrence,
+                                      outline=state.outline if state.deck is not None and deck.path == state.deck.path else None)
+
+    def _shown_row(self) -> Optional[deck_outline.SlideRow]:
+        """The deck row of the slide on show: the focused one for the slide tab, the tab's own for a slide file tab."""
+        tab = self.tabs.active
+        return self._tab_row(tab) if tab.slide else self._focused_row()
+
+    def _focused_path(self) -> Optional[Path]:
+        """The file of the focused slide, if it has one: what the deck's call loads, else the
+        slide's current file."""
+        row = self._focused_row()
+        slide_id = self.state.focused_slide
+        path = self.state.project.slides_dir / row.call.source_filename if row is not None \
+            else current_path_for_bare_id(self.state.project, slide_id) if slide_id else None
+        return path if path is not None and path.is_file() else None
+
+    def _empty_message(self) -> str:
+        deck = self.state.deck
+        if deck is None:
+            return "This project has no decks yet."
+        if deck.is_test_deck:
+            return (f"{deck.name} is a test deck: it has no slide list. Compile it from the top bar, "
+                    "or edit its source with Deck → Source.")
+        return "Select a slide in the list. Click it to open its source."
+
+    @slide_language.shared_links()
+    def refresh(self) -> None:
+        """Bring the visible views up to date with the state."""
+        self._forget_missing_tabs()
+        mode = self.state.mode
+        if self._slide_path is not None and not self._slide_path.is_file():
+            self._slide_path = self._focused_path()   # renamed or deleted meanwhile
+        was_split = self.source.isVisibleTo(self) and self.preview.isVisibleTo(self)
+        self.source.setVisible(mode in ("source", "split"))
+        self.preview.setVisible(mode in ("preview", "split"))
+        self._pages.setCurrentWidget(self.details if mode == "details" else self._split)
+        if mode == "split" and not was_split:
+            self._apply_split()   # the remembered share on entering; not again while the handle is dragged
+        message = self._empty_message()
+        self.source.set_version_here(mode == "source")     # elsewhere the Preview carries the version buttons
+        if mode in ("source", "split"):
+            self.source.set_message(message)
+            self.source.show_path(self._path, self.tabs.active.on_saved)
+        target, row, title, language = self._preview_context()
+        if self.window().isActiveWindow():
+            focus = (target, self.state.view, language or self.state.language) if target else None
+            preview_build.set_focus(self.app.project, focus)
+        if mode in ("preview", "split"):
+            self.preview.show_slide(target, row, title, message, language)
+        if mode == "preview":
+            self.preview.set_version_state(self._disk_version_state(target))
+        if mode == "details":
+            tab_slide = self.tabs.active.slide
+            row = self._shown_row()
+            id_slug = row.call.id_slug if row else self._file_slide(self._path)[0]
+            path = self._path
+            version = self._file_slide(path)[1] if tab_slide else None
+            self.details.show_slide(id_slug, row, message, frozen=path if version is not None else None)
+        for tab in self.tabs.tabs:
+            if tab.kind == DECK or tab.slide:
+                self.tab_strip.set_label(tab, *self._tab_label(tab))
+
+    def _apply_split(self) -> None:
+        # Weights, so the share holds when the window is resized.
+        self._split.setSizes([round(10_000 * self._split_ratio), round(10_000 * (1 - self._split_ratio))])
+
+    def _remember_split(self, _position: int = 0, _index: int = 0) -> None:
+        source, preview = self._split.sizes()
+        if source and preview:
+            self._split_ratio = source / (source + preview)
+            layout_settings.set(SPLIT_SETTING, self._split_ratio)
+
+    def _reset_split(self) -> None:
+        self._split_ratio = DEFAULT_SPLIT
+        layout_settings.set(SPLIT_SETTING, DEFAULT_SPLIT)
+        self._apply_split()
+
+    def _file_slide(self, path: Optional[Path]) -> tuple[str, Optional[str]]:
+        """(id-slug, version) of the slide file `path`, or ("", None) if it is none."""
+        if path is None:
+            return "", None
+        try:
+            _macro, id_slug, version = slide_language.call_for_slide_path(path)
+        except ValueError:
+            return "", None
+        return id_slug, version
+
+    def _preview_context(self) -> tuple[Optional[PreviewTarget], Optional[deck_outline.SlideRow], str, Optional[str]]:
+        """(target, row, title, language) of what the Preview shows: the slide of the tab on show -- the focused slide
+        or a slide file tab's, as the deck calls it; the file of the other language that the language chip opened, as
+        the deck calls it in that language (`row` stays the slot's, `language` is the file's); a frozen version, or a
+        slide the deck doesn't use, alone."""
+        tab = self.tabs.active
+        if tab.slide:
+            return self._context_for(tab.path, self._tab_row(tab))
+        return self._context_for(self._slide_path, self._focused_row())
+
+    def _context_for(self, path: Optional[Path], row: Optional[deck_outline.SlideRow]):
+        id_slug, version = self._file_slide(path)
+        state, deck = self.state, self._shown_deck()
+        if row is not None and (path is None or (id_slug == row.call.id_slug and version == row.call.version)):
+            return for_call(state.project, deck, row.call, row.position, language=state.language, frame_number=row.frame_number,
+                            occurrence_key=row.key, hidden=row.hidden, outline=state.outline), row, row.title, None
+        if path is None:
+            return None, None, "", None
+        own = own_language(id_slug, languages.project_languages(state.project).codes)
+        partner = (row is not None and version is None and own not in (None, MULT) and id_slug != row.call.id_slug
+                   and row.matches(bare_id(id_slug)))
+        target = (slide_target(state.project, deck, path, state.view, own) if partner
+                  else for_path(state.project, path))
+        title = deck_outline.slide_file_title(state.project, path, id_slug) if target else ""
+        return target, row if partner else None, title, own if partner else None
+
+    def _go_adjacent(self, direction: int) -> None:
+        """The Preview's wheel ran past the last (first) reveal step: focus the slide after (before) the focused one,
+        opening at its first step going forward, at its last going back -- as in a presentation."""
+        if self.tabs.active.slide:
+            return                  # a slide file tab keeps its slide, and the focus stays where it is
+        state, row = self.state, self._focused_row()
+        deck = self._shown_deck()
+        if deck is None or row is None:
+            return
+        rows = deck_outline.outline_rows(state.project, deck, state.view, state.language, outline=state.outline)
+        index = next((i for i, r in enumerate(rows) if r.position == row.position), None)
+        if index is None:
+            return
+        index += direction
+        while 0 <= index < len(rows) and rows[index].hidden:
+            index += direction
+        if not 0 <= index < len(rows):
+            return
+        other = rows[index]
+        target = for_call(state.project, deck, other.call, other.position, frame_number=other.frame_number,
+                          occurrence_key=other.key, hidden=other.hidden, outline=state.outline)
+        if target is not None:
+            self.preview.set_step_choice(target.source_path, 1 if direction > 0 else None)
+        state.set_focused_slide(other.call.id, occurrence_key=other.key)
+
+    def _english_frames(self, state, resolution: deck_language.Resolution) -> Optional[deck_outline.Outline]:
+        """An outline for for_call without a language, which takes the Instructor frame numbers of the English
+        resolution: the state's own when it is English, else one resolution kept for the deck text. Without it each
+        neighbour resolved every slot of the deck again (in German, six times after every Preview refresh)."""
+        outline = state.outline
+        if outline is not None and outline.matches(state.project, state.deck, "EN", resolution=resolution):
+            return outline
+        cached = getattr(self, "_english_frames_cache", None)
+        if cached is not None and cached.matches(state.project, state.deck, "EN", resolution=resolution):
+            return cached
+        links = slide_language.links_for(state.project)
+        slots = deck_outline.resolve_slots(state.project, state.deck, deck_editor.VIEW_INSTRUCTOR, "EN", links=links, resolution=resolution)
+        cached = deck_outline.Outline(state.project, state.deck.path,
+                                      resolution.hash,
+                                      deck_editor.VIEW_INSTRUCTOR, "EN",
+                                      [], links, {r.key: r.frame_number for r in slots})
+        self._english_frames_cache = cached
+        return cached
+
+    def _neighbour_targets(self) -> list:
+        """[(target, row)] of the slides nearest to the one on show in the deck (one before, one after, two before,
+        two after, ...) that the view typesets: the Preview counts their reveal steps while it is idle. A slide file tab
+        the deck does not use has none."""
+        state, row = self.state, self._shown_row()
+        deck = self._shown_deck()
+        if deck is None or row is None:
+            return []
+        # Kept while the slide, the view and the resolved outline stay: building them reads every slide's language
+        # header of the deck six times, on this thread, and the Preview asks after every refresh (v8.52.2).
+        key = (id(state.outline), state.outline is not None, deck.path, row.position, state.view, state.language)
+        cached = getattr(self, "_neighbours_cache", None)
+        if cached is not None and cached[0] == key and cached[1] is state.outline:
+            return cached[2]
+        resolution = deck_language.resolve(state.deck)
+        rows = deck_outline.outline_rows(state.project, deck, state.view, state.language, outline=state.outline, resolution=resolution)
+        index = next((i for i, r in enumerate(rows) if r.position == row.position), None)
+        if index is None:
+            return []
+        picks = []
+        for distance in range(1, 4):
+            picks += [rows[i] for i in (index - distance, index + distance) if 0 <= i < len(rows)]
+        # Built as the focused slide's target is (batch_render.plan_slide), so a neighbour's step count is found
+        # under the same key once that slide is focused.
+        frames = self._english_frames(state, resolution)
+        targets = [(for_call(state.project, deck, r.call, r.position, frame_number=r.frame_number,
+                             occurrence_key=r.key, hidden=r.hidden, outline=frames, resolution=resolution), r) for r in picks if not r.hidden]
+        if state.outline is not None:           # without a resolved outline there is nothing that says it is still right
+            self._neighbours_cache = (key, state.outline, targets)
+        return targets
+
+    def _deck_targets(self) -> list:
+        """[(target, row)] of every slide of the open deck that the view typesets, in deck order: the Preview reads
+        their stored pages ahead. Built once per deck text, view, language and outline (about 50 ms for 400 slides)."""
+        state = self.state
+        if state.deck is None or state.outline is None:
+            return []
+        key = (id(state.outline), state.deck.path, state.view, state.language)
+        cached = getattr(self, "_deck_targets_cache", None)
+        if cached is not None and cached[0] == key and cached[1] is state.outline:
+            return cached[2]
+        resolution = deck_language.resolve(state.deck)
+        rows = deck_outline.outline_rows(state.project, state.deck, state.view, state.language, outline=state.outline, resolution=resolution)
+        frames = self._english_frames(state, resolution)
+        targets = [(for_call(state.project, state.deck, r.call, r.position, frame_number=r.frame_number,
+                             occurrence_key=r.key, hidden=r.hidden, outline=frames, resolution=resolution), r) for r in rows if not r.hidden]
+        self._deck_targets_cache = (key, state.outline, targets)
+        return targets
+
+    # -- settings and housekeeping the window forwards ---------------------------------
+
+    def refresh_colors(self) -> None:
+        self.source.refresh_colors()
+
+    def set_tab_width(self, chars: int) -> None:
+        self.source.set_tab_width(chars)
+
+    def set_hover_help(self, on: bool) -> None:
+        self.source.set_hover_help(on)
+
+    def refresh_model_preferences(self, models: list[str]) -> None:
+        self.source.refresh_model_preferences(models)

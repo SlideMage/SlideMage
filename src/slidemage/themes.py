@@ -1,0 +1,373 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Theme packages (docs/THEME_PACKAGE.md): a template packaged on its own, installed in config_dir()/themes/<key>/.
+
+A catalogue "theme" is what the framework calls a template (SlideMage_template_<key>.tex, its schemes/scheme_<key>/
+folder and at most its own layout profile file), never the beamer theme beamerthemeSlideMage.sty, which is
+framework. A theme runs no Python, so its manifest theme.toml has no api_version, needs or network.
+
+* Discovery: installed_dirs() are the theme folders on this computer; compiler.build_env puts them on TEXINPUTS
+  (texinputs()) for every compile and preview, after the project root and the framework, so a project's own copy
+  of the same key wins, then the installed theme, and the bundled templates never lose to a theme (a theme cannot
+  take a bundled key). slide_snapshot lists their templates beside the project's and the framework's.
+* Checks: check_folder() is what install_file() and tools/make_theme_package.py run: a valid theme.toml, its
+  requires_slidemage met, the template file there, nothing but the package's own files (no TeX code besides the
+  template and its layout profile, which would be found on TEXINPUTS ahead of the TeX distribution), and a key that
+  does not shadow a bundled template. The archive members pass the plugin installer's zip checks first.
+* Install and remove take effect at once: nothing of a theme stays loaded between compiles.
+
+No Qt, standard library only.
+"""
+from __future__ import annotations
+
+import logging
+import re
+import tomllib
+from dataclasses import dataclass
+from functools import partial
+from pathlib import Path, PurePosixPath
+
+from . import latex_help, packages, project
+from .fileio import atomic_write
+from .packages import os as os, shutil as shutil, uuid as uuid, zipfile as zipfile
+from .plugins import installer
+from .plugins.manifest import REQUIRES_RE, VERSION_RE, ManifestError, _text, matches
+from .version import VERSION_NUMBER
+
+log = logging.getLogger(__name__)
+
+MANIFEST_NAME = "theme.toml"
+PACKAGE_SUFFIX = ".smtheme"
+TEMPLATE_PREFIX = "SlideMage_template_"
+LAYOUT_PREFIX = "SlideMage_layout_"
+KEY_RE = re.compile(r"^[a-z][a-z0-9-]{1,31}$")
+LAYOUT_RE = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
+# The files a package holds besides its template, scheme folder and layout profile.
+REQUIRED_FILES = ("README.md", "CHANGELOG.md", "LICENSE")
+HELP_NAME = latex_help.HELP_FILE_NAME      # optional: hover help for the theme's own commands (THEME_PACKAGE.md)
+OPTIONAL_FILES = ("preview.png", HELP_NAME)
+OPTIONAL_DIRS = ("LICENSES",)       # REUSE-style licence texts
+# TeX finds these on TEXINPUTS; only the template and the layout profile may be one.
+TEX_CODE_SUFFIXES = frozenset({".tex", ".sty", ".cls", ".lua", ".def", ".cfg", ".fd", ".clo", ".ltx", ".dtx", ".ins"})
+BUNDLED_PROFILES = ("fira", "lmsans", "lmroman")
+
+
+class ThemeError(Exception):
+    """A theme package or folder breaks a rule, or installing/removing failed; the message is for the user."""
+
+
+@dataclass(frozen=True)
+class ThemeManifest:
+    id: str
+    name: str
+    version: str
+    requires_slidemage: str
+    summary: str
+    author: str
+    homepage: str
+    license: str
+    layout: str
+
+    @property
+    def template_file(self) -> str:
+        return template_file(self.id)
+
+    @property
+    def scheme_dir(self) -> str:
+        return scheme_dir(self.id)
+
+
+def template_file(key: str) -> str:
+    return f"{TEMPLATE_PREFIX}{key}.tex"
+
+
+def scheme_dir(key: str) -> str:
+    """The scheme folder's name: schemes/scheme_<key> with the key's hyphens as underscores (scheme_uni_graz)."""
+    return f"scheme_{key.replace('-', '_')}"
+
+
+def themes_dir() -> Path:
+    return project.config_dir() / "themes"
+
+
+def bundled_keys() -> frozenset[str]:
+    """The keys of the templates SlideMage itself ships (latex/), which a theme may not take."""
+    keys = {"slidemage"}
+    latex = project.template_dir("latex")
+    if latex is not None:
+        keys |= {path.stem[len(TEMPLATE_PREFIX):] for path in latex.glob(f"{TEMPLATE_PREFIX}*.tex")}
+    return frozenset(keys)
+
+
+# -- theme.toml
+
+def parse_manifest(text: str) -> ThemeManifest:
+    """The checked theme.toml text. Raises ThemeError."""
+    try:
+        data = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as e:
+        raise ThemeError(f"{MANIFEST_NAME} is not valid TOML: {e}") from None
+    try:
+        key = _text(data, "id", 1)
+        if not KEY_RE.match(key):
+            raise ManifestError("id (the template key) must be 2 to 32 characters: a lowercase letter, then "
+                                "lowercase letters, digits, -")
+        version = _text(data, "version", 1)
+        if not VERSION_RE.match(version):
+            raise ManifestError("version must look like 1.2.3")
+        requires = _text(data, "requires_slidemage", 1)
+        if not REQUIRES_RE.match(requires):
+            raise ManifestError('requires_slidemage must look like ">=0.10.16" or ">=0.10.16, <0.12"')
+        homepage = _text(data, "homepage", 1)
+        if not re.match(r"^https?://\S+$", homepage):
+            raise ManifestError("homepage must be an http(s) address")
+        layout = _text(data, "layout", 1)
+        if not LAYOUT_RE.match(layout):
+            raise ManifestError("layout must be a layout profile name: lowercase letters, digits, -")
+        for unwanted in ("api_version", "needs", "network"):
+            if unwanted in data:
+                raise ManifestError(f"{unwanted} belongs to plugin.toml; a theme runs no Python")
+        return ThemeManifest(
+            id=key, name=_text(data, "name", 1, 40), version=version, requires_slidemage=requires,
+            summary=_text(data, "summary", 1, 120), author=_text(data, "author", 1), homepage=homepage,
+            license=_text(data, "license", 1), layout=layout)
+    except ManifestError as e:
+        raise ThemeError(f"{MANIFEST_NAME}: {e}") from None
+
+
+# -- the package rules
+
+def check_names(names: list[str], manifest: ThemeManifest) -> None:
+    """The package's file names (POSIX, relative to its top, folders ending in /) hold the template and the required
+    files and nothing that is not the theme's own. Raises ThemeError."""
+    files = {n for n in names if not n.endswith("/")}
+    own_layout = f"{LAYOUT_PREFIX}{manifest.layout}.tex"
+    if manifest.layout in BUNDLED_PROFILES and own_layout in files:
+        # An installed theme is on TEXINPUTS ahead of the framework: its copy would replace the bundled profile
+        # for every deck using it, not just the theme's own template.
+        raise ThemeError(f"The theme ships its own copy of SlideMage's layout profile {manifest.layout} "
+                         f"({own_layout}); a theme may ship a layout profile only under a name of its own.")
+    allowed_top = {MANIFEST_NAME, manifest.template_file, own_layout, *REQUIRED_FILES, *OPTIONAL_FILES}
+    for name in names:
+        path = PurePosixPath(name.rstrip("/"))
+        if not name or name.startswith("/") or "\\" in name or ".." in path.parts or re.match(r"^[A-Za-z]:", name):
+            raise ThemeError(f"The theme contains a path outside the package: {name!r}.")
+        top = path.parts[0]
+        if len(path.parts) == 1 and not name.endswith("/"):
+            if top not in allowed_top:
+                raise ThemeError(f"The theme contains a file that is not part of a theme package: {name!r}.")
+            continue
+        if top == "schemes":
+            if len(path.parts) >= 2 and path.parts[1] != manifest.scheme_dir:
+                raise ThemeError(f"The theme's scheme folder must be schemes/{manifest.scheme_dir}/, "
+                                 f"not {'/'.join(path.parts[:2])}/.")
+            if path.suffix.lower() in TEX_CODE_SUFFIXES and not name.endswith("/"):
+                raise ThemeError(f"The theme contains TeX code besides its template and layout profile: {name!r}.")
+        elif top not in OPTIONAL_DIRS:
+            raise ThemeError(f"The theme contains a folder that is not part of a theme package: {top}/.")
+        elif path.suffix.lower() in TEX_CODE_SUFFIXES and not name.endswith("/"):
+            raise ThemeError(f"The theme contains TeX code besides its template and layout profile: {name!r}.")
+        if path.suffix.lower() in installer.FORBIDDEN_SUFFIXES:
+            raise ThemeError(f"The theme contains a compiled file, which is not allowed: {name!r}.")
+    for required in (manifest.template_file, *REQUIRED_FILES):
+        if required not in files:
+            raise ThemeError(f"The theme has no {required}.")
+    if manifest.layout not in BUNDLED_PROFILES and own_layout not in files:
+        raise ThemeError(f"The theme names the layout profile {manifest.layout!r}, which is neither SlideMage's "
+                         f"({', '.join(BUNDLED_PROFILES)}) nor its own {own_layout}.")
+
+
+def check_manifest(manifest: ThemeManifest, app_version: str = VERSION_NUMBER) -> None:
+    """The rules that depend on this SlideMage: requires_slidemage, and a key no bundled template has."""
+    if manifest.id in bundled_keys():
+        raise ThemeError(f"The theme's key {manifest.id!r} is the key of a template SlideMage ships; "
+                         "a theme cannot replace it.")
+    try:
+        ok = matches(manifest.requires_slidemage, app_version)
+    except ValueError as e:
+        raise ThemeError(f"Cannot compare SlideMage versions: {e}") from None
+    if not ok:
+        raise ThemeError(f"The theme needs SlideMage {manifest.requires_slidemage}; this is {app_version}.")
+
+
+# v0.16.0 removed the dark switch \SMDarkMode: a theme reads its mode from \SMDeclareMode and \SMSetRole lines instead
+# (latex/SlideMage_setup.tex). A template that still tests the switch was made for an older SlideMage.
+_OLD_DARK_SWITCH = re.compile(r"\\SMDarkMode(?![A-Za-z@])")
+OUTDATED_PROBLEM = ("it was made for SlideMage before v0.16.0 (it still uses \\SMDarkMode, which is gone); "
+                    "install a newer version of the theme")
+_contents_cache: dict[Path, tuple[int, str]] = {}
+
+
+def check_contents(folder: Path, key: str) -> str:
+    """The problem of a theme's template that this SlideMage cannot use, "" when there is none. Cached by the file's
+    modification time, since installed_dirs() asks for every compile."""
+    from .tex_source import is_commented
+
+    path = folder / template_file(key)
+    try:
+        stamp = path.stat().st_mtime_ns
+    except OSError:
+        return ""
+    cached = _contents_cache.get(path)
+    if cached is not None and cached[0] == stamp:
+        return cached[1]
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    problem = OUTDATED_PROBLEM if any(not is_commented(text, m.start()) for m in _OLD_DARK_SWITCH.finditer(text)) else ""
+    _contents_cache[path] = (stamp, problem)
+    return problem
+
+
+# Keep the public package API here; callers and package tools need no knowledge of the shared store.
+KIND = packages.PackageKind(
+    name="theme", folder=lambda: themes_dir(), manifest_name=MANIFEST_NAME, suffix=PACKAGE_SUFFIX,
+    error=ThemeError, parse_manifest=lambda text: parse_manifest(text),
+    check_names=lambda names, manifest: check_names(names, manifest),
+    check_manifest=lambda manifest, app_version: check_manifest(manifest, app_version),
+    key_re=KEY_RE, tex_file=template_file, contents_name="theme", check_contents=check_contents)
+
+InstalledTheme = packages.InstalledPackage
+read_manifest = partial(packages.read_manifest, KIND)
+folder_names = partial(packages.folder_names, KIND)
+_check_package_folder = partial(packages.check_folder, KIND)
+
+
+def check_folder(folder: Path, app_version: str = VERSION_NUMBER, skip_hidden: bool = False):
+    """packages.check_folder, and the theme's help.toml, if it has one, read strictly: the packing tools refuse a
+    help file the editor would only skip entries of."""
+    manifest = _check_package_folder(folder, app_version, skip_hidden)
+    try:
+        latex_help.parse_help((folder / HELP_NAME).read_text(encoding="utf-8"), strict=True)
+    except FileNotFoundError:
+        pass
+    except (OSError, UnicodeDecodeError) as e:
+        raise ThemeError(f"{HELP_NAME} cannot be read: {e}") from None
+    except latex_help.HelpFileError as e:
+        raise ThemeError(str(e)) from None
+    return manifest
+
+
+_help_cache: dict[Path, tuple[int, latex_help.HelpSet]] = {}
+
+
+def help_of(folder: Path) -> latex_help.HelpSet:
+    """The hover help a theme folder's help.toml supplies (nothing without one); entries that do not pass are
+    skipped. Cached by the file's modification time: the editor asks on each tooltip."""
+    path = folder / HELP_NAME
+    try:
+        stamp = path.stat().st_mtime_ns
+    except OSError:
+        return latex_help.NO_EXTRA
+    cached = _help_cache.get(path)
+    if cached is not None and cached[0] == stamp:
+        return cached[1]
+    try:
+        found = latex_help.parse_help(path.read_text(encoding="utf-8"), strict=False)
+    except (OSError, UnicodeDecodeError):
+        found = latex_help.NO_EXTRA
+    _help_cache[path] = (stamp, found)
+    return found
+package_name = partial(packages.package_name, KIND)
+peek = partial(packages.peek, KIND)
+installed = partial(packages.installed, KIND)
+installed_dirs = partial(packages.installed_dirs, KIND)
+texinputs = partial(packages.texinputs, KIND)
+theme_of = partial(packages.owner_of, KIND)
+install_file = partial(packages.install_file, KIND)
+remove = partial(packages.remove, KIND)
+cleanup = partial(packages.cleanup, KIND)
+
+
+SHIPPED_STARTS = (("slidemage", "SlideMage (the default look)"), ("grayscale", "Grayscale (sets more settings)"))
+
+
+def check_new_key(key: str, root: Path) -> str:
+    """"" when `key` can name a new personal theme in the project at `root`, else why not."""
+    if not KEY_RE.match(key):
+        return "A key is 2 to 32 characters: lower-case letters, digits and -, starting with a letter."
+    if key in {start for start, _ in SHIPPED_STARTS}:
+        return f"{key} is a theme SlideMage ships: pick another key."
+    if (root / template_file(key)).exists():
+        return f"The project has a theme {key} already."
+    if any(folder.name == key for folder in installed_dirs()):
+        return f"An installed theme is called {key}: a personal one of that key would replace it in this project."
+    return ""
+
+
+def new_theme(key: str, name: str, root: Path, start: str = "slidemage") -> Path:
+    """A new personal theme (docs/plans/theme-editor.md, section 3.4): the shipped template `start` copied into the
+    project folder as SlideMage_template_<key>.tex, with `name` as its name line. Raises ThemeError when the key cannot
+    be used or the shipped template is not found."""
+    from . import slide_templates
+    from .theme_file import ThemeFile
+
+    problem = check_new_key(key, root)
+    if problem:
+        raise ThemeError(problem)
+    if start not in {s for s, _ in SHIPPED_STARTS}:
+        raise ThemeError(f"Unknown starting point {start!r}.")
+    source = next((folder / template_file(start) for folder in slide_templates.framework_dirs(root)
+                   if (folder / template_file(start)).is_file()), None)
+    if source is None:
+        raise ThemeError(f"The shipped template {template_file(start)} was not found.")
+    theme = ThemeFile(source.read_bytes().decode("utf-8"))
+    theme.set("header:name", (name.strip() or key)[:40])
+    target = root / template_file(key)
+    try:
+        atomic_write(target, theme.text)
+    except OSError as exc:
+        raise ThemeError(f"Could not write {target.name}: {exc}") from None
+    return target
+
+
+def project_copies(key: str, root: Path) -> list[Path]:
+    """What copy_to_project put into the project folder `root` for the theme `key` and is still there: its template
+    file, its scheme folder and its own layout profile. These are what TeX finds before the installed theme."""
+    found = [root / template_file(key), root / "schemes" / scheme_dir(key)]
+    folder = next((f for f in installed_dirs() if f.name == key), None)
+    if folder is not None:
+        try:
+            manifest = read_manifest(folder)
+        except ThemeError:
+            manifest = None
+        if manifest is not None and manifest.layout not in BUNDLED_PROFILES:
+            found.append(root / f"{LAYOUT_PREFIX}{manifest.layout}.tex")
+    return [path for path in found if path.exists()]
+
+
+def copy_to_project(key: str, root: Path) -> Path:
+    """Copy the installed theme `key` into the project folder `root` so that it can be edited there: its template
+    file, its scheme folder (logos and the like) and its own layout profile, each only where the project has no file
+    or folder of that name yet (nothing of the project's is overwritten). TeX finds the project's copy of the key
+    first, so the decks that use it follow the copy at once. Returns the template's path in the project. Raises
+    ThemeError when no theme of that key is installed."""
+    folder = next((f for f in installed_dirs() if f.name == key), None)
+    if folder is None:
+        raise ThemeError(f"The theme {key!r} is not installed.")
+    manifest = None
+    try:
+        manifest = read_manifest(folder)
+    except ThemeError:
+        pass        # a broken theme.toml does not stop the copy of the files that are there
+    copies = [(folder / template_file(key), root / template_file(key))]
+    schemes = folder / "schemes" / scheme_dir(key)
+    if schemes.is_dir():
+        copies.append((schemes, root / "schemes" / scheme_dir(key)))
+    if manifest is not None and manifest.layout not in BUNDLED_PROFILES:
+        own = f"{LAYOUT_PREFIX}{manifest.layout}.tex"
+        if (folder / own).is_file():
+            copies.append((folder / own, root / own))
+    for source, target in copies:
+        if target.exists():
+            continue
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if source.is_dir():
+                shutil.copytree(source, target)
+            else:
+                shutil.copyfile(source, target)
+        except OSError as exc:
+            raise ThemeError(f"Could not copy {source.name} into the project: {exc}") from None
+    return root / template_file(key)

@@ -1,0 +1,2 @@
+def activate(host):
+    pass

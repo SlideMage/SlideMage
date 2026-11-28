@@ -1,0 +1,37 @@
+%% Included in decks: (none)
+%%
+
+% SlideMage manual, chapter "Installing SlideMage": the TeX distribution on
+% Linux. Companion to the Windows slide 1us.
+\begin{standardframe}{Installing LaTeX in Linux}
+	\small
+	SlideMage needs LuaLaTeX and latexmk. On Linux both come from TeX Live,
+	either through the distribution's package manager or from the upstream installer.
+	Perl, which latexmk needs, is already installed.
+	\par\medskip
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.56\linewidth}
+			\shrinklists{1}
+			\textbf{From the package manager} (simplest)
+			\begin{itemize}
+				\item Debian, Ubuntu: \SMCode{sudo apt install texlive-full latexmk}
+				\item Fedora: \SMCode{sudo dnf install texlive-scheme-full latexmk}
+				\item Arch: \SMCode{sudo pacman -S texlive texlive-lang}
+				\item The full scheme takes about 6--8\,GB; updates come with the system's, but stay at the release's TeX Live year
+			\end{itemize}
+		\end{column}
+		\begin{column}{0.4\linewidth}
+			\shrinklists{1}
+			\textbf{Upstream TeX Live} (\SMCode{tug.org/texlive})
+			\begin{itemize}
+				\item \SMCode{install-tl}, scheme \emph{full}; no root needed in your home folder
+				\item Add its \SMCode{bin} folder to \SMCode{PATH}; update with \SMCode{tlmgr update --all}
+			\end{itemize}
+			\medskip
+			\textbf{Either way}
+			\begin{itemize}
+				\item Test in a terminal: \SMCode{lualatex --version}, \SMCode{latexmk -v}
+			\end{itemize}
+		\end{column}
+	\end{columns}
+\end{standardframe}

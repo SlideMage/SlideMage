@@ -1,0 +1,36 @@
+%% Included in decks: slidemage-manual, slidemage-manual-copy
+%%
+
+% SlideMage manual, chapter "Working in SlideMage": the slide-level actions of the Details
+% view and the panels that act on a whole slide. The strip is a crop of the Details view
+% (tools/manual/make_screenshots.py, shot workspace-details).
+\setSlideVersion{1-0-1+}
+\begin{standardframe}{Managing a slide}
+	\small
+	These actions concern the whole slide, not its text; several also update the decks that use it. \emph{Details} lists its file, frame, version, language and slug, and its translation and earlier versions, each with \emph{Open}.
+	\par\smallskip
+	\centering
+	{\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=\dimexpr0.42\linewidth-0.8pt\relax]{media/screenshot-slidemage-slide-details.png}}}
+	\par
+	\raggedright
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.46\linewidth}
+			\textbf{In Details}
+			\shrinklists{3}
+			\begin{itemize}
+				\item \emph{Rename\ldots}: a new slug; the ID stays, the decks follow
+				\item \emph{Duplicate slide\ldots}: a copy, or a linked translation
+				\item \emph{Delete slide\ldots}: removes it and its versions, after a check
+			\end{itemize}
+		\end{column}
+		\begin{column}{0.51\linewidth}
+			\textbf{In the panels}
+			\shrinklists{3}
+			\begin{itemize}
+				\item \emph{Slide versions}: \emph{Freeze as v\ldots} keeps the current text as a numbered version; a frozen one opens read-only
+				\item \emph{Language}: \emph{Translate to DE\ldots} makes a linked translation
+				\item \emph{Used in decks}: which decks use the slide
+			\end{itemize}
+		\end{column}
+	\end{columns}
+\end{standardframe}

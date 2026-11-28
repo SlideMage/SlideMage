@@ -1,0 +1,134 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Local SlideMage UI preferences -- dark mode, the Ollama host, and the saved
+settings of the AI routes (ai/ai_profile.py reads and writes those keys).
+A plain JSON file lives inside SlideMage/ itself, not the Windows registry (2026-08-25,
+direct instruction, replacing an earlier QSettings-based design used for
+one day: "I want everything pertaining to SlideMage to be saved in its
+proper folder, and for the app to work as long as that folder is
+synched"). This project's entire folder already lives in a synced
+location (D:\\Cloud\\...); a registry entry is tied to one specific
+PC's own registry and would NOT travel with the folder to another machine
+the way a plain file inside it does.
+
+Gitignored (see .gitignore) -- unlike translation_prompts.py's own store,
+this is a personal UI preference, not project content worth version-
+controlling or diffing on every toggle, but it still needs to physically
+sit inside the synced folder tree for the cloud-sync client itself (not
+git) to carry it across machines.
+
+The file is the project's .slidemage/app_settings.json (ProjectContext.settings_dir),
+next to translation_prompts.json; every function takes the ProjectContext it belongs to.
+
+The AI settings of this machine are the exception (v8.58.0, direct instruction: "save all AI model-related settings
+in the SlideMage folder structure, not the project folder structure"): MACHINE_KEYS -- the model per route and task,
+what Cloud means, the Ollama server and the API key's file fallback -- live in SlideMage's own folder
+(project.config_dir()/ai_settings.json, machine_store_path()), for every project on this computer, and never travel
+with a synced project. load() and save() split and merge them, so callers see one dict as before; the first load
+of a project moves any it still holds out of it (a value this machine already has wins). The project keeps what
+is the project's: its Local/Cloud policy (project.json), the Cloud first-use flag, the German form of address and
+the prompts.
+"""
+from __future__ import annotations
+
+import logging
+import os
+from pathlib import Path
+from typing import Any
+
+from . import diagnostics, project
+from .fileio import JsonStore, clear_json_cache
+from .project import ProjectContext
+
+_log = logging.getLogger("slidemage.settings")
+OLLAMA_HOST_SETTING_KEY = "ollama_host"
+# The keys of ai/ai_profile.py (models per route and task, the Cloud connection, and the per-task model keys of
+# before v8.0 that it still reads), the Ollama server and ai/credentials.py's API key fallback; ai_draft_model is
+# a leftover of an older version.
+MACHINE_KEYS = frozenset({
+    "ai_models", "cloud_conn", OLLAMA_HOST_SETTING_KEY, "anthropic_api_key",
+    "chat_model", "drafting_model", "translation_model", "syntax_check_model", "ai_draft_model",
+})
+# Duplicated from ai_draft.py/alt_draft.py's own DEFAULT_OLLAMA_HOST
+# rather than imported from either -- this module sits below both of them
+# in the import graph (they read the Ollama host from here), so it
+# has no business depending back on either just for one shared constant.
+DEFAULT_OLLAMA_HOST = "http://localhost:11434"
+
+
+def clear_cache() -> None:
+    clear_json_cache()
+
+
+def _read(path: Path) -> dict[str, Any]:
+    """The file's settings, from the cache while its stamp is unchanged (fileio.JsonStore): get() is asked on the GUI
+    thread many times a second (the AI route, the background renders' switch). A copy the caller may change."""
+    return JsonStore(path, cache=True).read()
+
+
+def machine_store_path() -> Path:
+    """This machine's AI settings file; computed at each call, so a config folder set after import applies. The
+    name stays ai_settings.json although the core has no AI settings left: renaming it would need a migration."""
+    return project.config_dir() / "ai_settings.json"
+
+
+def _store_path(ctx: ProjectContext) -> Path:
+    return ctx.settings_dir / "app_settings.json"
+
+
+def peek(ctx: ProjectContext, key: str, default: Any = None) -> Any:
+    """Read a legacy setting with machine precedence, without migrating either file."""
+    machine = _read(machine_store_path())
+    if key in MACHINE_KEYS and key in machine:
+        return machine[key]
+    return _read(_store_path(ctx)).get(key, default)
+
+
+def peek_ollama_host(ctx: ProjectContext) -> str:
+    return peek(ctx, OLLAMA_HOST_SETTING_KEY) or os.environ.get("OLLAMA_HOST") or DEFAULT_OLLAMA_HOST
+
+
+def load(ctx: ProjectContext) -> dict[str, Any]:
+    """The project's settings with this machine's AI settings (MACHINE_KEYS) over them."""
+    project_settings = _read(_store_path(ctx))
+    machine = _read(machine_store_path())
+    moved = {key: project_settings.pop(key) for key in MACHINE_KEYS if key in project_settings}
+    if moved:
+        machine = {**moved, **machine}
+        if _write(machine_store_path(), machine):     # never drop the project's copy before this machine has one
+            _write(_store_path(ctx), project_settings)
+    return {**project_settings, **{key: value for key, value in machine.items() if key in MACHINE_KEYS}}
+
+
+def save(ctx: ProjectContext, settings: dict[str, Any]) -> None:
+    """`settings` as load() gave it, changed: MACHINE_KEYS to this machine's file (one left out is removed), the
+    rest to the project's. A file that cannot be written is logged and left as it was (_write)."""
+    machine = {key: value for key, value in _read(machine_store_path()).items() if key not in MACHINE_KEYS}
+    machine.update({key: value for key, value in settings.items() if key in MACHINE_KEYS})
+    _write(machine_store_path(), machine)
+    _write(_store_path(ctx), {key: value for key, value in settings.items() if key not in MACHINE_KEYS})
+
+
+def _write(path: Path, data: dict) -> bool:
+    """write_json(), or a warning in the log when the folder cannot be written: these are preferences (the last
+    deck, the open tabs, ...), and a project folder whose sync client is not running refuses every new file
+    (2026-11-05, Nextcloud's virtual files gave "[Errno 22] Invalid argument"). Raised from a deck switch or
+    from closing the window, that error left the workspace half updated; the window says once that the
+    project folder cannot be written (project_access.py)."""
+    try:
+        JsonStore(path, cache=True).write(data)
+        return True
+    except OSError as exc:
+        _log.warning("couldn't save settings to %s: %s", path, exc)
+        return False
+
+
+def get(ctx: ProjectContext, key: str, default: Any = None) -> Any:
+    return load(ctx).get(key, default)
+
+
+def set(ctx: ProjectContext, key: str, value: Any) -> None:
+    diagnostics.event(_log, "setting changed", key=key)     # the key only: a value can be a key or a token
+    settings = load(ctx)
+    settings[key] = value
+    save(ctx, settings)

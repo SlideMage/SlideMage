@@ -1,0 +1,578 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""The Settings sheet (UI_REDESIGN_PLAN.md, step 9): the preferences that are not about one deck.
+
+* General: dark mode, the Source editor's tab width, live rendering after an autosave, whether leaving a changed slide asks
+  about Update Version, the template single slides render with, when single-slide renders are deleted, how updates are
+  handled, and the GitHub token for themes from private repositories (SlideMage's own updates need none).
+* AI (ui/dialogs/settings_ai.py; only when an AI route is registered): the glossary, the
+  project's Local | Cloud setting and which cloud route, the model of each task, the prompts
+  (settings_prompts.py), then one section per AI service: Ollama (address, installed models:
+  settings_ollama.py), Claude (the Anthropic API key, whether Claude Code is found), a plugin route's, and the
+  sections plugins add (`Host.add_settings_section`). CLOUD, OLLAMA and PROMPTS open this tab scrolled to that
+  section.
+* Presentation: layout, laser and pen colors, links, timer and clock, projector screen:
+  ui/presentation/settings_page.py.
+* Project: the .bib file and test-slides.tex (Edit opens them in Source), the project compatibility check, the
+  project's languages and the German address (ui/dialogs/settings_languages.py) and the project's deck groups
+  (ui/dialogs/settings_deck_groups.py; `SettingsSheet(app, PROJECT, focus=DECK_GROUPS)`, the
+  window's `open_deck_groups()`).
+* About: the version, the version history and the check for updates.
+* Extensions: the installed theme and citation format packages, then the plugins: installed (enable, update, remove)
+  and the catalogue's: ui/dialogs/settings_plugins.py. `SettingsSheet(app, PLUGINS, focus=PLUGIN_LIST)` (the window's
+  `open_plugins()`) opens it at the plugins. Last of SlideMage's own tabs; the plugins' tabs follow it.
+The buttons of Project and About close the sheet first, then run their window command (`after`: the window runs
+it when the sheet has closed).
+
+Every control applies when it changes and is saved at once, as before; only a prompt has its own
+Save button, and closing the sheet asks about prompt text not yet saved. The installed Ollama models come
+from Ollama on a thread, so opening the sheet never waits on the network; the window refreshes the pickers
+that are open from `installed` when the sheet closes with `loaded` set.
+"""
+from __future__ import annotations
+
+import logging
+import os
+from collections.abc import Callable
+from functools import partial
+
+import shiboken6
+from PySide6.QtCore import QThread, QTimer
+from PySide6.QtWidgets import QCheckBox, QComboBox, QDoubleSpinBox, QLabel, QLineEdit, QMessageBox, QSpinBox, QWidget
+
+from ... import app_settings, diagnostics, preview_build, slide_preview, slide_templates, slide_versioning, updater, version
+from ...ai import ai_profile, routes
+from ...plugins import session
+from ...latex_edit import DEFAULT_TAB_WIDTH_CHARS, TAB_WIDTH_SETTING_KEY
+from ...latex_help import HOVER_HELP_SETTING_KEY
+from .. import background, layout_settings
+from ..ai_models import add_route_badge
+from ..kit.widgets import BusyIndicator, Button, Field, ModalSheet, Page, SegmentedControl, action_row, caption, columns, row
+from ..workspace import debug_log_ui
+from ..workspace.centre import RESUME_TABS_SETTING
+from ..workspace.source_file import autosave_on
+from .settings_deck_groups import DeckGroupsSection
+from .settings_ai import PROMPTS_KEY, AiPage
+from .settings_languages import LanguagesSection
+from .settings_plugins import PluginsTab
+from ..presentation.settings_page import PresentationTab
+
+log = logging.getLogger(__name__)
+GENERAL, AI, PRESENTATION, PROJECT, ABOUT, PLUGINS = range(6)     # the tabs, when the AI tab is there
+# Aliases of old tabs, now sections of the AI tab: the sheet opens on AI scrolled to the section.
+CLOUD, OLLAMA, PROMPTS = 100, 101, 102
+AI_SECTION_ALIASES = {CLOUD: "Anthropic API", OLLAMA: "Ollama", PROMPTS: PROMPTS_KEY}
+DECK_GROUPS = "deck_groups"       # a `focus` of the sheet: the Project tab with its deck groups list focused
+PLUGIN_LIST = "plugin_list"       # a `focus` of the sheet: the Extensions tab scrolled to its plugins
+LIVE_RENDER_SETTING_KEY = "live_render_on_autosave"    # app_settings: render the Preview after each autosave
+UPDATE_MODES = (
+    (updater.UPDATE_MODE_OFF, "Off"), (updater.UPDATE_MODE_ASK, "Ask"), (updater.UPDATE_MODE_AUTO, "Automatic"))
+UPDATE_NOTES = {
+    updater.UPDATE_MODE_OFF: "SlideMage does not check for updates by itself. Help → Check for updates… "
+                             "always works.",
+    updater.UPDATE_MODE_ASK: "Checked when SlideMage starts; a newer release is offered, and you decide "
+                             "whether to install it.",
+    updater.UPDATE_MODE_AUTO: "Checked when SlideMage starts; a newer release is installed automatically. "
+                              "One that changes how SlideMage works is always asked about.",
+}
+
+
+class GeneralTab(Page):
+    def __init__(self, app) -> None:
+        super().__init__()
+        self.app = app
+        layout = self.body
+
+        self.dark_check = QCheckBox("Dark mode")
+        self.dark_check.setChecked(app.theme.dark)
+        self.dark_check.toggled.connect(app.set_dark_mode)
+        self.tab_width_spin = QSpinBox()
+        self.tab_width_spin.setRange(1, 16)
+        self.tab_width_spin.setValue(app_settings.get(app.project, TAB_WIDTH_SETTING_KEY, DEFAULT_TAB_WIDTH_CHARS))
+        self.tab_width_spin.valueChanged.connect(app.set_tab_width_chars)
+        layout.addWidget(columns(Field("Appearance", self.dark_check), Field("Source editor tab width (characters)", self.tab_width_spin)))
+
+        self.hover_help_check = QCheckBox("Show help for LaTeX commands on hover")
+        self.hover_help_check.setChecked(bool(app_settings.get(app.project, HOVER_HELP_SETTING_KEY, True)))
+        self.hover_help_check.toggled.connect(app.set_hover_help)
+        layout.addWidget(Field("Source editor help", self.hover_help_check))
+        layout.addWidget(caption("Pointing at a SlideMage command such as \\cornerfigure, or at one of its keys, shows "
+                                 "how to use it. Shift+F1 shows the same for the command at the text cursor, also "
+                                 "when this is off."))
+
+        from ...spelling import settings as spelling_settings
+
+        def spelling_combo(language: str, choices) -> QComboBox:
+            combo = QComboBox()
+            for value, name in choices:
+                combo.addItem(name, value)
+            combo.setCurrentIndex(max(0, combo.findData(spelling_settings.variant(language))))
+            combo.currentIndexChanged.connect(lambda _i: app.set_spelling_variant(language, combo.currentData()))
+            return combo
+
+        self.english_spelling_combo = spelling_combo("en", (("US", "American (color, analyze)"),
+                                                            ("GB", "British (color, analyse)")))
+        self.german_spelling_combo = spelling_combo("de", (("AT", "Austria (Jänner, Straße)"),
+                                                           ("DE", "Germany (Januar, Straße)"),
+                                                           ("CH", "Switzerland (Januar, Strasse)")))
+        layout.addWidget(columns(Field("English spelling", self.english_spelling_combo),
+                                 Field("German spelling", self.german_spelling_combo)))
+        layout.addWidget(caption("The dictionaries slide text is checked against; the spell check is switched on and "
+                                 "off in the Source view's toolbar. Each dictionary is downloaded the first time it "
+                                 "is used (English about 1 MB, German about 4 MB)."))
+
+        self.autosave_check = QCheckBox("Save edits as you type (AutoSave)")
+        self.autosave_check.setChecked(autosave_on())
+        self.autosave_check.toggled.connect(app.set_autosave)
+        layout.addWidget(Field("Saving", self.autosave_check))
+        layout.addWidget(caption("Off, a file is saved with Ctrl+S; its edits stay in the editor until then, and "
+                                 "leaving them is asked about. The same switch is in the top bar."))
+
+        self.live_render_check = QCheckBox("Render the Preview after each autosave")
+        self.live_render_check.setChecked(bool(app_settings.get(app.project, LIVE_RENDER_SETTING_KEY, False)))
+        self.live_render_check.toggled.connect(
+            lambda on: app_settings.set(app.project, LIVE_RENDER_SETTING_KEY, bool(on)))
+        layout.addWidget(Field("Live preview", self.live_render_check))
+        layout.addWidget(caption(
+            "While you type in the Source view, the slide is rendered again a moment after each autosave, "
+            "when the Preview or Split view is showing it and its source has no errors. Off by default: "
+            "each render is a LaTeX run."))
+
+        self.spare_tex_check = QCheckBox("Keep TeX ready for the focused slide (about 250 MB)")
+        self.spare_tex_check.setChecked(bool(app_settings.get(app.project, preview_build.SPARE_TEX_SETTING_KEY, True)))
+        self.spare_tex_check.toggled.connect(
+            lambda on: app_settings.set(app.project, preview_build.SPARE_TEX_SETTING_KEY, bool(on)))
+        self.spare_tex_check.toggled.connect(lambda _on: preview_build.discard_spare(app.project.root))
+        layout.addWidget(Field("Preview performance", self.spare_tex_check))
+
+        self.ask_version_check = QCheckBox("Ask about Update version when leaving a changed slide")
+        self.ask_version_check.setChecked(
+            bool(app_settings.get(app.project, slide_versioning.ASK_ON_LEAVE_SETTING_KEY, False)))
+        self.ask_version_check.toggled.connect(
+            lambda on: app_settings.set(app.project, slide_versioning.ASK_ON_LEAVE_SETTING_KEY, bool(on)))
+        layout.addWidget(Field("Versions", self.ask_version_check))
+        layout.addWidget(caption(
+            "When you switch to another slide after editing one in the Source view, and it shows a \"+\" "
+            "(changed since its last version), SlideMage asks whether to make the changes a version now. "
+            "Off by default: your edits are saved either way."))
+
+        self.render_changes_check = QCheckBox("Compile decks with the changes not yet made a version")
+        self.render_changes_check.setChecked(
+            bool(app_settings.get(app.project, slide_versioning.RENDER_CHANGES_SETTING_KEY, False)))
+        self.render_changes_check.toggled.connect(
+            lambda on: app_settings.set(app.project, slide_versioning.RENDER_CHANGES_SETTING_KEY, bool(on)))
+        layout.addWidget(Field("Changed slides in decks", self.render_changes_check))
+        layout.addWidget(caption(
+            "A slide that shows a \"+\" has changes since its last version. Off by default: a deck's PDF, "
+            "snapshot or PowerPoint export shows that last version, and the changes stay in the slide until you "
+            "use Update version. On, it shows the slide as it is now. The slide's own Preview always shows "
+            "it as it is now."))
+
+        self.ask_saved_versions_check = QCheckBox("Ask before a deck compiles slides from their last version")
+        self.ask_saved_versions_check.setChecked(
+            bool(app_settings.get(app.project, slide_versioning.ASK_SAVED_VERSIONS_SETTING_KEY, True)))
+        self.ask_saved_versions_check.toggled.connect(
+            lambda on: app_settings.set(app.project, slide_versioning.ASK_SAVED_VERSIONS_SETTING_KEY, bool(on)))
+        self.render_changes_check.toggled.connect(lambda on: self.ask_saved_versions_check.setEnabled(not on))
+        self.ask_saved_versions_check.setEnabled(not self.render_changes_check.isChecked())
+        layout.addWidget(Field("Last versions in decks", self.ask_saved_versions_check))
+        layout.addWidget(caption(
+            "With the setting above off, a deck compile lists the slides it takes from their last version, and you "
+            "can compile them with the edits this time, or update their versions first. Off, the Log lists them."))
+
+        self.resume_tabs_check = QCheckBox("Reopen the tabs a project had open, when it opens again")
+        self.resume_tabs_check.setChecked(bool(layout_settings.get(RESUME_TABS_SETTING, True)))
+        self.resume_tabs_check.toggled.connect(lambda on: layout_settings.set(RESUME_TABS_SETTING, bool(on)))
+        layout.addWidget(Field("Tabs", self.resume_tabs_check))
+        layout.addWidget(caption(
+            "On by default: each file tab a project had open, its view (Preview, Split, Source or Details) and "
+            "which was active come back the next time the project opens. Off, a project opens with just its "
+            "deck, no slide selected; its tabs are still remembered, so turning this back on picks up where you "
+            "left off."))
+
+        self.template_combo = QComboBox()
+        current = slide_templates.render_template(self.app.project)
+        for key in slide_templates.available_templates(self.app.project.root):
+            self.template_combo.addItem(slide_templates.template_label(key, self.app.project.root), key)
+        self.template_combo.setCurrentIndex(max(self.template_combo.findData(current), 0))
+        self.template_combo.currentIndexChanged.connect(self._on_template)
+        layout.addWidget(Field("Default template for slides rendered on their own", self.template_combo))
+        layout.addWidget(caption(
+            "Used by the slide's Render and Preview and by tikz illustration renders, outside a deck. A "
+            "deck's own renders always use the deck's template."))
+
+        self.cleanup_combo = QComboBox()
+        for hours, label in slide_preview.RENDER_CLEANUP_CHOICES:
+            self.cleanup_combo.addItem(label, hours)
+        current_hours = slide_preview.render_cleanup_hours(app.project)
+        if self.cleanup_combo.findData(current_hours) < 0:      # a value set by hand in app_settings.json
+            self.cleanup_combo.addItem(f"After {current_hours} hours", current_hours)
+        self.cleanup_combo.setCurrentIndex(self.cleanup_combo.findData(current_hours))
+        self.cleanup_combo.currentIndexChanged.connect(self._on_cleanup)
+        layout.addWidget(Field("Delete single-slide renders", self.cleanup_combo))
+        layout.addWidget(caption(
+            "Every Render of a single slide leaves a PDF in a folder of its own in the temporary folder. SlideMage "
+            "deletes those that are older than this when it starts and after each render; Never keeps them."))
+
+        self._add_background_previews(layout)
+
+        self.update_mode = SegmentedControl(UPDATE_MODES, current=updater.get_update_mode())
+        self.update_mode.changed.connect(self._on_update_mode)
+        self.update_note = caption(UPDATE_NOTES[updater.get_update_mode()])
+        layout.addWidget(Field("Updates", self.update_mode))
+        layout.addWidget(self.update_note)
+        self.beta_updates = QCheckBox("Offer beta versions")
+        self.beta_updates.setChecked(updater.get_beta_updates())
+        self.beta_updates.toggled.connect(self._on_beta_updates)
+        layout.addWidget(self.beta_updates)
+        layout.addWidget(caption(
+            "Betas are test versions of the next release (for example v1.1.0-beta.1): new features earlier, but they "
+            "may still have faults. With this off, SlideMage offers only releases. Switching it off does not go back "
+            "from a beta: the release that follows it is offered as usual. SlideMage Presenter follows this setting."))
+
+        self.token_edit = QLineEdit(updater.saved_token())
+        self.token_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.token_edit.setPlaceholderText("github_pat_… (only for themes from private repositories)")
+        self.token_edit.editingFinished.connect(self._on_token)
+        self.token_show = QCheckBox("Show")
+        self.token_show.toggled.connect(lambda shown: self.token_edit.setEchoMode(
+            QLineEdit.EchoMode.Normal if shown else QLineEdit.EchoMode.Password))
+        layout.addWidget(Field("GitHub token for private themes", row(self.token_edit, self.token_show)))
+        note = ("Installs and updates themes from private GitHub repositories; Contents: Read-only on them is enough. "
+                "SlideMage's own updates need no token. Stored for your user account only, not in the project folder.")
+        if os.environ.get(updater.TOKEN_ENV_VAR):
+            note += f" {updater.TOKEN_ENV_VAR} is set and takes precedence."
+        layout.addWidget(caption(note))
+        layout.addStretch(1)
+
+    def _on_template(self, index: int) -> None:
+        key = self.template_combo.itemData(index)
+        if key:
+            slide_templates.set_render_template(self.app.project, key)
+            self.app.log(f"Default render template set to {slide_templates.template_label(key, self.app.project.root)}")
+
+    def _add_background_previews(self, layout) -> None:
+        """Prepare previews in the background: on/off, only on mains power, speed, disk limit, clear."""
+        from ... import background_renders as bg
+
+        project = self.app.project
+        self.bg_check = QCheckBox("Prepare previews in the background when SlideMage is idle")
+        self.bg_check.setChecked(bool(app_settings.get(project, bg.ENABLED_KEY, True)))
+        self.bg_mains_check = QCheckBox("Only when plugged in")
+        self.bg_mains_check.setChecked(bool(app_settings.get(project, bg.ONLY_MAINS_KEY, True)))
+        self.bg_profile = QComboBox()
+        def at_once(key: str) -> str:
+            count = bg.PROFILES[key][0]
+            return "one at a time" if count == 1 else f"up to {count} at once"
+        for key, label in (("gentle", f"Gentle ({at_once('gentle')}, long rests)"),
+                           ("normal", f"Normal ({at_once('normal')}, short rests)"),
+                           ("fast", f"Fast ({at_once('fast')})")):
+            self.bg_profile.addItem(label, key)
+        self.bg_profile.setToolTip("Each render beyond the first starts only while the processor is less than "
+                                   f"{round(bg.CPU_LIMIT * 100)}% busy. Background renders, reveal steps and "
+                                   "\"Rerender all\" share one limit, so together they never run more than "
+                                   f"{bg.PROFILES['fast'][0]} at once; your own render never waits.")
+        self.bg_profile.setCurrentIndex(max(self.bg_profile.findData(app_settings.get(project, bg.PROFILE_KEY, bg.DEFAULT_PROFILE)), 0))
+        self.bg_limit = QDoubleSpinBox()
+        self.bg_limit.setRange(0.1, 500.0)
+        self.bg_limit.setDecimals(1)
+        self.bg_limit.setSuffix(" GB")
+        self.bg_limit.setValue(float(app_settings.get(project, bg.LIMIT_GB_KEY, bg.DEFAULT_LIMIT_GB)))
+        self.bg_clear = Button("Clear background previews")
+        for control, apply in ((self.bg_check, lambda on: app_settings.set(project, bg.ENABLED_KEY, bool(on))),
+                               (self.bg_mains_check, lambda on: app_settings.set(project, bg.ONLY_MAINS_KEY, bool(on)))):
+            control.toggled.connect(lambda on, apply=apply: (apply(on), self._background_changed()))
+        self.bg_profile.currentIndexChanged.connect(
+            lambda _i: (app_settings.set(project, bg.PROFILE_KEY, self.bg_profile.currentData()), self._background_changed()))
+        self.bg_limit.editingFinished.connect(
+            lambda: (app_settings.set(project, bg.LIMIT_GB_KEY, float(self.bg_limit.value())), self._background_changed()))
+        self.bg_clear.clicked.connect(self._clear_background)
+        layout.addWidget(Field("Background previews", row(self.bg_check, self.bg_mains_check)))
+        layout.addWidget(columns(Field("Speed", self.bg_profile), Field("Disk limit", self.bg_limit)))
+        layout.addWidget(row(self.bg_clear))
+        self.bg_busy = BusyIndicator()
+        layout.addWidget(self.bg_busy)
+        self.bg_caption = caption("")
+        layout.addWidget(self.bg_caption)
+        layout.addWidget(caption(
+            "When you switch to another window, or leave SlideMage untouched for a minute, it renders the slides of "
+            "your decks, with all their "
+            "reveal steps, most recently used decks first and the instructor version first, so they are ready when you "
+            "open them. Coming back to SlideMage stops it at once, and it never runs during a presentation. The previews are kept on this computer, outside the project folder (so the sync never carries them); "
+            "a deck can be left out in the chip that shows the progress."))
+        self._background_size()
+
+    def _background_controller(self):
+        return getattr(self.app, "background", None)
+
+    def _background_changed(self) -> None:
+        controller = self._background_controller()
+        if controller is not None:
+            controller.settings_changed()
+
+    def _background_size(self) -> None:
+        controller = self._background_controller()
+        store = getattr(controller, "store", None)
+        renderer = getattr(controller, "renderer", None)
+        counting = " Counting…" if getattr(renderer, "rescanning", False) else ""       # the store's rescan is still at work
+        self.bg_caption.setText("" if store is None else f"{store.count()} renders stored, {store.total_bytes() / 1024 ** 2:.0f} MB.{counting}")
+
+    def _clear_background(self) -> None:
+        controller = self._background_controller()
+        if controller is None or controller.store is None:
+            return
+        if QMessageBox.question(self, "Clear background previews", "Delete all prepared previews? They are rendered again "
+                                "when SlideMage is idle.") != QMessageBox.StandardButton.Yes:
+            return
+        store, renderer = controller.store, controller.renderer
+        store.clear()
+        self._background_size()
+        self.bg_clear.setEnabled(False)
+        self.bg_busy.start("Clearing background previews…")
+        workspace = store.work_dir
+
+        def purge() -> None:
+            store.purge_trash()
+            preview_build.prune_unused(workspace, workspace / "build", 0)
+
+        def done(_result, _error) -> None:
+            renderer.replan()                       # also when the sheet has closed meanwhile
+            if shiboken6.isValid(self):
+                self.bg_busy.finish()
+                self.bg_clear.setEnabled(True)
+        background.run_in_background(purge, done, busy_reason="clearing previews")
+
+    def _on_cleanup(self, index: int) -> None:
+        hours = self.cleanup_combo.itemData(index)
+        if hours is None:
+            return
+        app_settings.set(self.app.project, slide_preview.RENDER_CLEANUP_SETTING_KEY, int(hours))
+        self.app.log(f"Single-slide renders: {self.cleanup_combo.itemText(index).lower()}")
+
+    def _on_update_mode(self, mode: str) -> None:
+        try:
+            updater.set_update_mode(mode)
+        except OSError as exc:
+            QMessageBox.warning(self, "Updates", f"Couldn't save the update setting: {exc}")
+            return
+        self.update_note.setText(UPDATE_NOTES[mode])
+        self.app.log(f"Update mode set to {mode!r}")
+
+    def _on_beta_updates(self, on: bool) -> None:
+        try:
+            updater.set_beta_updates(on)
+        except OSError as exc:
+            QMessageBox.warning(self, "Updates", f"Couldn't save the beta setting: {exc}")
+            self.beta_updates.blockSignals(True)
+            self.beta_updates.setChecked(not on)
+            self.beta_updates.blockSignals(False)
+            return
+        self.app.log(f"Beta versions {'offered' if on else 'not offered'}")
+
+    def _on_token(self) -> None:
+        token = self.token_edit.text().strip()
+        if token == updater.saved_token():
+            return
+        try:
+            updater.save_token(token)
+        except OSError as exc:
+            QMessageBox.warning(self, "GitHub token", f"Couldn't save the token: {exc}")
+            return
+        self.app.log("GitHub token saved" if token else "GitHub token removed")
+
+
+def _command_row(app, leave, command_id: str, title: str, note: str, text: str, *,
+                 enabled: bool = True, stay: bool = False) -> tuple[QWidget, Button]:
+    """A row whose button closes the sheet (`leave`), then runs the window command `command_id`. With `stay` the
+    command runs at once and the sheet stays open (for commands that open another program, such as a folder)."""
+    button = Button(text, compact=True)
+    button.setEnabled(enabled)
+    if stay:
+        button.clicked.connect(lambda: app.commands.run(command_id, app))
+    else:
+        button.clicked.connect(lambda: leave(partial(app.commands.run, command_id, app)))
+    return action_row(title, note, button), button
+
+
+class ProjectTab(Page):
+    """The project's .bib file and test slides, which open in Source, its compatibility check and its deck
+    groups."""
+
+    def __init__(self, app, leave) -> None:
+        super().__init__()
+        layout = self.body
+        self.edit_buttons: dict[str, Button] = {}
+        for key, title, path, command_id in (
+                ("bib", "Bibliography file", app.project.bibliography_path, "edit_bib"),
+                ("test_slides", "Test slides", app.project.test_slides_path, "edit_test_slides")):
+            found = path.is_file()
+            line, self.edit_buttons[key] = _command_row(
+                app, leave, command_id, title, path.name if found else f"{path.name} — not found", "Edit",
+                enabled=found)
+            layout.addWidget(line)
+        layout.addWidget(_command_row(
+            app, leave, "project_compat", "Project compatibility",
+            "Whether this project's files fit this version of SlideMage.", "Check…")[0])
+        self.languages = LanguagesSection(app)
+        if (state := getattr(app, "state", None)) is not None:     # the switch, the badges and the panels follow
+            self.languages.changed.connect(state.refresh_languages)
+        layout.addWidget(self.languages)
+        self.deck_groups = DeckGroupsSection(app)
+        layout.addWidget(self.deck_groups)
+        layout.addStretch(1)
+
+
+class AboutTab(Page):
+    """The version, its history and the update check."""
+
+    def __init__(self, app, leave) -> None:
+        super().__init__()
+        layout = self.body
+        layout.addWidget(Field("Version", QLabel(f"SlideMage {version.VERSION_NUMBER}")))
+        layout.addWidget(_command_row(
+            app, leave, "version_history", "Version history", "What changed in each release; the license is there too.",
+            "Open…")[0])
+        layout.addWidget(_command_row(
+            app, leave, "check_updates", "Check for updates", "Look for a newer release now.", "Check…")[0])
+        self.debug_check = QCheckBox("Write a detailed debug log")
+        self.debug_check.setChecked(diagnostics.debug_enabled())
+        self.debug_check.toggled.connect(lambda on: debug_log_ui.set_debug(app, on))
+        layout.addWidget(Field("Troubleshooting", self.debug_check))
+        layout.addWidget(caption(
+            "For finding out what went wrong: what SlideMage does, in files in its log folder, until you turn it "
+            "off here or in the Help menu. It holds file names and paths; slide text and API keys are left out "
+            "on purpose, but a traceback or a compile line can still carry a fragment, so look through a log before you "
+            "share it. Warnings and errors are always kept, in a small error log."))
+        layout.addWidget(_command_row(
+            app, leave, "open_logs", "Log folder", str(diagnostics.log_dir()), "Open",
+            stay=True)[0])
+        layout.addWidget(_command_row(
+            app, leave, "debug_report", "Debug report",
+            "The logs in one zip file, saved where you choose, to send with a problem report.", "Save…")[0])
+        layout.addStretch(1)
+
+
+class SettingsSheet(ModalSheet):
+    def __init__(self, app, tab: int = GENERAL, *, focus: str | None = None) -> None:
+        """`app` is the window (its theme, tab width, log, the Ollama slot and its decks). `focus` DECK_GROUPS
+        opens the Project tab at its deck groups."""
+        super().__init__("Settings", app, width=760)
+        self.app = app
+        add_route_badge(self, app)
+        self.installed: list = []       # what Ollama has, once `loaded`
+        self.loaded = False
+        self._loader: QThread | None = None
+        self._reload_pending = False
+        self.general = GeneralTab(app)
+        self.has_ai = bool(routes.all())            # the AI tab is only there when some AI route is registered
+        plugin_sections = [(plugin.manifest.name, section) for plugin in session.active()
+                           for section in plugin.contributions.settings_sections if section.page == "ai"]
+        self.ai = AiPage(app, plugin_sections) if self.has_ai else None
+        self.cloud = self.ai.cloud if self.ai else None
+        self.ollama = self.ai.ollama if self.ai else None
+        self.prompts = self.ai.prompts if self.ai else None
+        self.presentation = PresentationTab()
+        self.after: Callable[[], None] | None = None     # what the window runs once the sheet has closed
+        self.project_tab = ProjectTab(app, self.close_then)
+        self.about = AboutTab(app, self.close_then)
+        self.plugins = PluginsTab(app, self.close_then)
+        self._ai_area = None
+        self._plugins_area = None
+        self._scroll_key: str | None = None
+        self.scrolled_to: str | None = None            # the AI section the sheet scrolled to when it opened
+        for label, tab_widget in (("General", self.general), ("AI", self.ai),
+                                  ("Presentation", self.presentation), ("Project", self.project_tab),
+                                  ("About", self.about), ("Extensions", self.plugins)):
+            if tab_widget is not None:
+                self.add_tab(label, tab_widget, scroll=True)
+                if tab_widget is self.ai:
+                    self._ai_area = self._scrolling[-1]
+                elif tab_widget is self.plugins:
+                    self._plugins_area = self._scrolling[-1]
+        # The plugins' tabs come last, after Extensions: the indices of SlideMage's own tabs (PROJECT, ...) stay as they are.
+        for plugin in session.active():
+            for plugin_tab in plugin.contributions.settings_tabs:
+                self.add_tab(plugin_tab.title, self._plugin_page(plugin, plugin_tab), scroll=True)
+        self.add_button("Close", kind="primary", role="accept")
+        if self.ai:
+            self.ai.changed.connect(self.reload_models)
+        if tab in AI_SECTION_ALIASES:
+            self._scroll_key, tab = AI_SECTION_ALIASES[tab], AI
+        self.set_current_tab(PROJECT if focus == DECK_GROUPS else tab)
+        if self._scroll_key is not None:
+            self.scroll_to_section(self._scroll_key)
+        if focus == DECK_GROUPS:
+            self.project_tab.deck_groups.list.setFocus()
+        if focus == PLUGIN_LIST:
+            self._scroll_key = PLUGIN_LIST
+            self._scroll_now()
+        self.reload_models()
+
+    def set_current_tab(self, index: int) -> None:
+        """`index` counts the tabs as if the AI tab were there (GENERAL, AI, ...); without it the later ones move up."""
+        if not self.has_ai:
+            index = GENERAL if index == AI else index - 1 if index > AI else index     # no AI tab: open General
+        super().set_current_tab(index)
+
+    def current_tab(self) -> int:
+        """The current tab, counted as set_current_tab counts."""
+        index = super().current_tab()
+        return index + 1 if not self.has_ai and index >= AI else index
+
+    def scroll_to_section(self, key: str) -> None:
+        """Show the AI tab's section `key` (a service, "prompts", a plugin section's title) at the top of the tab."""
+        if self.ai is None or key not in self.ai.sections:
+            return
+        self._scroll_key = key
+        self.scrolled_to = key
+        self._scroll_now()
+        QTimer.singleShot(0, self._scroll_now)          # once the layout has its size
+
+    def _scroll_now(self) -> None:
+        # also run from a timer, which can fire after the sheet was closed and its widgets deleted
+        if self._scroll_key == PLUGIN_LIST:
+            if shiboken6.isValid(self._plugins_area):
+                self._plugins_area.verticalScrollBar().setValue(self.plugins.plugins_heading.y())
+            return
+        if self._ai_area is not None and shiboken6.isValid(self._ai_area) and self._scroll_key in self.ai.sections:
+            bar = self._ai_area.verticalScrollBar()
+            bar.setValue(self.ai.sections[self._scroll_key].y())
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        if self._scroll_key is not None:
+            QTimer.singleShot(0, self._scroll_now)
+
+    @staticmethod
+    def _plugin_page(plugin, plugin_tab) -> QWidget:
+        """The plugin's tab, or, when its build() raises, a tab that says so (the sheet still opens)."""
+        try:
+            return plugin_tab.build()
+        except Exception as exc:
+            log.exception("settings tab %r of %s failed", plugin_tab.title, plugin.id)
+            page = Page()
+            page.body.addWidget(caption(f"{plugin.manifest.name} could not build this tab: {exc}", "error"))
+            page.body.addStretch(1)
+            return page
+
+    def reload_models(self) -> None:
+        """Refresh the route-owned model lists."""
+        if self.ai:
+            self.ai.models.refresh()
+            local = next(iter(routes.on_side(True)), None)
+            choices = local.model_choices(routes.context(self.app.project, local.id), ai_profile.TRANSLATION) if local else []
+            self.ai.prompts.translation.set_models(choices)
+
+    def close_then(self, action: Callable[[], None]) -> None:
+        """Close the modal sheet before the window runs its follow-up action."""
+        self.after = action
+        self.accept()
+
+    def done(self, result: int) -> None:
+        """Closing asks first about prompt text that is not saved."""
+        if self.prompts is None or self.prompts.confirm_close():
+            self._loader = None          # a late answer is not for this sheet any more
+            self._reload_pending = False
+            super().done(result)
+        else:
+            self.after = None

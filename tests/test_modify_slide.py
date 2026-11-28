@@ -1,0 +1,268 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Composite slide edits with fake buffers/rendering and socket-free MCP."""
+import importlib.util
+import sys
+from dataclasses import replace
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+from agent_fakes import FakeWorkspace, call
+
+from slidemage import ai_review, compiler, deck_outline, preview_target, slide_snapshot
+from slidemage.ai.agent_types import EDIT_ASK, EDIT_AUTO, EditApplied
+from slidemage.ai.tools import build_toolbox, undo_edit
+from slidemage.ai.workspace import WorkspaceContext
+from slidemage.deck_scan import read_deck, scan_decks
+from slidemage.project import ProjectContext
+
+SLIDE = "slides/abc-EN-Hello-current.tex"
+PNG = b"\x89PNG\r\n\x1a\nfake"
+EDITS = [{"old": "First point", "new": "Edited point"}]
+
+
+@pytest.fixture
+def env(root, monkeypatch):
+    project = ProjectContext.at(root)
+    deck = next(d for d in scan_decks(project) if d.name == "test")
+    ws = FakeWorkspace(root, WorkspaceContext(deck=deck, path=root / SLIDE))
+    shown, renders, events = [], [], []
+    monkeypatch.setattr(ws, "show_slide", shown.append)
+    monkeypatch.setattr(preview_target, "render_text", lambda *a, **k: renders.append(a) or root / "fake.pdf")
+    monkeypatch.setattr(slide_snapshot, "prepare_preview_images", lambda pdf, snapshots, widths: ((PNG, PNG), ()))
+    (root / "fake.pdf").write_bytes(b"%PDF-1.4")
+    box = build_toolbox(ws, events.append, compiler.CancelToken(), EDIT_AUTO)
+    path = root / SLIDE
+    return SimpleNamespace(root=root, project=project, ws=ws, box=box, path=path, original=path.read_bytes(),
+                           shown=shown, renders=renders, events=events)
+
+
+def modify(env, **args):
+    return env.box.execute(call("modify_slide", **(dict(slide="abc", edits=EDITS) | args)))
+
+
+@pytest.mark.parametrize("slide,buffer", [("abc", False), (SLIDE, True)])
+def test_ordered_edits_mark_render_show_and_support_undo(env, slide, buffer):
+    before = env.path.read_text()
+    old = "First point"
+    if buffer:
+        old = "User's unsaved point"
+        before = before.replace("First point", old)
+        env.ws.open(env.path, before, dirty=True)
+    edits = [{"old": old, "new": "Edited point"}, {"old": "Edited point", "new": "Final point"}]
+    result = modify(env, slide=slide, expected=before, edits=edits)
+    assert not result.is_error, result.text
+    after = before.replace(old, "Final point")
+    written = after if buffer else after.replace("\\setSlideVersion{1-0-0}", "\\setSlideVersion{1-0-0+}")
+    assert (env.ws.buffer_text(env.path) if buffer else env.path.read_text()) == written
+    assert result.images == [PNG] and "Lint:" in result.text and "Not reviewed" in result.text
+    assert env.shown == [env.path] and len(env.renders) == 1
+    entry = ai_review.unreviewed(env.project)[SLIDE]
+    assert entry["kind"] == "edit" and entry["source"] == "modify_slide"
+    applied, = [e for e in env.events if isinstance(e, EditApplied)]
+    assert applied.before == before and applied.after == written and applied.via_buffer == buffer and applied.undoable
+    assert bool(list((env.project.slide_backups_dir / env.path.name).glob("*.tex"))) != buffer
+    if buffer:
+        assert "base: editor (unsaved)" in result.text and env.path.read_bytes() == env.original
+        assert env.renders[0][1] == written
+    else:
+        assert b"\r\n" in env.path.read_bytes()
+    assert undo_edit(env.ws, applied) == ""
+    assert (env.ws.buffer_text(env.path) if buffer else env.path.read_text()) == before
+
+
+@pytest.mark.parametrize("old, count", [("point", 2), ("Missing point", 0)])
+def test_missing_or_ambiguous_edit_is_atomic(env, old, count):
+    result = modify(env, edits=EDITS + [{"old": old, "new": "Replacement"}])
+    assert result.is_error and f"occurs {count} times" in result.text and "nothing written" in result.text
+    assert_untouched(env)
+    assert not ai_review.unreviewed(env.project)
+
+
+def assert_untouched(env):
+    assert env.path.read_bytes() == env.original and not env.events and not env.renders
+
+
+def test_expected_mismatch_returns_current_excerpt_and_writes_nothing(env):
+    result = modify(env, expected="stale text")
+    assert result.is_error and "changed since" in result.text and env.path.read_text() in result.text
+    assert_untouched(env)
+
+
+@pytest.mark.parametrize("old", ["Included in decks: test", "setSlideVersion{1-0-0}"])
+def test_protected_changes_are_refused(env, old):
+    result = modify(env, edits=[{"old": old, "new": old + "changed"}])
+    assert result.is_error and "protected" in result.text
+    assert_untouched(env)
+
+
+def test_frozen_is_refused_before_language_resolution(env):
+    path = env.root / "slides/abc-EN-Hello-v1-0-0.tex"
+    original = path.read_bytes()
+    env.ws._context = replace(env.ws.context(), language="DE")
+    result = modify(env, slide=str(path))
+    assert result.is_error and "frozen version" in result.text
+    assert path.read_bytes() == original and not env.events and not env.renders
+
+
+@pytest.mark.parametrize("problem, message", [("A & B", "ampersand"), ("\\begin{frame}X\\end{frame}", "exactly one frame")])
+def test_lint_and_structure_failures_do_not_write(env, problem, message):
+    result = env.box.execute(call("modify_slide", slide="abc", body=env.path.read_text() + problem))
+    assert result.is_error and message in result.text
+    assert_untouched(env)
+
+
+def test_full_text_and_lint_warnings(env):
+    body = env.path.read_text().replace("First point", "5% growth")
+    result = env.box.execute(call("modify_slide", slide="abc", body=body))
+    assert not result.is_error, result.text
+    assert "[warning]" in result.text and "percent" in result.text and len(env.renders) == 1
+
+
+@pytest.mark.parametrize("buffer", [False, True])
+def test_text_changed_during_confirmation_is_preserved(env, buffer):
+    before = env.path.read_text()
+    env.box.ctx.mode = EDIT_ASK
+    newer = before + "% user typed\n"
+    if buffer:
+        env.ws.open(env.path, before)
+        env.ws.before_confirm = lambda: env.ws.buffers.update({env.path: newer})
+    else:
+        env.ws.before_confirm = lambda: env.path.write_text(newer)
+    result = modify(env)
+    assert result.is_error and "was not changed" in result.text
+    assert (env.ws.buffer_text(env.path) if buffer else env.path.read_text()) == newer
+    assert not env.renders and not ai_review.unreviewed(env.project)
+
+
+def test_render_failure_keeps_change_and_review_mark(env, monkeypatch):
+    def fail(*args, **kwargs):
+        raise RuntimeError("! Undefined control sequence.\nl.4 \\unknown")
+    monkeypatch.setattr(preview_target, "render_text", fail)
+    result = modify(env)
+    assert result.is_error and "Undefined control sequence" in result.text and "did not compile" in result.text
+    assert SLIDE in result.text and "Edited point" in env.path.read_text()
+    assert env.shown == [env.path]
+    assert ai_review.is_unreviewed(env.project, env.path)
+
+
+def test_hidden_edit_does_not_show_or_render(env):
+    deck = env.ws.context().deck.path
+    deck.write_text(deck.read_text().replace(r'\slide{abc-EN-Hello}',
+                                             r'\conditionalslide[during-course]{abc-EN-Hello}'))
+    result = modify(env)
+    assert not result.is_error and "hidden" in result.text and not result.images
+    assert not env.shown and not env.renders
+
+
+@pytest.mark.parametrize("focused", [True, False])
+def test_show_uses_prepared_occurrence_before_focus_changes(env, monkeypatch, focused):
+    deck_path = env.ws.context().deck.path
+    deck_path.write_text(deck_path.read_text().replace(r'\slide{abc-EN-Hello}',
+        '\\slidestep{abc-EN-Hello}{1}\n\\slidestep{abc-EN-Hello}{3}'))
+    deck = read_deck(deck_path)
+    rows = [row for row in deck_outline.resolve_slots(env.project, deck, 'instructor', 'EN') if row.slot.call.id == 'abc']
+    env.ws._context = replace(env.ws.context(), deck=deck, slide_id='abc' if focused else 'abd',
+                              occurrence_key=rows[-1].key)
+    order = []
+    def show(path):
+        order.append('show')
+        env.ws._context = replace(env.ws.context(), occurrence_key=None)
+    publish = env.ws.publish_preview_result
+    monkeypatch.setattr(env.ws, 'show_slide', show)
+    monkeypatch.setattr(env.ws, 'publish_preview_result', lambda result, ticket:
+                        order.append('publish') or publish(result, ticket))
+    result = modify(env)
+    assert not result.is_error, result.text
+    assert env.renders[0][0].occurrence_key == rows[-1 if focused else 0].key
+    assert order == ['show', 'publish']
+
+
+@pytest.mark.parametrize("slide,active_language,target_language", [
+    ("abc", "DE", "DE"),
+    ("absolute", "EN", "DE"),
+    (SLIDE, "DE", "EN"),
+])
+def test_id_follows_the_active_language_and_path_follows_the_file(env, slide, active_language, target_language):
+    translated = env.root / "slides/xyz-DE-Hallo-current.tex"
+    translated.write_text(env.path.read_text().replace("%% Included in decks: test", "%% Translation of: abc-EN-Hello")
+                          .replace("First point", "Erster Punkt"))
+    target, other = (translated, env.path) if target_language == "DE" else (env.path, translated)
+    original = other.read_bytes()
+    env.ws._context = replace(env.ws.context(), language=active_language)
+    old = "Erster Punkt" if target == translated else "First point"
+    result = modify(env, slide=str(target) if slide == "absolute" else slide, expected=target.read_text(),
+                    edits=[{"old": old, "new": "Edited point"}])
+    assert not result.is_error, result.text
+    assert "Edited point" in target.read_text() and other.read_bytes() == original
+    assert env.shown == [target] and env.renders[0][0].source_path == target and env.renders[0][3] == target_language
+    if slide == "abc":
+        assert "abc in DE is its partner xyz-DE-Hallo" in result.text
+        assert ai_review.unreviewed(env.project)[target.relative_to(env.root).as_posix()]["kind"] == "translation"
+    else:
+        assert "is its partner" not in result.text
+    if slide == "absolute":
+        env.ws._context = replace(env.ws.context(), language=target_language)
+        preview = env.box.execute(call("render_preview", slide=str(target)))
+        assert not preview.is_error, preview.text
+        assert result.images == preview.images == [PNG]
+
+
+@pytest.mark.parametrize("args", [
+    {}, {"edits": [], "body": "text"}, {"edits": []}, {"edits": [None]},
+    {"edits": [{"old": "", "new": "x"}]}, {"edits": [{"old": "First", "new": 1}]},
+    {"edits": [{"old": "First", "new": "x", "extra": 1}]},
+])
+def test_invalid_inputs_do_not_write(env, args):
+    result = env.box.execute(call("modify_slide", slide="abc", **args))
+    assert result.is_error and "unexpectedly" not in result.text
+    assert_untouched(env)
+
+
+@pytest.mark.parametrize("slide", ["SlideMage.bib", "decks/test.tex", "slides/missing-current.tex", "../outside.tex"])
+def test_non_live_slides_are_refused(env, slide):
+    result = modify(env, slide=slide)
+    assert result.is_error and not env.events and not env.renders
+
+
+def _debug_log_tool():
+    spec = importlib.util.spec_from_file_location("debug_log", Path(__file__).parents[1] / "tools" / "debug_log.py")
+    tool = sys.modules.setdefault("debug_log", importlib.util.module_from_spec(spec))
+    spec.loader.exec_module(tool)
+    return tool
+
+
+@pytest.fixture
+def debug_logs(tmp_path, monkeypatch):
+    from slidemage import diagnostics
+
+    monkeypatch.setenv(diagnostics.DIR_ENV, str(tmp_path / "logs"))
+    diagnostics.reset()
+    yield tmp_path / "logs" / diagnostics.DEBUG_DIR
+    diagnostics.reset()
+
+
+@pytest.mark.parametrize("switch", ["SLIDEMAGE_DEBUG", "SLIDEMAGE_TIMING"])
+def test_timing_logs_the_request_in_order_only_when_enabled(env, monkeypatch, debug_logs, switch):
+    from slidemage import diagnostics, timing
+
+    for name in ("SLIDEMAGE_TIMING", "SLIDEMAGE_DEBUG"):
+        monkeypatch.delenv(name, raising=False)
+    diagnostics.setup("app")
+    assert not modify(env, edits=[{"old": "Second point", "new": "Updated second point"}]).is_error
+    assert not debug_logs.exists()
+    monkeypatch.setenv(switch, "1")
+    monkeypatch.setenv("SLIDEMAGE_PROJECT", str(env.root))
+    diagnostics.reset()
+    diagnostics.setup("app")
+    timing.event(env.root, "prompt")
+    assert not modify(env).is_error
+    tool = _debug_log_tool()
+    records = [r for r in tool.read([debug_logs]) if r.area == "timing"]
+    assert [r.event for r in records] == [
+        "prompt", "tool_start", "slide_written", "preview.delivered", "preview.pages", "render_done", "tool_end",
+    ]
+    assert "tool=modify_slide" in records[1].message and "tool=modify_slide" in records[6].message
+    [tool_call] = [r for r in tool.read([debug_logs]) if r.area == "ai"]
+    assert "tool call tool=modify_slide args=" in tool_call.message and "seconds=" in tool_call.message

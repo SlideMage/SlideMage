@@ -1,0 +1,39 @@
+%% Included in decks: slidemage-manual, slidemage-manual-copy
+%%
+
+% SlideMage manual, chapter "Frame types": the nine frame types at a glance,
+% as crops of this manual's own demo slides (media/screenshot-slide-gallery-*,
+% made by tools/manual/make_crops.py gallery), each a link to its slide.
+\setSlideVersion{1-0-0}
+\providecommand{\galleryitem}[3]{% slide id, image, caption
+	\begin{tabular}[t]{@{}c@{}}
+		\hyperlink{#1}{{\setlength{\fboxsep}{0pt}\setlength{\fboxrule}{0.4pt}%
+			\fcolorbox{c_primary_gray}{white}{#2}}}\\[-2pt]
+		{\SMCodeFont\fontsize{6.5}{7}\selectfont #3}
+	\end{tabular}}
+\begin{standardframe}{Gallery of frame types}
+	\begin{minipage}[t]{0.66\linewidth}\vspace{0pt}
+		\begin{tabular}{@{}c@{\hspace{5pt}}c@{\hspace{5pt}}c@{}}
+			\galleryitem{1jh}{\includegraphics[width=0.2\linewidth]{media/screenshot-slide-gallery-titleframe.png}}{\textbackslash titleframe\{...\}} &
+			\galleryitem{1y9}{\includegraphics[width=0.2\linewidth]{media/screenshot-slide-gallery-sectionframe.png}}{\textbackslash begin\{sectionframe\}} &
+			\galleryitem{1y8}{\includegraphics[width=0.2\linewidth]{media/screenshot-slide-gallery-standardframe.png}}{\textbackslash begin\{standardframe\}} \\[1pt]
+			\galleryitem{1i4}{\includegraphics[width=0.2\linewidth]{media/screenshot-slide-gallery-quoteframe.png}}{\textbackslash quoteframe\{...\}} &
+			\galleryitem{1vk}{\includegraphics[width=0.2\linewidth]{media/screenshot-slide-gallery-fullbleedframe.png}}{\textbackslash fullbleedframe\{...\}} &
+			\galleryitem{1rb}{\includegraphics[width=0.2\linewidth]{media/screenshot-slide-gallery-figureframe.png}}{\textbackslash begin\{figureframe\}} \\[1pt]
+			\galleryitem{1vh}{\includegraphics[width=0.2\linewidth]{media/screenshot-slide-gallery-sideimageframe.png}}{\textbackslash begin\{sideimageframe\}} &
+			\galleryitem{1mb}{\includegraphics[width=0.2\linewidth]{media/screenshot-slide-gallery-highlightframe.png}}{\textbackslash begin\{highlightframe\}} &
+			\galleryitem{1xf}{\includegraphics[width=0.2\linewidth]{media/screenshot-slide-gallery-standout.png}}{\textbackslash begin\{frame\}[standout]}
+		\end{tabular}
+	\end{minipage}%
+	\hfill
+	\begin{minipage}[t]{0.31\linewidth}\vspace{0pt}
+		\small\raggedright
+		\SMLineTop Every slide is one of these nine frame types. Most of your
+		slides will be standard frames; the others serve one purpose each.
+		\par\medskip
+		Each picture links to that frame's own slide in this chapter; the footer's
+		\emph{Chapter contents} leads back here.
+		\medskip
+		\hyperlink{1x7}{\beamerreturnbutton{Linking and navigating}}
+	\end{minipage}
+\end{standardframe}

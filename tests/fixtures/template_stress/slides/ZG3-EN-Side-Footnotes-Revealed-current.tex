@@ -1,0 +1,12 @@
+%% Geometry deck: side footnotes in revealed content (v10.12.0). A footnote after a \pause and one with a
+%% specification of its own appear in the strip from step 2; until v10.12.0 the strip showed both on every step.
+\setSlideVersion{1-0-0}
+\sidefootnotes
+\begin{standardframe}{Side footnotes, revealed}
+	\begin{itemize}
+		\item Shown at once\footnote{Sidealways: on every step.}
+		\item With a specification of its own\footnote<2->{Sideown: from step 2.}
+		\pause
+		\item After a pause\footnote{Sidepause: with the item, from step 2.}
+	\end{itemize}
+\end{standardframe}

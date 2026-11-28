@@ -1,0 +1,17 @@
+%% Calibration deck: footnotes in revealed content appear with that content (v10.12.0), on six steps: after a
+%% \pause, in an \item<3->, in \onslide<4->{...}, \uncover<5->{...} and \visible<6->{...}. A footnote outside
+%% revealed content shows on every step, one with its own specification keeps it. Each footnote's text starts
+%% with a word tests/test_revealed_footnotes.py looks for.
+\setSlideVersion{1-0-0}
+\begin{standardframe}{Footnotes in revealed content}
+	\begin{itemize}
+		\item Shown at once\footnote{Fnalways: outside revealed content, on every step.}
+		\item With a specification of its own\footnote<2->{Fnown: from step 2, as its own specification says.}
+		\pause
+		\item After a pause\footnote{Fnpause: with the item after the pause, from step 2.}
+		\item<3-> Revealed by the item's specification\footnote{Fnitem: with this item, from step 3.}
+	\end{itemize}
+	\onslide<4->{Onslide\footnote{Fnonslide: with the onslide content, from step 4.}},
+	\uncover<5->{uncover\footnote{Fnuncover: with the uncovered content, from step 5.}} and
+	\visible<6->{visible\footnote{Fnvisible: with the visible content, from step 6.}}
+\end{standardframe}

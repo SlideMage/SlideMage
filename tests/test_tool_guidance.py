@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Tool names in each prompt must be available to that assistant."""
+import re
+
+from slidemage.ai.agent_context import SYSTEM_PROMPT
+from slidemage.ai.tools import CLAUDE_CODE_TOOLS, TOOLS
+
+
+# Guide topic and alt-text fields, not tools.
+NON_TOOLS = {"images_and_text", "takeaway_default", "used_on"}
+SNAKE_CASE = re.compile(r"\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b")
+
+
+def test_prompt_tool_names_are_available():
+    prompt, available = SYSTEM_PROMPT, TOOLS
+    all_names = {tool.spec.name for tool in TOOLS + CLAUDE_CODE_TOOLS}
+    mentioned = set(SNAKE_CASE.findall(prompt)) | {name for name in all_names if re.search(rf"\b{re.escape(name)}\b", prompt)}
+    assert mentioned - NON_TOOLS <= {tool.spec.name for tool in available}

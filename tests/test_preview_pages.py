@@ -1,0 +1,77 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Page-image reuse, integrity, resolution and content-based invalidation."""
+import json
+import os
+from types import SimpleNamespace
+
+import pytest
+
+from slidemage import preview_pages, preview_raster
+
+
+@pytest.fixture
+def pdf(tmp_path, monkeypatch):
+    import pymupdf
+    path = tmp_path / 'slide.pdf'
+    with pymupdf.open() as doc:
+        for text in ('one', 'two', 'three'):
+            doc.new_page(width=320, height=180).insert_text((20, 30), text)
+        doc.save(path)
+    calls = []
+    def raster(*args):
+        calls.append(args)
+        return preview_raster.document(*args)
+    monkeypatch.setattr(preview_pages.preview_raster_client, 'read_document', raster)
+    return path, calls
+
+
+def test_pages_reuse_identical_content_and_raster_again_after_corruption_or_edits(pdf, tmp_path):
+    path, calls = pdf
+    first = preview_pages.read_document(path, project_root=tmp_path)
+    alias = tmp_path / 'same.pdf'
+    alias.write_bytes(path.read_bytes())
+    second = preview_pages.read_document(alias, project_root=tmp_path)
+    assert first == second and len(calls) == 1
+    assert len(first['images']) == first['count'] == 3
+    from slidemage.project import preview_cache_dir
+    cache, = (preview_cache_dir(tmp_path) / 'page-images').glob('*.json')
+    data = json.loads(cache.read_text())
+    data['images'][0] = data['images'][1]
+    cache.write_text(json.dumps(data))
+    assert preview_pages.read_document(path, project_root=tmp_path) == first
+    assert len(calls) == 2
+    stat = path.stat()
+    original = path.read_bytes()
+    assert b'%PDF-1.7' in original
+    path.write_bytes(original.replace(b'%PDF-1.7', b'%PDF-1.6'))
+    os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    preview_pages.read_document(path, project_root=tmp_path)
+    assert path.stat().st_size == stat.st_size and len(calls) == 3
+    higher = preview_pages.read_document(path, project_root=tmp_path, dpi=180, start=2, count=1)
+    assert len(higher['images']) == 1 and len(calls) == 4
+    assert preview_pages.read_document(path, project_root=tmp_path, dpi=180, start=2, count=1) == higher
+    assert len(calls) == 4
+
+
+def test_sequence_reuse_needs_sufficient_resolution(monkeypatch):
+    from slidemage import render_lookup
+
+    record = {'width': 1920}
+    spec = SimpleNamespace(unit='unit')
+    resolver = SimpleNamespace(store=SimpleNamespace(pages=lambda record: [b'first', b'last']))
+    def select(request, *, strict):
+        assert strict and request == dict(resolver=resolver, unit=spec.unit, spec=spec)
+        return 'current', record
+    monkeypatch.setattr(render_lookup, 'select', select)
+    assert preview_pages.sequence_images(spec, resolver, start=2, count=1) == [b'last']
+    assert preview_pages.sequence_images(spec, resolver, dpi=400) is None
+
+
+def test_cache_write_failure_still_returns_images(pdf, tmp_path, monkeypatch):
+    path, calls = pdf
+    def blocked(*args):
+        raise PermissionError('read only')
+    monkeypatch.setattr(preview_pages, 'atomic_write', blocked)
+    assert len(preview_pages.read_document(path, project_root=tmp_path)['images']) == 3
+    assert len(calls) == 1

@@ -1,0 +1,35 @@
+% SlideMage template name: Research hooks test
+% The template of tests/test_research_hooks.py: the hooks of docs/plans/research-theme.md (step F1) switched on with
+% values of their own, so the test can find each in the PDF. The background picture is SlideMage's own logo
+% (latex/slidemage-logo.pdf, on the framework's search path), not an institution's artwork.
+\input{SlideMage_setup}
+
+\renewcommand{\SMFrametitleStyle}{plain}
+\renewcommand{\SMFrametitleAlign}{left}
+\renewcommand{\SMInstituteLogoPath}{}
+\renewcommand{\SMTitleTextColor}{c_primary_dark}
+\setlength{\SMFrametitleLeftPadding}{20pt}
+\setlength{\SMFrametitleRightPadding}{20pt}
+
+\renewcommand{\SMPageBorder}{on}
+\setlength{\SMPageBorderWidth}{0.9pt}
+\renewcommand{\SMPageBorderColor}{c_custom_red}
+\setlength{\SMPageBorderInsetTop}{12pt}
+\setlength{\SMPageBorderInsetLeft}{9pt}
+\setlength{\SMPageBorderInsetRight}{11pt}
+\renewcommand{\SMPageBorderKinds}{content,title,section}
+\setlength{\SMFooterBoxHeight}{14pt}
+\renewcommand{\SMFooterBoxColorDefault}{none}
+\renewcommand{\SMFooterTextColor}{c_primary_dark}
+\renewcommand{\SMFooterTextFont}{\itshape}
+\renewcommand{\SMFooterRightEdge}{11pt}
+
+\renewcommand{\SMTitleframeStyle}{plain}
+\renewcommand{\SMSectionframeStyle}{plain}
+\setlength{\SMTitleframeLogoHeight}{0.9cm}
+
+\SMSetBackground{title}{\SMBackgroundPicture[height=0.8\paperheight, opacity=0.1]{slidemage-logo.pdf}}
+\SMSetBackground{section}{\SMBackgroundPicture[height=0.8\paperheight, opacity=0.1]{slidemage-logo.pdf}}
+\SMSetBackground{content}{\SMBackgroundPicture[height=2\paperheight, at=current page.north west, opacity=0.1]{slidemage-logo.pdf}}
+
+\input{SlideMage_base}

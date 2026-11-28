@@ -1,0 +1,25 @@
+% !TeX program = lualatex
+% tests/test_research_hooks.py: the frame number links to the generated appendix overview, also without a logo.
+% \SMAppendixTocOverride and the SMAppendixAgenda target stand in for what SlideMage's compile wrapper and
+% appendix_toc.py add.
+\documentclass[aspectratio=169]{beamer}
+
+\makeatletter
+\def\input@path{{../}}
+\makeatother
+\graphicspath{{../}}
+
+\def\SMAppendixTocOverride{}
+\input{SlideMage_template_research-test}
+
+\newcommand{\FooterText}{Link deck}
+\deckversion[instructor]
+\decklanguage[en]
+
+\begin{document}
+	\slide{ZR2-EN-Left-Title}
+	\slide{ZR3-EN-Centred-Title}
+	\begin{standardframe}{Appendix overview}
+		\hypertarget{SMAppendixAgenda}{}The generated overview.
+	\end{standardframe}
+\end{document}

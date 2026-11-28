@@ -1,0 +1,455 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Every action of the workspace window, as a command of the registry (ui/commands.py).
+
+`build_registry()` is called once by the window. A command runs with the window
+as its context and says, with the same context, whether it is visible and enabled
+now; the menu bar, the top bar's buttons and menus (menus.py), the slide list's context menus
+and the palette (palette.py) all show these entries and nothing else.
+
+The ids are the keys the menus have always used (`compile:instructor`,
+`deck_settings`, ...), plus `slide:` and `section:` for what acts on the slides
+and the section chosen in the list. The group is the palette's heading.
+
+A command has at most one shortcut, the one of the system SlideMage runs on (MAC_KEYS), which the window binds;
+`hint` is a key shown in the menus that something else binds (the Source view's Ctrl+F, the system's Alt+F4).
+`images` is also the way out of the Images page, and the AI switch's moves and setup are the group AI.
+"""
+from __future__ import annotations
+
+import sys
+from dataclasses import replace
+
+from ... import ai_review, languages
+from ...deck_scan import TAG_MANUAL
+from ...transcript import STUDENT_VERSIONS
+from ..commands import Command, CommandRegistry
+from ..presentation import launch
+from ..text import plural
+from . import compare_rendered, compile_actions, deck_actions, debug_log_ui, maintenance
+from .command_tips import tip_for
+from .menus import VIEW_LABELS
+from .panels import PANELS
+from ...ai import ai_profile, routes
+from ...ai.focus_scope import DECK as DECK_SCOPE, SLIDE as SLIDE_SCOPE
+from .selection_tasks import REWRITE_CHOICES
+from .source_file import REPLACE_KEY, autosave_on
+from .task_bubbles import DECK_TASKS, SLIDE_TASKS, selection_of
+from .state import MODES, VIEWS
+
+VIEW_AND_BUILD, SLIDE, SECTION, DECK, PROJECT = "View & build", "Slide", "Section", "Deck", "Project"
+AI = "AI"
+# On a Mac, where Qt reads Ctrl as ⌘: ⌘, is the app's settings, so Deck settings moves to ⌥⌘,; F5 needs the fn key,
+# so Present is Keynote's ⌥⌘P and Present from current slide ⇧⌥⌘P; F1 is not help there (the Help menu has its own search); Quit (⌘Q) comes with QuitRole.
+MAC_KEYS = {
+    "settings": {"shortcut": "Ctrl+,"},
+    "deck_settings": {"shortcut": "Ctrl+Alt+,"},
+    "present": {"shortcut": "Ctrl+Alt+P"},
+    "present_here": {"shortcut": "Ctrl+Alt+Shift+P"},
+    "open_manual": {"shortcut": ""},
+    "tab:next": {"shortcut": "Meta+Tab"},               # Qt reads Ctrl as the Command key there, and Command+Tab is the system's
+    "tab:previous": {"shortcut": "Meta+Shift+Tab"},
+    "tab:next_in_order": {"shortcut": "Meta+PgDown"},    # the physical Control+Page Down other Mac apps switch tabs with
+    "tab:previous_in_order": {"shortcut": "Meta+PgUp"},
+    "exit": {"hint": ""},
+}
+
+
+# -- when a command is available -------------------------------------------------------
+
+AI_COMMANDS = ("ai:", "task:", "selection:")        # the commands that need an AI route, by id prefix
+AI_COMMAND_IDS = ("slide:readable", "slide:translate")
+
+
+def _with_ai(visible):
+    """`visible`, and there is an AI route: with none installed every AI command is left out."""
+    return lambda w: bool(routes.all()) and visible(w)
+
+
+def _other_mode_title(w) -> str:
+    """"Dark slides" when the view's template has one other color mode, else "another color mode…"."""
+    modes = compile_actions.other_modes(w) if getattr(getattr(w, "state", None), "deck", None) else []
+    return modes[0][1] if len(modes) == 1 else "another color mode…"
+
+
+def _has_deck(w) -> bool:
+    return w.state.deck is not None
+
+
+def _deck_spelling(w) -> None:
+    from ..dialogs import deck_spelling
+    deck_spelling.open_for(w, w.state.deck)
+
+
+def _active_deck(w) -> bool:
+    """A deck that is not archived: archived decks only compile and get settings."""
+    deck = w.state.deck
+    return deck is not None and not deck.archived
+
+
+def _keeps_group(w) -> bool:
+    """The manual is replaced by app updates: its settings and group stay as shipped."""
+    deck = w.state.deck
+    return deck is not None and deck.group == TAG_MANUAL
+
+
+def _source_only(w) -> bool:
+    """The tab on show has a file that is no slide (a deck's source, SlideMage.bib): it has the Source view alone."""
+    centre = getattr(w, "centre", None)
+    return centre is not None and centre.source_only
+
+
+def _slide_file_shown(w) -> bool:
+    """A slide file tab is on show: its slide is not necessarily the focused one, so the selected rows are not "this slide"."""
+    centre = getattr(w, "centre", None)
+    return centre is not None and centre.slide_file_shown
+
+
+def _several_tabs(w) -> bool:
+    centre = getattr(w, "centre", None)
+    return centre is not None and len(centre.tabs.tabs) > 1
+
+
+def _versioned(w) -> bool:
+    deck = w.state.deck
+    return deck is not None and deck.supports_version
+
+
+def _offered(w, scope: str, task):
+    """The bubble of `task` the assistant offers for `scope` now, or None."""
+    return next((bubble for bubble in w.assistant.header.offers(scope) if bubble.task is task), None)
+
+
+def _current(is_current: bool) -> str:
+    return "current" if is_current else ""
+
+
+def _slide_targets(w) -> list:
+    return w.slide_list.targets()
+
+
+def _review_paths(w) -> list:
+    rows = _slide_targets(w)
+    if not _slide_file_shown(w) and (len(rows) > 1 or (rows and rows[0].matches(w.state.focused_slide))):
+        return [w.project.slides_dir / row.call.source_filename for row in rows]
+    path = w.centre.path    # a slide file tab's slide is not the focused one: the selected rows are not it
+    return [path] if path is not None else []
+
+
+def _last_edit_path(w):
+    """The slide "Compare rendered with last AI edit" acts on: the focused one, when an earlier text is kept for it."""
+    paths = _review_paths(w)
+    return paths[0] if len(paths) == 1 and ai_review.last_before(w.project, paths[0]) is not None else None
+
+
+def _one_slide(w) -> bool:
+    return len(_slide_targets(w)) == 1
+
+
+def _editable_slides(w) -> bool:
+    return all(row.call.editable for row in _slide_targets(w))
+
+
+def _visibility_label(view: str):
+    def label(w) -> str:
+        rows = _slide_targets(w)
+        verb = "Hide" if rows and all(row.call.included_in(view) for row in rows) else "Show"
+        return f"{verb} in {VIEW_LABELS[view]}"
+    return label
+
+
+def _review_mark_label(w) -> str:
+    rows = _slide_targets(w)
+    return "Clear review mark" if rows and all(row.review for row in rows) else "Mark for review in this deck"
+
+
+def _remove_label(w) -> str:
+    count = len(_slide_targets(w))
+    return "Remove from the deck" if count < 2 else f"Remove {count} from the deck"
+
+
+def _section_enabled(name: str):
+    return lambda w: w.slide_list.section_enabled(name)
+
+
+def _run_slide(name: str):
+    return lambda w: w.slide_list.run(name)
+
+
+def _run_section(name: str):
+    return lambda w: w.slide_list.run_section(name)
+
+
+def _deck(method: str):
+    """A window method that takes the current deck."""
+    return lambda w: getattr(w, method)(w.state.deck)
+
+
+def _window(method: str):
+    return lambda w: getattr(w, method)()
+
+
+def _manual_deck(w):
+    return next((deck for deck in w.decks if deck.group == TAG_MANUAL and not deck.archived), None)
+
+
+def _find_in_source(w, replace: bool) -> None:
+    """The find bar of the Source view, which the Preview and Details views first give way to Split for."""
+    if w.state.mode not in ("source", "split"):
+        w.state.set_mode("split")
+    w.centre.source.show_find(replace)
+
+
+def _show_shortcuts(w) -> None:
+    from ..dialogs.shortcuts import ShortcutsSheet
+    ShortcutsSheet(w.commands, w).exec()
+
+
+# -- the registry ----------------------------------------------------------------------
+
+def build_registry(mac: bool = sys.platform == "darwin") -> CommandRegistry:
+    """`mac` puts in the keys of MAC_KEYS, so the menus show and bind only the keys of the system SlideMage runs on."""
+    registry = CommandRegistry()
+
+    def add(*args, **kwargs) -> None:
+        command = Command(*args, **kwargs)
+        if not command.tip:
+            command = replace(command, tip=tip_for(command.id))      # the hover text (command_tips.py)
+        if command.id.startswith(AI_COMMANDS) or command.id in AI_COMMAND_IDS:
+            command = replace(command, visible=_with_ai(command.visible))
+        registry.add(replace(command, **MAC_KEYS[command.id]) if mac and command.id in MAC_KEYS else command)
+
+    # View & build -----------------------------------------------------------------
+    add("preview:all-saved", "Render all preview views · saved file", VIEW_AND_BUILD,
+        lambda w: w.centre.preview.render_all_views(saved=True), icon="preview",
+        enabled=lambda w: w.centre.preview.can_render_all,
+        meta="Focused slide · every view")
+    add("preview:all-buffer", "Render all preview views · editor buffer", VIEW_AND_BUILD,
+        lambda w: w.centre.preview.render_all_views(saved=False), icon="edit_note",
+        enabled=lambda w: w.centre.preview.can_render_all,
+        meta="Focused slide · every view")
+    add("preview:force", "Force rerender current preview", VIEW_AND_BUILD,
+        lambda w: w.centre.preview.force_rerender(), icon="refresh",
+        enabled=lambda w: w.centre.preview.can_force_render,
+        meta="Ignores the cache of finished renders")
+    for side, label, shortcut in (("left", "slide list", "Ctrl+Alt+["), ("right", "side panel", "Ctrl+Alt+]")):
+        add(f"column:{side}",
+            lambda w, s=side, text=label: f"{'Show' if getattr(w, s + '_column_hidden') else 'Hide'} {text}",
+            VIEW_AND_BUILD, lambda w, s=side: w._toggle_column(s), icon="view_sidebar", shortcut=shortcut)
+    for number, view in enumerate(VIEWS, 1):
+        add(f"view:{view}", f"View as {VIEW_LABELS[view]}", VIEW_AND_BUILD,
+            lambda w, v=view: w.state.set_view(v), icon="visibility", meta=lambda w, v=view: _current(w.state.view == v),
+            shortcut=f"Ctrl+{number}")
+    # One command per known language; the palette and the menu show those on the switch (state.languages()).
+    for language in (entry.code.upper() for entry in languages.TABLE):
+        add(f"language:{language}", f"Show {languages.name(language)} ({language})", VIEW_AND_BUILD,
+            lambda w, lang=language: w.state.set_language(lang), icon="translate",
+            meta=lambda w, lang=language: _current(w.state.language == lang),
+            visible=lambda w, lang=language: lang in w.state.languages())
+    for mode in MODES:
+        add(f"mode:{mode}", f"Show {mode.capitalize()}", VIEW_AND_BUILD,
+            lambda w, m=mode: w.state.set_mode(m), icon="tab", meta=lambda w, m=mode: _current(w.state.mode == m),
+            enabled=lambda w, m=mode: m == "source" or not _source_only(w))
+    for view in VIEWS:
+        add(f"compile:{view}", f"Compile PDF · {VIEW_LABELS[view]}", VIEW_AND_BUILD,
+            lambda w, v=view: compile_actions.compile_current(w, v), icon="picture_as_pdf", enabled=_has_deck,
+            visible=lambda w, v=view: v == VIEWS[0] or _versioned(w))
+    # The Compile button's own command: the PDF of the view shown (the instructor one where a deck has no versions).
+    add("compile:current", "Compile PDF · current view", VIEW_AND_BUILD,
+        lambda w: w.commands.run(f"compile:{w.state.view if _versioned(w) else VIEWS[0]}", w), icon="picture_as_pdf",
+        shortcut="Ctrl+Shift+B", enabled=_has_deck)
+    add("compile:all", "All views of this deck", VIEW_AND_BUILD, compile_actions.compile_all_views,
+        meta="choose views", enabled=_has_deck)
+    add("compile:mode", lambda w: "Current view in " + _other_mode_title(w), VIEW_AND_BUILD,
+        compile_actions.compile_in_mode, icon="contrast", meta="own PDF, once",
+        enabled=lambda w: bool(compile_actions.other_modes(w)), keywords="dark light colors colors mode handout")
+    add("compile:chapters", "After course, one PDF per chapter", VIEW_AND_BUILD,
+        lambda w: compile_actions.compile_current(w, "chapters"),
+        enabled=lambda w: _has_deck(w) and w.state.deck.has_chapters)
+    add("compile:presenter", "Presenter", VIEW_AND_BUILD, lambda w: compile_actions.compile_current(w, "presenter"),
+        meta="speaker notes", enabled=_has_deck)
+    add("compile:slides", "Compile PDF of selected slides", VIEW_AND_BUILD,
+        lambda w: compile_actions.compile_slides(w, list(w.state.selected_or_focused())),
+        meta=lambda w: plural(len(w.state.selected_or_focused()), "slide"),
+        enabled=lambda w: _has_deck(w) and bool(w.state.selected_or_focused()))
+    add("compile:pages", "Pages by number…", VIEW_AND_BUILD, compile_actions.compile_pages,
+        meta="e.g. 4, 7-10", enabled=_has_deck)
+    add("compile:several", "Multiple decks…", VIEW_AND_BUILD, compile_actions.compile_several)
+    add("compile:everything", "All decks except archive", VIEW_AND_BUILD, compile_actions.compile_everything,
+        meta="every view")
+    for version in STUDENT_VERSIONS:
+        add(f"transcript:{version}", f"Write transcript · {VIEW_LABELS[version]}", VIEW_AND_BUILD,
+            lambda w, v=version: deck_actions.generate_deck_transcript(w, w.state.deck, v),
+            icon="article", meta="Markdown + HTML", enabled=_has_deck, visible=_versioned)
+    add("transcript:both", "Write transcript · both", VIEW_AND_BUILD,
+        lambda w: deck_actions.generate_both_transcripts(w, w.state.deck), icon="article",
+        meta="Markdown + HTML, both versions", enabled=_has_deck, visible=_versioned)
+    add("stop", "Stop compilation", VIEW_AND_BUILD, compile_actions.ask_to_stop, tone="danger", icon="stop",
+        enabled=lambda w: w.compiling)
+    add("build_options", "Build settings…", VIEW_AND_BUILD, lambda w: w.build_options.exec())
+    add("log", "Log", VIEW_AND_BUILD, lambda w: w.compile_display.drawer.toggle(), icon="terminal", shortcut="Ctrl+L")
+    # Keys the window and the Source view bind themselves (window.py, source_file.py): the commands only show them.
+    add("render_buffer", "Render editor buffer", VIEW_AND_BUILD, lambda w: w.centre.render_buffer(), icon="preview",
+        hint="Ctrl+Enter", enabled=lambda w: not _source_only(w))
+    # The centre's tabs (centre_tabs.py): a file tab is closed with its "x" too.
+    add("tab:next", "Next tab", VIEW_AND_BUILD, lambda w: w.centre.cycle_tabs(1), icon="tab", shortcut="Ctrl+Tab",
+        meta="most recently used first", enabled=_several_tabs)
+    add("tab:previous", "Previous tab", VIEW_AND_BUILD, lambda w: w.centre.cycle_tabs(-1), icon="tab",
+        shortcut="Ctrl+Shift+Tab", meta="least recently used first", enabled=_several_tabs)
+    add("tab:next_in_order", "Next tab in order", VIEW_AND_BUILD, lambda w: w.centre.step_tab(1), icon="tab",
+        shortcut="Ctrl+PgDown", meta="strip order", enabled=_several_tabs)
+    add("tab:previous_in_order", "Previous tab in order", VIEW_AND_BUILD, lambda w: w.centre.step_tab(-1), icon="tab",
+        shortcut="Ctrl+PgUp", meta="strip order", enabled=_several_tabs)
+    add("tab:close", "Close tab", VIEW_AND_BUILD, lambda w: w.centre.close_active_tab(), icon="close", shortcut="Ctrl+W",
+        meta="not the slide tab", enabled=_several_tabs)
+    add("save", "Save source", VIEW_AND_BUILD, lambda w: w.centre.save(), icon="save", hint="Ctrl+S")
+    add("find", "Find in source", VIEW_AND_BUILD, lambda w: _find_in_source(w, False), icon="search", hint="Ctrl+F")
+    add("replace", "Replace in source", VIEW_AND_BUILD, lambda w: _find_in_source(w, True), icon="find_replace",
+        hint=REPLACE_KEY)
+
+    # Slide: the focused slide, or the selected ones ---------------------------------------
+    for name, label in (("open", "Source"), ("preview", "Preview"), ("open_tab", "Open in new tab"), ("images", "Images")):
+        add(f"slide:{name}", label, SLIDE, _run_slide(name), visible=_one_slide)
+    # Only a slide that still waits for its review shows this: once it is reviewed there is nothing to mark.
+    add("slide:reviewed", "Mark reviewed", SLIDE, lambda w: w.slide_list.mark_reviewed(_review_paths(w)),
+        visible=lambda w: any(ai_review.is_unreviewed(w.project, p) for p in _review_paths(w)))
+    add("slide:review_mark", _review_mark_label, SLIDE, _run_slide("review"), meta="\\SMReview",
+        visible=lambda w: bool(_slide_targets(w)), enabled=lambda w: all(r.deck_call.editable for r in _slide_targets(w)),
+        keywords="review mark watermark under review")
+    add("slide:compare", "Compare rendered with last AI edit", SLIDE,
+        lambda w: compare_rendered.compare_with_last_edit(w, _last_edit_path(w)),
+        visible=lambda w: _last_edit_path(w) is not None)
+    add("slide:readability", "Check readability of this slide", SLIDE,
+        lambda w: w.assistant.check_readability(SLIDE_SCOPE), icon="visibility", meta="no AI",
+        enabled=lambda w: w.assistant.header.can_check(SLIDE_SCOPE))
+    add("slide:readable", "Make this slide readable", SLIDE, lambda w: w.assistant.make_readable(), icon="auto_fix_high",
+        meta="checks it first", enabled=lambda w: w.assistant.header.can_check(SLIDE_SCOPE))
+    # The tasks on the text selected in the Source view: there for every slide, enabled with a selection to work on.
+    selected = lambda w: selection_of(w) is not None     # noqa: E731
+    add("selection:rewrite", "Rewrite selection…", SLIDE, lambda w: w.assistant.rewrite_selection(), icon="edit_note",
+        meta="choose how", shortcut="Ctrl+Shift+R", enabled=selected)
+    for choice in REWRITE_CHOICES:
+        add(f"selection:rewrite:{choice}", f"Rewrite selection · {choice}", SLIDE,
+            lambda w, c=choice: w.assistant.rewrite_selection(c), icon="edit_note", meta="selected text", enabled=selected)
+    add("selection:proofread", "Proofread selection", SLIDE, lambda w: w.assistant.proofread_selection(), icon="spellcheck",
+        meta="selected text", enabled=selected)
+    add("slides:unreviewed", "List not reviewed slides", SLIDE,
+        lambda w: w.slide_list.review_filter.setChecked(True), enabled=_has_deck)
+    for view in VIEWS:
+        add(f"slide:visible:{view}", _visibility_label(view), SLIDE, _run_slide(f"visible:{view}"),
+            visible=lambda w: bool(_slide_targets(w)), enabled=_editable_slides)
+    add("slide:duplicate", "Duplicate slide…", SLIDE, _run_slide("duplicate"), visible=_one_slide, keywords="add copy")
+    add("slide:translate", "Translated slide…", SLIDE, _run_slide("translate"), visible=_one_slide,
+        keywords="translate translation")
+    add("slide:before", "Slide before", SLIDE, _run_slide("before"), visible=_one_slide, keywords="add new")
+    add("slide:after", "Slide after", SLIDE, _run_slide("after"), visible=_one_slide, keywords="add new")
+    add("slide:section_before", "Section before", SLIDE, _run_slide("section_before"), visible=_one_slide,
+        keywords="add new")
+    add("slide:section_after", "Section after", SLIDE, _run_slide("section_after"), visible=_one_slide,
+        keywords="add new")
+    add("slide:rename", "Rename slide…", SLIDE, _run_slide("rename"), visible=_one_slide, keywords="slug name")
+    add("slide:remove", _remove_label, SLIDE, _run_slide("remove"), tone="danger",
+        visible=lambda w: bool(_slide_targets(w)), enabled=_editable_slides)
+    add("slide:delete", "Delete slide…", SLIDE, _run_slide("delete"), tone="danger", visible=_one_slide,
+        keywords="remove file permanently")
+    add("slide:update_versions", "Update versions…", SLIDE,
+        lambda w: w.centre.update_selected_versions(), visible=lambda w: len(_slide_targets(w)) > 1)
+    add("slide:clear", "Clear selection", SLIDE, _run_slide("clear"), meta="Esc", hint="Esc",
+        visible=lambda w: len(_slide_targets(w)) > 1)
+    for panel in PANELS:
+        add(f"panel:{panel.key}", f"Show {panel.title}", SLIDE, lambda w, key=panel.key: w.side_panels.set_panel(key),
+            icon="view_sidebar", visible=lambda w: w.state.focused_slide is not None)
+
+    # Section: the section chosen in the slide list -------------------------------------
+    section_chosen = lambda w: w.slide_list.current_section() is not None   # noqa: E731
+    for name, label, tone, meta in (
+            ("rename", "Rename", "", ""), ("slide_start", "Slide at the start of this section", "", ""),
+            ("add_slide", "Slide at the end of this section", "", ""),
+            ("section_before", "Section before", "", ""), ("section_after", "Section after", "", ""),
+            ("section_up", "Move section up", "", ""), ("section_down", "Move section down", "", ""),
+            ("remove_section", "Remove section…", "danger", "")):
+        add(f"section:{name}", label, SECTION, _run_section(name), tone=tone, meta=meta,
+            visible=section_chosen, enabled=_section_enabled(name))
+
+    # Deck -----------------------------------------------------------------------------
+    add("present", "Present deck", DECK, lambda w: launch.on_present(w, w.state.deck), icon="slideshow", shortcut="F5",
+        meta="full-screen, with notes", enabled=_active_deck)
+    add("present_here", "Present from current slide", DECK, lambda w: launch.on_present_here(w, w.state.deck),
+        icon="slideshow", shortcut="Shift+F5", meta="starts at the selected slide", enabled=_active_deck)
+    add("open_pdf", "Open latest PDF", DECK, lambda w: deck_actions.on_open_latest_pdf(w, w.state.deck), enabled=_active_deck)
+    add("deck_settings", "Deck settings…", DECK, lambda w: deck_actions.on_deck_settings(w, w.state.deck),
+        shortcut="Ctrl+,", enabled=lambda w: _has_deck(w) and not _keeps_group(w))
+    add("deck_source", "Source", DECK, _deck("open_deck_source_editor"), enabled=_active_deck)
+    add("deck_tags", "Tags…", DECK, lambda w: deck_actions.on_deck_settings(w, w.state.deck, "Tags"),
+        enabled=lambda w: _active_deck(w) and not _keeps_group(w))
+    add("new_deck", "New deck…", DECK, deck_actions.on_new_deck)
+    add("duplicate_deck", "Duplicate deck…", DECK, lambda w: deck_actions.on_duplicate_deck(w, w.state.deck), enabled=_active_deck)
+    add("export_pptx", "Export PPTX…", DECK, lambda w: compile_actions.export_pptx(w, w.state.deck), enabled=_active_deck)
+    add("export_latex", "Export LaTeX…", DECK, lambda w: compile_actions.export_latex(w, w.state.deck),
+        meta="self-contained · with media folder", enabled=_active_deck)
+    add("archive_deck", "Archive deck…", DECK, lambda w: deck_actions.archive_deck(w, w.state.deck), tone="danger", enabled=_active_deck)
+    add("create_snapshot", "Create deck snapshot…", DECK, deck_actions.on_create_deck_snapshot)
+    add("rerender_deck_previews", "Rerender all previews for this deck", DECK, compile_actions.rerender_deck_previews,
+        enabled=_has_deck)
+    add("update_deck_versions", "Update version of all changed slides…", DECK,
+        lambda w: w.centre.update_deck_versions(), enabled=_has_deck)
+    add("deck:readability", "Check readability of this deck", DECK,
+        lambda w: w.assistant.check_readability(DECK_SCOPE), icon="visibility", meta="no AI", enabled=_has_deck)
+    add("deck:spelling", "Check spelling of this deck…", DECK, _deck_spelling, icon="spellcheck", meta="no AI",
+        enabled=_has_deck)
+    add("add_slide", "Add slide…", DECK, lambda w: w.slide_list.add_slide(), enabled=_has_deck)
+    add("import_presentation", "Import PPTX/ODP…", DECK, _window("_on_import_presentation"))
+    add("refresh_decks", "Refresh decks", DECK, _window("_on_refresh_decks_clicked"))
+    add("archived_decks", "Archived decks…", DECK, lambda w: w.topbar.open_deck_menu(archived=True),
+        visible=lambda w: any(deck.archived for deck in w.decks))
+    add("switch_deck", "Switch deck…", DECK, lambda w: w.topbar.open_deck_menu(), icon="swap_horiz")
+
+    # Project --------------------------------------------------------------------------
+    add("palette", "Find anything…", PROJECT, lambda w: w.palette.toggle(), icon="search", shortcut="Ctrl+K")
+    add("autosave", lambda _w: "Turn AutoSave off" if autosave_on() else "Turn AutoSave on", PROJECT,
+        lambda w: w.set_autosave(not autosave_on()), icon="save",
+        meta="Save edits as you type; off, Ctrl+S saves")
+    add("images", "Image descriptions", PROJECT, _window("_toggle_images"), icon="image", meta="every slide with images")
+    add("library", "Library", PROJECT, _window("_toggle_library"), icon="collections_bookmark", meta="similar slides")
+    add("edit_bib", "Edit .bib", PROJECT, _window("_on_edit_bib"))
+    add("edit_test_slides", "Edit test-slides.tex", PROJECT, _window("_on_edit_test_slides"))
+    add("open_project", "Open project…", PROJECT, _window("_on_open_project"))
+    add("settings", "Settings…", PROJECT, _window("_on_open_settings"))
+    add("housekeeping", "Maintenance tasks…", PROJECT, maintenance.on_housekeeping, icon="build",
+        keywords="housekeeping cleanup clean up",
+        meta="pdf, temp files, unused content, previews")
+    add("empty_pdf", "Empty pdf folder", PROJECT, maintenance.empty_pdf_folder)
+    add("remove_temp", "Remove temp files", PROJECT, maintenance.remove_temp_files)
+    add("archive_unused", "Archive unused slides and media files", PROJECT, maintenance.on_archive_unused_content)
+    add("update_previews", "Render all previews now", PROJECT, compile_actions.update_previews)
+    add("sync_links", "Reestablish broken translation links", PROJECT, maintenance.on_sync_translation_links)
+    add("version_history", "Version history…", PROJECT, maintenance.on_open_version_history)
+    add("check_updates", "Check for updates…", PROJECT, maintenance.on_check_for_updates)
+    add("plugins", "Extensions…", PROJECT, _window("open_extensions"), icon="extension",
+        keywords="plugins themes citation formats")
+    add("project_compat", "Project compatibility…", PROJECT, maintenance.on_project_compat)
+    add("debug_log", debug_log_ui.toggle_title, PROJECT, debug_log_ui.toggle, icon="bug_report",
+        meta="a detailed log of what SlideMage does, for finding problems")
+    add("debug_report", "Save debug report…", PROJECT, debug_log_ui.save_report,
+        meta="the logs in one zip file, saved where you choose")
+    add("open_logs", "Open log folder", PROJECT, debug_log_ui.open_folder)
+    add("exit", "Exit SlideMage", PROJECT, lambda w: w.close(), hint="Alt+F4")
+    add("open_manual", "SlideMage manual", PROJECT, lambda w: w.state.set_deck(_manual_deck(w)), icon="menu_book",
+        shortcut="F1", enabled=lambda w: _manual_deck(w) is not None)
+    add("shortcuts", "Keyboard shortcuts…", PROJECT, _show_shortcuts, icon="keyboard")
+
+    # AI: the assistant's Local | Cloud switch, through its request flow (popovers included) ---------------
+    for mode, label, icon in ((ai_profile.LOCAL, "Use Local AI", "computer"), (ai_profile.CLOUD, "Use Cloud AI", "cloud")):
+        add(f"ai:{mode}", label, AI, lambda w, m=mode: w.ai_route.request(m), icon=icon,
+            enabled=lambda w, m=mode: bool(routes.on_side(m == ai_profile.LOCAL)),
+            meta=lambda w, m=mode: _current(w.state.ai_mode == m))
+    add("ai:setup", "AI settings…", AI, lambda w: w.ai_route.open_setup(), icon="tune",
+        meta="models per task, cloud connection, project setting")
+    # The tasks that fit the slide or the deck now, as the assistant header offers them (two of them there):
+    # a task the route cannot run says why instead of running.
+    for scope, scope_meta, tasks in ((SLIDE_SCOPE, "this slide", SLIDE_TASKS), (DECK_SCOPE, "the deck", DECK_TASKS)):
+        for task in tasks:
+            add(f"task:{scope}:{task.name}", lambda w, sc=scope, t=task: getattr(_offered(w, sc, t), "label", t.name), AI,
+                lambda w, sc=scope, t=task: w.assistant.run_task(_offered(w, sc, t)), icon="auto_fix_high",
+                meta=scope_meta, visible=lambda w, sc=scope, t=task: _offered(w, sc, t) is not None)
+    return registry

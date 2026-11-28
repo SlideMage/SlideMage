@@ -1,0 +1,436 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Add-slide workflows against a temporary deck, with a fake translation provider."""
+from __future__ import annotations
+
+import threading
+from types import SimpleNamespace
+
+import pytest
+from PySide6.QtCore import QCoreApplication, Qt
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QMessageBox, QWidget
+
+from slidemage.project import ProjectContext
+from slidemage import ai_review, deck_editor, deck_scan, preview_requests, slide_add
+from slidemage.ai import resolver
+from slidemage.ai.ai_profile import Route, TRANSLATION
+from slidemage.ai.providers import Cancelled, ChatReply, ProviderError
+from slidemage.ui.dialogs import add_slide
+from slidemage.ui.dialogs.add_slide import AddSlideSheet
+from slidemage.ui.workspace.state import WorkspaceState
+
+from conftest import use_new_slide_files, wait_until
+
+FRAME = "\\begin{standardframe}{%s}\r\nText\r\n\\end{standardframe}\r\n"
+HEAD = "\\documentclass{beamer}\n\\begin{document}\n"
+
+
+class FakeWindow(QWidget):
+    """What the sheet asks of the main window."""
+
+    def __init__(self, project):
+        super().__init__()
+        self.project = project
+        self.dirty: set = set()
+        self.edits, self.opened, self.slots = [], [], []
+        self.centre = SimpleNamespace(unsaved=lambda path: path in self.dirty,
+                                      preview=SimpleNamespace(_renders=preview_requests.RenderService()))
+        self.state = WorkspaceState(project, self)
+
+    def after_deck_edit(self, path, summary, previous_text=None):
+        self.edits.append((path, summary, previous_text))
+
+    def open_slide_editor(self, path, **_kwargs):
+        self.opened.append(path)
+
+    def acquire_route_task(self, route_id, label):
+        from slidemage.plugins.host import _RouteTaskLease
+        self.slots.append(("start", label))
+        return _RouteTaskLease(lambda: self.slots.append(("end",)))
+
+
+class Translator:
+    """Translate immediately or wait for cancellation."""
+
+    is_local = True
+    model = "fake"
+    label = "fake"
+
+    def __init__(self, reply="Text auf Deutsch", hold=None):
+        self.reply, self.hold, self.aborted = reply, hold, threading.Event()
+
+    def chat(self, messages, **kwargs):
+        if self.hold is not None:
+            self.hold.set()
+            if self.aborted.wait(5):
+                raise Cancelled("Aborted.")
+        if isinstance(self.reply, Exception):
+            raise self.reply
+        return ChatReply(text=self.reply)
+
+    def abort(self):
+        self.aborted.set()
+
+
+@pytest.fixture
+def project(tmp_path, monkeypatch, qapp, fake_routes):
+    decks, slides = tmp_path / "decks", tmp_path / "slides"
+    (decks / "archive").mkdir(parents=True)
+    use_new_slide_files(monkeypatch, tmp_path)
+    for name, title in (("abc-EN-Demo", "Demo"), ("xyz-EN-Other", "Other"), ("ccc-DE-Drei", "Dritte")):
+        (slides / f"{name}-current.tex").write_bytes((FRAME % title).encode("utf-8"))
+    (slides / "abc-EN-Demo-v1-0-0.tex").write_bytes((FRAME % "Old").encode("utf-8"))
+    (decks / "course.tex").write_bytes(
+        (HEAD + "\\slide{xyz-EN-Other}\n\\slide{abc-EN-Demo}\n\\end{document}\n").encode("utf-8"))
+    case = SimpleNamespace(slides=slides, deck_path=decks / "course.tex", errors=[])
+    monkeypatch.setattr(QMessageBox, "critical", lambda _p, _title, error: case.errors.append(error))
+    return case
+
+
+@pytest.fixture
+def make(project, qapp):
+    keep = []
+
+    def make(**start):
+        window = FakeWindow(ProjectContext.at(project.slides.parent))
+        deck = next(d for d in deck_scan.scan_decks(window.project) if d.name == "course")
+        insert_at, indent = deck_editor.append_position(deck)
+        sheet = AddSlideSheet(window, deck, insert_at, indent, where="at the end of the deck", is_dirty=window.centre.unsaved, **start)
+        keep.append((window, sheet))
+        sheet.show()
+        if sheet._picker_work is not None:
+            assert sheet._picker_work.wait(5000)
+            qapp.processEvents()
+        return sheet, window
+
+    yield make
+    for window, sheet in keep:
+        sheet.close()
+        window.centre.preview._renders.close()
+        window.deleteLater()
+        sheet.deleteLater()
+    QCoreApplication.sendPostedEvents(None, 0)
+
+
+def deck_text(project):
+    return project.deck_path.read_bytes().decode("utf-8")
+
+
+def pick(sheet, id_slug):
+    sheet.search.setText("")
+    sheet._select(id_slug)
+    if sheet._picker_work is not None:
+        assert sheet._picker_work.wait(5000)
+        QCoreApplication.processEvents()
+        sheet._select(id_slug)
+    assert sheet.picked() == id_slug
+
+
+def use_provider(monkeypatch, provider):
+    asked = []
+
+    def picked(parent, project, combo, task, what):
+        asked.append(what)
+        return None if provider is None else Route("fake_local" if provider.is_local else "fake_cloud", TRANSLATION, "fake")
+
+    monkeypatch.setattr(add_slide, "picked_route", picked)
+    monkeypatch.setattr(resolver, "slide_translator", lambda _ctx, _route: provider)
+    return asked
+
+
+def test_a_new_slide_takes_its_slug_from_the_title_and_goes_into_the_deck(make, project):
+    sheet, window = make()
+    assert sheet.current_source() == "new" and sheet.picker.isHidden() and not sheet.new.isHidden()
+    assert not sheet.ok.isEnabled()
+    assert list(sheet.frames._tiles) == list(slide_add.FRAMES)
+    assert sheet.frames.current() == "standardframe" and sheet.frame_note.isHidden()
+    sheet.frames._on_click("sideimageframe")
+    sheet._sync()
+    assert not sheet.frame_note.isHidden() and "picture" in sheet.frame_note.text()
+    original = deck_text(project)
+    QTest.keyClicks(sheet.title_edit, "Growth of R&D")
+    assert sheet.slug_edit.text() == "Growth-of-R-D" and sheet.ok.isEnabled()
+    sheet.frames._on_click("quoteframe")
+    sheet.language.set_current("DE")
+    sheet._sync()
+    sheet.ok.click()
+    created = next(p for p in project.slides.glob("*-DE-Growth-of-R-D-current.tex"))
+    assert "\\quoteframe{" in created.read_text() and f"\\slide{{{created.name[:-len('-current.tex')]}}}" in deck_text(project)
+    assert window.opened == [created]
+    assert window.edits[0][2].edits == {project.deck_path: (original, deck_text(project))}
+    assert sheet.result() == sheet.DialogCode.Accepted
+
+
+def test_a_manual_slug_must_be_valid_and_cancel_leaves_files_untouched(make, project):
+    sheet, window = make()
+    QTest.keyClicks(sheet.slug_edit, "my slug")
+    QTest.keyClicks(sheet.title_edit, "Something else")
+    assert sheet.slug_edit.text() == "my slug" and not sheet.ok.isEnabled()
+    assert "letters and digits" in sheet.status.text()
+    sheet.slug_edit.setText("Valid-slug")
+    assert sheet.ok.isEnabled()
+    before = sorted(project.slides.iterdir()), deck_text(project)
+    sheet.cancel_button.click()
+    assert sheet.result() == sheet.DialogCode.Rejected
+    assert (sorted(project.slides.iterdir()), deck_text(project)) == before and window.edits == []
+
+
+def test_an_existing_slide_is_found_by_id_or_title_and_added_live(make, project):
+    from io import BytesIO
+    from PIL import Image
+    from slidemage import preview_target, render_key
+    from slidemage.fileio import text_sha256
+
+    sheet, window = make(source="existing")
+    assert sheet.listbox.count() == 3 and not sheet.ok.isEnabled()
+    assert all(sheet.listbox.item(i).icon().isNull() for i in range(sheet.listbox.count()))
+    renderer = window.centre.preview._renders.renderer(window.project)
+    target = preview_target.for_path(window.project, project.slides / "xyz-EN-Other-current.tex")
+    unit = render_key.unit_for(target, "instructor", "EN")
+    pdf = project.slides.parent / "reference.pdf"
+    pdf.write_bytes(b"%PDF reference")
+    pixels = BytesIO()
+    Image.new("RGB", (1920, 1080), "red").save(pixels, format="PNG")
+    renderer.store.put("reference", pdf, [pixels.getvalue()],
+                       dict(unit=unit.label, template=unit.template, inventory=[],
+                            manifest=[["project", "slides/xyz-EN-Other-current.tex", text_sha256(target.source_path.read_text())]]))
+    sheet._picker_ready = False
+    sheet._ensure_picker()
+    assert sheet._picker_work.wait(5000)
+    QCoreApplication.processEvents()
+    sheet._select("xyz-EN-Other")
+    assert sheet._icon_work is not None and sheet._icon_work.wait(5000)
+    QCoreApplication.processEvents()
+    assert not sheet.listbox.currentItem().icon().isNull()
+    assert "Instructor reference" in sheet.listbox.currentItem().toolTip()
+    sheet.search.setText("dritt")
+    assert sheet.listbox.count() == 1
+    sheet.search.setText("XYZ")
+    assert [sheet.listbox.item(i).data(Qt.ItemDataRole.UserRole) for i in range(sheet.listbox.count())] == ["xyz-EN-Other"]
+    sheet.listbox.setCurrentRow(0)
+    assert sheet.ok.isEnabled()
+    sheet.ok.click()
+    assert deck_text(project).endswith("\\slide{abc-EN-Demo}\n\\slide{xyz-EN-Other}\n\\end{document}\n")
+    assert not window.opened and len(window.edits) == 1
+
+
+def test_a_frozen_version_is_added_pinned_and_has_no_views_to_choose(make, project):
+    sheet, _window = make(source="existing")
+    pick(sheet, "xyz-EN-Other")
+    sheet.load.set_current("frozen")
+    sheet._sync()
+    assert not sheet.ok.isEnabled() and "no frozen version" in sheet.status.text()
+    pick(sheet, "abc-EN-Demo")
+    assert not sheet.version_field.isHidden() and sheet.version.currentData() == "1-0-0"
+    assert all(not box.isEnabled() for box in sheet.views.values())
+    assert sheet.call_preview.text() == "\\slideversion{abc-EN-Demo}{1-0-0}"
+    sheet.ok.click()
+    assert "\\slideversion{abc-EN-Demo}{1-0-0}\n\\end{document}" in deck_text(project)
+
+
+def test_one_reveal_step_is_added_as_a_slidestep(make, project):
+    sheet, _window = make(source="existing")
+    pick(sheet, "abc-EN-Demo")
+    sheet.load.set_current("step")
+    sheet.steps.setText("1-2,4")
+    assert not sheet.steps_field.isHidden()
+    assert sheet.call_preview.text() == "\\slidestep{abc-EN-Demo}[instructor,during-course,after-course]{1-2,4}"
+    sheet.steps.setText("two")
+    assert not sheet.ok.isEnabled() and "not a valid step list" in sheet.status.text()
+    sheet.steps.setText("2")
+    sheet.ok.click()
+    assert "\\slidestep{abc-EN-Demo}[instructor,during-course,after-course]{2}\n" in deck_text(project)
+
+
+def test_duplicate_requires_saved_source_and_valid_slug_and_creates_an_independent_copy(make, project):
+    sheet, window = make(source="duplicate", slide="abc-EN-Demo")
+    source = project.slides / "abc-EN-Demo-current.tex"
+    original = source.read_bytes()
+    window.dirty.add(source)
+    sheet._sync()
+    assert not sheet.ok.isEnabled() and "unsaved edits" in sheet.status.text()
+    window.dirty.clear()
+    assert sheet.copy_slug.text() == "Demo-Copy"
+    sheet.copy_slug.setText("two words")
+    sheet._sync()
+    assert not sheet.ok.isEnabled() and "letters and digits" in sheet.status.text()
+    sheet.copy_slug.setText("Demo-Copy")
+    sheet._sync()
+    sheet.ok.click()
+    created, = project.slides.glob("*-EN-Demo-Copy-current.tex")
+    assert created.read_bytes().endswith(original) and "Translation of" not in created.read_text()
+    assert source.read_bytes() == original
+    assert window.opened == [created] and created.name[:3] in deck_text(project)
+    assert not ai_review.unreviewed(window.project)
+
+
+@pytest.mark.parametrize("local", [True, False], ids=["local", "cloud"])
+def test_translate_into_german_runs_the_model_and_links_the_translation(make, project, monkeypatch, local):
+    provider = Translator()
+    provider.is_local = local
+    asked = use_provider(monkeypatch, provider)
+    sheet, window = make(source="translate", slide="abc-EN-Demo", target="DE")
+    sheet.target.setCurrentIndex(sheet.target.findData("mult"))
+    assert sheet.chosen_target() == "mult" and not sheet.machine.isEnabled()
+    sheet.target.setCurrentIndex(sheet.target.findData("DE"))
+    assert sheet.machine.isEnabled() and sheet.machine.isChecked()
+    sheet.ok.click()
+    assert sheet._worker is not None and not sheet.ok.isEnabled() and "Translating with fake" in sheet.status.text()
+    wait_until(lambda: sheet._worker is None)
+    created = next(project.slides.glob("*-DE-Demo-current.tex"))
+    text = created.read_bytes().decode()
+    assert "%% Translation of: abc-EN-Demo" in text and text.endswith("Text auf Deutsch")
+    assert f"%% DE translation: {created.name[:-len('-current.tex')]}" in (project.slides / "abc-EN-Demo-current.tex").read_text()
+    assert window.slots == [("start", "translating a slide"), ("end",)] and asked == ["the slide's LaTeX body"]
+    assert window.opened == [created] and created.name[:3] in deck_text(project)
+    marks = ai_review.unreviewed(window.project)
+    assert len(marks) == (0 if local else 2)
+    if marks:
+        assert marks[created.relative_to(window.project.root).as_posix()]["decks"] == ["decks/course.tex"]
+
+
+def test_translation_can_be_retried_manually_after_refusal_or_failure(make, project, monkeypatch):
+    use_provider(monkeypatch, None)
+    sheet, window = make(source="translate", slide="abc-EN-Demo", target="DE")
+    sheet.ok.click()
+    assert sheet._worker is None and window.slots == [] and window.edits == [] and sheet.ok.isEnabled()
+
+    use_provider(monkeypatch, Translator(ProviderError("rate limited")))
+    before = sorted(project.slides.iterdir())
+    sheet.ok.click()
+    wait_until(lambda: sheet._worker is None)
+    assert "Translation failed: rate limited" in sheet.status.text() and sheet.ok.isEnabled()
+    assert sorted(project.slides.iterdir()) == before and window.edits == [] and window.slots[-1] == ("end",)
+    sheet.machine.setChecked(False)
+    sheet.ok.click()
+    created = next(project.slides.glob("*-DE-Demo-current.tex"))
+    assert created.read_bytes().decode().endswith(FRAME % "Demo")      # the copy as it is, still linked
+    assert "Translation of: abc-EN-Demo" in created.read_text()
+
+
+def test_closing_the_sheet_ends_a_running_translation(make, project, monkeypatch):
+    started = threading.Event()
+    model = Translator(hold=started)
+    use_provider(monkeypatch, model)
+    sheet, window = make(source="translate", slide="abc-EN-Demo", target="DE")
+    sheet.ok.click()
+    assert started.wait(5)
+    worker = sheet._worker
+    sheet.reject()
+    assert model.aborted.is_set() and sheet._worker is None and worker.isFinished()
+    QCoreApplication.processEvents()
+    assert window.slots == [("start", "translating a slide"), ("end",)] and window.edits == []
+    assert not list(project.slides.glob("*-DE-Demo-current.tex"))
+
+
+def test_a_deck_that_changed_on_disk_is_reported_and_keeps_the_sheet_open(make, project):
+    sheet, window = make(source="existing")
+    pick(sheet, "xyz-EN-Other")
+    project.deck_path.write_bytes((HEAD + "\\end{document}\n").encode())
+    sheet.ok.click()
+    assert project.errors and "changed on disk" in project.errors[0] and window.edits == []
+    assert sheet.result() != sheet.DialogCode.Accepted
+
+
+def test_retry_rechecks_the_deck_and_only_inserts_the_registered_slide(make, project):
+    sheet, window = make()
+    sheet.slug_edit.setText("Pending")
+    original = deck_text(project)
+    project.deck_path.write_bytes(("% newer deck\n" + original).encode())
+    sheet.ok.click()
+    created, = project.slides.glob("*-Pending-current.tex")
+    registry = window.project.slide_ids_csv.read_bytes()
+    assert created.name.removesuffix("-current.tex") in sheet.status.text()
+    assert sheet.ok.text() == "Retry insertion" and window.edits == []
+    window.dirty.add(project.deck_path)
+    sheet.ok.click()
+    assert "unsaved edits" in sheet.status.text() and window.edits == []
+    window.dirty.clear()
+    sheet.ok.click()
+    assert window.opened == [created] and window.project.slide_ids_csv.read_bytes() == registry
+    assert list(project.slides.glob("*-Pending-current.tex")) == [created]
+    entry = window.edits[0][2]
+    assert entry.edits == {project.deck_path: ("% newer deck\n" + original, deck_text(project))}
+
+
+def test_a_new_slide_that_cannot_be_written_is_reported_in_the_sheet(make, project, monkeypatch):
+    sheet, window = make()
+    sheet.slug_edit.setText("Fine")
+    monkeypatch.setattr(slide_add.fileio, "atomic_write",
+                        lambda *a, **k: (_ for _ in ()).throw(FileExistsError("slides/x.tex already exists")))
+    sheet.ok.click()
+    assert sheet.status.text() == "slides/x.tex already exists" and window.edits == []
+
+
+def test_a_translation_sheet_takes_the_views_of_the_source_call(make, project):
+    project.deck_path.write_bytes(
+        (HEAD + "\\conditionalslide[instructor]{xyz-EN-Other}\n\\slide{abc-EN-Demo}\n\\end{document}\n").encode("utf-8"))
+    sheet, window = make(source="translate", slide="abc-EN-Demo", target="DE")
+    assert sheet.chosen_views() == ["instructor", "during-course", "after-course"]
+    pick(sheet, "xyz-EN-Other")
+    assert sheet.chosen_views() == ["instructor"] and "conditionalslide[instructor]" in sheet.call_preview.text()
+    assert sheet.where_label.text() == "after xyz-EN-Other"
+    sheet.views["instructor"].setChecked(False)
+    assert not sheet.ok.isEnabled() and "at least one" in sheet.status.text()
+    sheet.views["instructor"].setChecked(True)
+    sheet.machine.setChecked(False)
+    sheet.ok.click()
+    created = next(project.slides.glob("*-DE-Other-current.tex")).name.removesuffix("-current.tex")
+    assert f"\\conditionalslide[instructor]{{xyz-EN-Other}}\n\\conditionalslide[instructor]{{{created}}}\n" in deck_text(project).replace("\r\n", "\n")
+
+
+def test_route_provided_translator_is_used_directly(qapp, tmp_path):
+    from slidemage.ui.dialogs.add_slide import _translate
+
+    class PluginTranslator:
+        def translate(self, body):
+            return f"translated {body}", None
+
+    assert _translate(ProjectContext.at(tmp_path), PluginTranslator(), "source") == ("translated source", None)
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_inserting_a_block_writes_its_heading_and_call_at_the_chosen_position(make, project, newline):
+    blocks = project.slides.parent / "blocks"
+    blocks.mkdir()
+    block = blocks / "Literature.tex"
+    block.write_text("%% SlideMage block: Literature search\n%% Topics: Research, Writing\n"
+                     "\\slideversion{xyz-EN-Other}{1-0-0}\n\\slide{ccc-DE-Drei}\n", encoding="utf-8")
+    (blocks / "colors.tex").write_text("\\definecolor{test}{RGB}{0,0,0}\n", encoding="utf-8")
+    other = project.deck_path.with_name("other.tex")
+    other.write_text(HEAD + "\\slideblock{Literature}\n\\end{document}\n", encoding="utf-8")
+    original = deck_text(project).replace("\n", newline)
+    project.deck_path.write_bytes(original.encode())
+    sheet, window = make(source="existing")
+    assert [sheet.listbox.item(i).data(Qt.ItemDataRole.UserRole) for i in range(3)] == [
+        "ccc-DE-Drei", "xyz-EN-Other", "abc-EN-Demo"]
+    pick(sheet, "abc-EN-Demo")
+    sheet.load.set_current("frozen")
+    sheet._sync()
+    sheet._on_source("block")
+    assert sheet.listbox.count() == 1 and sheet.views_field.isHidden()
+    sheet.search.setText("absent")
+    assert sheet.listbox.count() == 0 and not sheet.ok.isEnabled()
+    sheet.search.setText("writing")
+    row = sheet.listbox.itemWidget(sheet.listbox.item(0))
+    row.clicked.emit()
+    assert sheet.ok.isEnabled() and row.selected()
+    sheet.insert_at = original.index("\\slide{abc-EN-Demo}")
+    sheet.indent = "  "
+    block_text = block.read_bytes()
+    block.unlink()
+    sheet.ok.click()
+    assert sheet._worker.wait(5000)
+    QCoreApplication.processEvents()
+    assert "disappeared" in sheet.status.text() and deck_text(project) == original
+    block.write_bytes(block_text)
+    sheet.ok.click()
+    assert sheet._worker.wait(5000)
+    QCoreApplication.processEvents()
+    inserted = f"  \\section{{Literature search}}{newline}  \\slideblock{{Literature}}{newline}"
+    expected = original[:sheet.insert_at] + inserted + original[sheet.insert_at:]
+    assert deck_text(project) == expected
+    assert block.read_text(encoding="utf-8").endswith("\\slide{ccc-DE-Drei}\n")
+    assert window.edits[0][2].edits == {project.deck_path: (original, expected)}
+    assert window.opened == [] and sheet.result() == sheet.DialogCode.Accepted

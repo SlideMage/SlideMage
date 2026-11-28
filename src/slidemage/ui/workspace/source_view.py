@@ -1,0 +1,881 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""The Source view: a compact toolbar over the editor of the file being edited.
+
+It edits slides, a deck's own .tex file and SlideMage.bib alike, one
+`SourceFile` (source_file.py) per file, saved as you type. A file is written
+before another is shown; one that cannot be (a conflict with a change on disk)
+stays open, so that switching slides never loses an edit; a clean one that has no tab is
+dropped and read from disk again when it comes back, so it is never stale.
+The view reports edits that could not be saved ("dirty") and Ctrl+S ("saved"), and asks the window, through the
+signals, for what is not its own: rendering the buffer, restoring a frozen
+version, making a version (Update Version), showing another file.
+
+A file with a tab of its own in the centre (a deck's source, SlideMage.bib, a slide's file), and the file of the slide
+tab, is *held* (hold(), unhold(), release()): it is not dropped when it goes out of view, so its buffer, undo history
+and cursor stay while another tab is shown. Holds are counted, one per tab that needs the file: the same slide in
+the slide tab and in a file tab is one buffer, and it goes only when the last of them lets go. A held file is
+still written before it goes out of view and checked against the disk (`sync()`) when it comes back, and
+`file_closed` is emitted for it when it is dropped.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Callable, Optional
+
+from PySide6.QtCore import QPoint, Qt, Signal
+from PySide6.QtGui import QGuiApplication, QKeySequence, QShortcut, QTextCursor
+from PySide6.QtWidgets import (
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QVBoxLayout,
+    QWidget,
+)
+
+from ...ai import routes
+from . import color_picker
+from .version_bar import VersionState
+from ... import languages, latex_edit, slide_templates, slide_versioning, theme_colors, view_themes
+from ...latex_edit import (ASKS, INSERT_BLOCK_COMMANDS, INSERT_EXTERNAL_COMMANDS, INSERT_LIST_COMMANDS,
+                           INSERT_PLACEMENT_COMMANDS, INSERT_VISIBILITY_COMMANDS, Insert, multilingual_for)
+from ...selection import NO_SELECTION, Selection, SelectionError, capture
+from ..dialogs import qr_code as qr_dialog
+from ..dialogs.citation import CitationDialog
+from ..kit.tokens import SPACE
+from ..kit import kit_qss as q
+from ..kit.widgets import (Button, Chip, CurrentPageStack, ElidedLabel, IconButton, Popover, PopoverMenu, SplitButton,
+                           Surface, choose_color)
+from .insert_popovers import CitationPopover, CodeFilePopover, LinkPopover
+from .selection_tasks import PROOFREAD, REWRITE, add_menu_items
+from .source_file import REPLACE_KEY, SourceFile, autosave_on
+from . import spell_check
+
+LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+CUSTOM_COLOR = "custom-color"        # the Color menu's key for "Custom color…" (no theme color has a dash)
+# The Tools menu's note on what Reindent does, per SourceFile.reindent_kind.
+REINDENT_META = {"slide": "one tab per \\begin level", "deck": "per \\begin, \\if and { level",
+                 "bib": "one tab per field"}
+
+
+VERSION_TIP = ("Make the slide as it is now a version: it is frozen, and decks can keep using it. "
+               "Asks how significant the change is. (Edits are saved as you type.)")
+
+
+class SourcePane(Surface):
+    dirty_changed = Signal(bool)         # some file has edits that cannot be saved (a conflict, read-only, an AI fix running)
+    written = Signal(object)             # Path; after every write, autosave included
+    preview_requested = Signal(object)   # Path; after a typing pause
+    buffer_changed = Signal(object)      # Path; every text edit, even while already dirty
+    file_closed = Signal(object)         # the Path of a file the view no longer holds
+    lint_errors_changed = Signal(int)    # errors the static check finds in the file shown
+    saved = Signal(object)               # the Path that was saved
+    render_requested = Signal()          # Ctrl+R: render the buffer
+    restore_requested = Signal(object)   # Path of a frozen version to make current
+    revert_requested = Signal(object)   # current slide path
+    version_requested = Signal(object)      # current slide path: Update Version of that slide
+    version_level_requested = Signal(object, str)      # current slide path, "patch" | "minor" | "major": Update Version at that level
+    version_state = Signal(object)       # a VersionState for the Preview's version buttons, None: none to show
+    file_requested = Signal(object)      # Path of another file to show
+    reference_added = Signal()           # an entry was added to SlideMage.bib
+
+    def __init__(self, app) -> None:
+        super().__init__()
+        self.app = app
+        self._color_picker = None        # the open screen color picker (color_picker.py)
+        self._files: dict[Path, SourceFile] = {}
+        self._held: dict[Path, int] = {}    # files a tab needs, and how many do: not dropped when out of view
+        self._current: Optional[SourceFile] = None
+        self._dirty = False
+        self._spelling = None              # the SpellingSession of the project open (spelling_session())
+        self._lint_errors = 0
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addWidget(self._build_toolbar())
+        self._jump_bar = self._build_jump_bar()
+        layout.addWidget(self._jump_bar)
+        self._frozen_bar = self._build_frozen_bar()
+        layout.addWidget(self._frozen_bar)
+        self._stack = CurrentPageStack()
+        self._stack.setObjectName(q.SURFACE)
+        self._empty = QLabel()
+        self._empty.setWordWrap(True)
+        self._empty.setObjectName(q.SOURCE_NOTE)
+        self._empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._stack.addWidget(self._empty)
+        layout.addWidget(self._stack, 1)
+
+        # Scoped to this view's widgets. Ctrl+S is the window's (window.py): it writes the file shown here
+        # now and renders it, from every view.
+        shortcuts = [
+            ("Ctrl+/", lambda: self._edit(lambda e: e.toggle_comment())),
+            ("Ctrl+I", lambda: self._wrap("textit")), ("Ctrl+B", lambda: self._wrap("textbf")),
+            ("Ctrl+U", lambda: self._wrap("underline")), ("Ctrl+R", self.render_requested.emit),
+        ]
+        for sequence, action in shortcuts:
+            shortcut = QShortcut(QKeySequence(sequence), self)
+            shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            shortcut.activated.connect(action)
+        self._update_toolbar()
+
+    # -- building ----------------------------------------------------------------------
+
+    def _build_toolbar(self) -> QWidget:
+        bar = Surface()
+        bar.setObjectName(q.SOURCE_BAR)
+        outer = QVBoxLayout(bar)
+        outer.setContentsMargins(SPACE.lg, SPACE.md, SPACE.lg, SPACE.sm)
+        outer.setSpacing(SPACE.xs)
+
+        top = QHBoxLayout()
+        top.setSpacing(SPACE.sm)
+        # Cut with … where the pane is narrow (Split view); the whole name is its tooltip.
+        self._name = ElidedLabel()
+        self._name.setObjectName(q.SOURCE_FILE_NAME)
+        top.addWidget(self._name, 1)
+        self._unsaved_chip = Chip("", "muted")
+        top.addWidget(self._unsaved_chip)
+        self._elsewhere_chip = Chip("", "warning")
+        self._elsewhere_chip.clicked.connect(self._show_other_dirty)
+        top.addWidget(self._elsewhere_chip)
+        keys = ", ".join(QKeySequence(k).toString(QKeySequence.SequenceFormat.NativeText) for k in ("Ctrl+F", REPLACE_KEY))
+        self._find_button = IconButton("search", f"Find and replace ({keys})")
+        self._find_button.clicked.connect(lambda: self._with_file(lambda f: f.find_bar.show_find()))
+        top.addWidget(self._find_button)
+        self._spell_button = IconButton("spellcheck", "")
+        self._spell_button.clicked.connect(lambda: self.set_spell_check(not spell_check.spell_check_on()))
+        top.addWidget(self._spell_button)
+        # Update version, and in the caret's menu the way back to the last version (revert_version).
+        self._version_here = True     # False while the Preview shows the version buttons (Split and Preview views)
+        self._version_button = SplitButton("Update version")
+        self._version_button.clicked.connect(self.update_version)
+        self._revert_label = ("", True)
+        self.written.connect(lambda _path: self._update_toolbar())     # an autosave may add the "+"
+        top.addWidget(self._version_button)
+        # A deck's source and Slidemaster.bib with AutoSave off: Save, as Ctrl+S.
+        save_key = QKeySequence("Ctrl+S").toString(QKeySequence.SequenceFormat.NativeText)
+        self._save_button = Button("Save", "primary", compact=True)
+        self._save_button.setToolTip(f"Save this file ({save_key})")
+        self._save_button.clicked.connect(self.save)
+        top.addWidget(self._save_button)
+        outer.addLayout(top)
+
+        self._format_row = Surface()
+        row = QHBoxLayout(self._format_row)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(SPACE.s_2xs)
+        for label, macro in latex_edit.FORMAT_MACROS:
+            button = Button(label, "ghost", compact=True)
+            # Each label is drawn in the style it applies: the row is its own legend.
+            style = {"I": "font-style: italic;", "B": "font-weight: 700;", "U": "text-decoration: underline;"}
+            button.setStyleSheet(style.get(label, ""))
+            button.clicked.connect(lambda _=False, m=macro: self._wrap(m))
+            row.addWidget(button)
+        comment = Button("%", "ghost", compact=True)
+        comment.setToolTip("Comment or uncomment the selected lines (Ctrl+/)")
+        comment.clicked.connect(lambda: self._edit(lambda e: e.toggle_comment()))
+        row.addWidget(comment)
+        for label, macro in latex_edit.WORD_MACROS:
+            button = Button(label, "ghost", compact=True)
+            button.clicked.connect(lambda _=False, m=macro: self._wrap(m))
+            row.addWidget(button)
+        self._color_button = Button("Color ▾", "ghost", compact=True)
+        self._color_button.clicked.connect(self._open_color_menu)
+        row.addWidget(self._color_button)
+        self._insert_button = Button("Insert ▾", "ghost", compact=True)
+        self._insert_button.setToolTip("Insert a link, a QR code, a code file, a list, a block, a reveal step, "
+                                       "a corner figure, a text box and more")
+        self._insert_button.clicked.connect(self._open_insert_menu)
+        row.addWidget(self._insert_button)
+        self._cite_button = Button("Cite ▾", "ghost", compact=True)
+        self._cite_button.setToolTip("Insert a citation of an entry of SlideMage.bib")
+        self._cite_button.clicked.connect(self._open_citation_popover)
+        row.addWidget(self._cite_button)
+        # (QR codes are under Insert, External elements, since 2026-11-24: the separate QR button is gone.)
+        row.addStretch(1)
+        self._tools_button = Button("Tools ▾", "ghost", compact=True)
+        self._tools_button.clicked.connect(self._open_tools_menu)
+        row.addWidget(self._tools_button)
+        outer.addWidget(self._format_row)
+        return bar
+
+    def _build_jump_bar(self) -> QWidget:
+        """SlideMage.bib only: one button per letter jumps to the first entry whose key starts with it."""
+        bar = Surface()
+        grid = QGridLayout(bar)
+        grid.setContentsMargins(SPACE.lg, SPACE.xs, SPACE.lg, SPACE.xs)
+        grid.setSpacing(SPACE.s_2xs)
+        half = len(LETTERS) // 2
+        for i, letter in enumerate(LETTERS):
+            button = Button(letter, "ghost", compact=True)
+            button.setFixedWidth(32)
+            button.clicked.connect(lambda _=False, ltr=letter: self._jump_to_letter(ltr))
+            grid.addWidget(button, i // half, i % half)
+        grid.setColumnStretch(half, 1)
+        bar.setVisible(False)
+        return bar
+
+    def _build_frozen_bar(self) -> QWidget:
+        bar = Surface()
+        row = QHBoxLayout(bar)
+        row.setContentsMargins(SPACE.lg, SPACE.xs, SPACE.lg, SPACE.xs)
+        label = QLabel("Frozen version, read-only.")
+        label.setObjectName(q.SOURCE_NOTE)
+        row.addWidget(label)
+        row.addStretch(1)
+        self._unlock_button = Button("Unlock editing", "ghost", compact=True)
+        self._unlock_button.setToolTip(
+            "Allow editing this frozen snapshot directly. Normally a past version is never "
+            "changed: edit the current slide instead.")
+        self._unlock_button.clicked.connect(self._unlock)
+        row.addWidget(self._unlock_button)
+        restore = Button("Make this the current version", "secondary", compact=True)
+        restore.setToolTip("Replace the slide's current content with this version. The current content "
+                           "is archived first, as a version of its own.")
+        restore.clicked.connect(lambda: self._with_file(lambda f: self.restore_requested.emit(f.path)))
+        row.addWidget(restore)
+        bar.setVisible(False)
+        return bar
+
+    # -- the files ---------------------------------------------------------------------
+
+    @property
+    def current(self) -> Optional[SourceFile]:
+        return self._current
+
+    def file_for(self, path: Path) -> Optional[SourceFile]:
+        return self._files.get(path)
+
+    def dirty_files(self) -> list[SourceFile]:
+        """Files whose buffer differs from the file: between a keystroke and its autosave, or for good
+        when it cannot be written (see `blocked_files`). Flush first to be left with the latter."""
+        return sorted((f for f in self._files.values() if f.dirty), key=lambda f: str(f.path))
+
+    def blocked_files(self) -> list[SourceFile]:
+        """Files whose edits will not be written by themselves: blocked, or AutoSave is off."""
+        return [f for f in self.dirty_files() if f.unsaved]
+
+    def autosave_changed(self) -> None:
+        """AutoSave was switched: on, the edits waiting in open files are saved shortly; off, they stay."""
+        for file in self._files.values():
+            file._schedule_autosave()
+        self._on_modified()
+
+    def _add_file(self, path: Path, on_saved: Optional[Callable[[tuple[str, str]], None]] = None) -> SourceFile:
+        file = SourceFile(self.app, path, on_saved, on_open=self.app.open_slide_editor)
+        file.modified_changed.connect(self._on_modified)
+        file.conflict_changed.connect(self._on_modified)
+        file.editor.text_changed.connect(lambda p=path: self.buffer_changed.emit(p))
+        file.lint_changed.connect(self._emit_lint_errors)
+        file.editor.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        file.editor.customContextMenuRequested.connect(self._on_context_menu)
+        file.attach_spell_check(self.spelling_session, spell_check.spell_check_on())
+        if file.spell_check is not None:
+            file.spell_check.status_changed.connect(self._update_toolbar)
+            file.spell_check.word_list_changed.connect(self.recheck_spelling)
+            file.editor.spelling_menu_requested.connect(self._on_spelling_key)
+        file.fix_panel.running_changed.connect(self._on_modified)
+        file.saved.connect(lambda p=path: self.saved.emit(p))
+        file.written.connect(lambda p=path: self.written.emit(p))
+        file.preview_requested.connect(lambda p=path: self.preview_requested.emit(p))
+        self._files[path] = file
+        self._stack.addWidget(file)
+        return file
+
+    def buffer_for_edit(self, path: Path) -> SourceFile:
+        """Open a buffer without switching the visible file or flushing any editor."""
+        return self.file_for(path) or self._add_file(path)
+
+    def show_path(self, path: Optional[Path], on_saved: Optional[Callable[[tuple[str, str]], None]] = None) -> None:
+        """Show `path` (None: nothing). An `on_saved` given for a file that is open
+        replaces the one it has."""
+        if path is None:
+            self._current = None
+        else:
+            file = self._files.get(path)
+            if file is None:
+                file = self._add_file(path, on_saved)
+            else:
+                file.sync()
+                if on_saved is not None:
+                    file.on_saved = on_saved
+            self._current = file
+            self._stack.setCurrentWidget(file)
+        if self._current is None:
+            self._stack.setCurrentWidget(self._empty)
+        for other in self._files.values():
+            if other is not self._current:
+                other.write_now()       # written before it goes out of view
+        self.prune()
+        self._update_toolbar()
+        self._emit_lint_errors()
+
+    def prune(self) -> None:
+        """Drop the files out of view that no tab holds and nothing in them would be lost."""
+        for stale in [f for f in self._files.values() if f is not self._current and self._droppable(f)]:
+            self._drop(stale)
+
+    def edit_off_stage(self, path: Path, change: Callable[[str], str]) -> bool:
+        """Apply `change(text) -> text` to the buffer of `path` as one undo step without making it the file
+        shown (an edit of a slide that is no longer in view). Written now under the usual rules; the file
+        stays open only if it could not be written (a conflict, an AI fix running), so that the edit is not
+        lost and the dirty state reports it. False when the buffer is read-only (a frozen version)."""
+        file = self._files.get(path)
+        opened = file is None
+        if opened:
+            file = self._add_file(path)
+        elif file is not self._current:
+            file.sync()
+        done = not file.editor.is_read_only()
+        if done:
+            file.editor.replace_all_text(change(file.editor.text()))
+            file.write_now()
+        if file is not self._current and self._droppable(file):
+            self._drop(file)
+        return done
+
+    def _emit_lint_errors(self) -> None:
+        lint = self._current.lint if self._current is not None else None
+        errors = len(lint.errors) if lint is not None else 0
+        if errors != self._lint_errors:
+            self._lint_errors = errors
+            self.lint_errors_changed.emit(errors)
+
+    def set_message(self, message: str) -> None:
+        """What to say when no file is shown."""
+        self._empty.setText(message)
+
+    def hold(self, path: Path) -> None:
+        """Keep the file `path` open while it is out of view, until it is let go (unhold(), release()): a tab needs it.
+        Each hold is one tab's. (The file is opened by show_path() as any file is.)"""
+        self._held[path] = self._held.get(path, 0) + 1
+
+    def unhold(self, path: Path) -> None:
+        """One tab no longer needs `path`. With no other holding it, it goes as any file does, the next time it is out of
+        view when another is shown."""
+        count = self._held.get(path, 0) - 1
+        if count > 0:
+            self._held[path] = count
+        else:
+            self._held.pop(path, None)
+
+    def release(self, path: Path) -> None:
+        """The tab of `path` was closed: it lets go (unhold()) and the file is dropped now (`file_closed`) unless
+        another tab holds it (the slide tab shows it too) or it still has edits that could not be written or an "Ask
+        AI to fix" running, which keep it open as for any file out of view."""
+        self.unhold(path)
+        file = self._files.get(path)
+        if file is None or path in self._held or file.keep_open:
+            return
+        if file is self._current:
+            self._current = None
+            self._stack.setCurrentWidget(self._empty)
+        self._drop(file)
+        self._update_toolbar()
+        self._emit_lint_errors()
+
+    def is_held(self, path: Path) -> bool:
+        return path in self._held
+
+    def _droppable(self, file: SourceFile) -> bool:
+        """Whether a file that is out of view goes: it has no tab and nothing in it would be lost."""
+        return file.path not in self._held and not file.keep_open
+
+    def _drop(self, file: SourceFile) -> None:
+        if file.spell_check is not None:
+            file.spell_check.stop()
+        del self._files[file.path]
+        self._stack.removeWidget(file)
+        file.deleteLater()
+        self.file_closed.emit(file.path)
+
+    def _on_modified(self, _modified: bool = False) -> None:
+        dirty = any(f.unsaved for f in self._files.values())
+        self._update_toolbar()
+        if dirty != self._dirty:
+            self._dirty = dirty
+            self.dirty_changed.emit(dirty)
+
+    def buffer(self, path: Optional[Path] = None) -> Optional[str]:
+        """The whole text of the file shown, if it is a slide. With `path`: of
+        that file if it is open here (the current file is not necessarily the previewed slide: the
+        Source view is not updated while the centre is in Preview mode)."""
+        file = self._current if path is None else self._files.get(path)
+        return file.editor.text() if file is not None and file.is_slide else None
+
+    def selection(self) -> Selection:
+        """The text selected in the slide shown, captured now, for an AI task on it. SelectionError says why there is
+        none: no slide in view, nothing selected, a frozen (read-only) version, a protected part in the selection."""
+        file = self._current
+        if file is None or not file.is_slide or not self.isVisibleTo(self.window()):
+            raise SelectionError("Open a slide in the Source view and select some of its text.")
+        start, end = file.editor.selection_range()
+        if start == end:
+            raise SelectionError(NO_SELECTION)
+        if not file.is_current_slide or file.editor.is_read_only():
+            raise SelectionError("This is a frozen version of the slide, which is read-only. Select text in its "
+                                 "current version.")
+        return capture(file.path, file.editor.text(), start, end)
+
+    def stop_ai_checks(self) -> None:
+        """Abort and join every running "Ask AI to fix" check, whichever file it belongs to."""
+        for file in self._files.values():
+            file.fix_panel.stop()
+
+    def refresh_colors(self) -> None:
+        for file in self._files.values():
+            file.editor.refresh_colors()
+
+    def set_tab_width(self, chars: int) -> None:
+        for file in self._files.values():
+            file.editor.set_tab_width(chars)
+
+    def set_hover_help(self, on: bool) -> None:
+        for file in self._files.values():
+            file.editor.set_hover_help(on)
+
+    # -- spelling (spell_check.py) -----------------------------------------------------
+
+    def spelling_session(self):
+        """The SpellingSession of the open project: one for every file, so the dictionaries, the cache and the
+        words ignored for this session are shared. A new project gets a new one (its own word lists)."""
+        from ...spelling.dictionary_checker import DictionaryChecker
+        from ...spelling.session import SpellingSession
+
+        root = self.app.project.root
+        if self._spelling is None or self._spelling.root != root:
+            checker = self._spelling.checker if self._spelling is not None else DictionaryChecker()
+            self._spelling = SpellingSession(checker, root)
+        return self._spelling
+
+    def set_spell_check(self, on: bool) -> None:
+        """The toolbar switch: remembered for this user, applied to every open slide."""
+        spell_check.set_spell_check_on(on)
+        for file in self._files.values():
+            if file.spell_check is not None:
+                file.spell_check.set_enabled(on)
+        self._update_toolbar()
+
+    def recheck_spelling(self) -> None:
+        """Check every open slide again (a word was ignored or added to the word list, the German variant changed)."""
+        for file in self._files.values():
+            if file.spell_check is not None and file.spell_check.enabled:
+                file.spell_check.check_now()
+
+    def _spell_tip(self, file: Optional[SourceFile]) -> str:
+        on = spell_check.spell_check_on()
+        tip = ("Check spelling: on. Unknown words in the slide's text are underlined; right-click one, or press "
+               "Ctrl+. at it, for suggestions." if on else "Check spelling: off. Click to underline unknown words.")
+        if on and file is not None and file.spell_check is not None and file.spell_check.status:
+            tip += "\n" + file.spell_check.status
+        return tip
+
+    def _on_spelling_key(self, offset: int, point: QPoint) -> None:
+        """Ctrl+. in the editor: the spelling rows for the word at the cursor, if it is underlined."""
+        file = self._current
+        if file is None or file.spell_check is None:
+            return
+        menu = PopoverMenu(self, min_width=240, focus_first=True)
+        if not file.spell_check.add_menu_rows(menu, offset):
+            menu.deleteLater()
+            return
+        menu.triggered.connect(self._on_context_chosen)
+        self._popup_at(menu, point)
+
+    def refresh_model_preferences(self, models: list[str]) -> None:
+        for file in self._files.values():
+            file.refresh_model_preference(models)
+
+    # -- the toolbar -------------------------------------------------------------------
+
+    def _update_toolbar(self) -> None:
+        file = self._current
+        has = file is not None
+        read_only = has and file.editor.is_read_only()
+        self._name.set_full_text(file.path.name if has else "")
+        self._unsaved_chip.setVisible(has and file.dirty)
+        if has and file.conflicted:
+            self._unsaved_chip.set_text("Not saved: changed on disk")
+            self._unsaved_chip.set_tone("warning")
+        elif has and (file.editor.is_read_only() or file.fix_panel.running):
+            self._unsaved_chip.set_text("Not saved")
+            self._unsaved_chip.set_tone("warning")
+        elif not autosave_on():
+            self._unsaved_chip.set_text("Not saved · Ctrl+S")
+            self._unsaved_chip.set_tone("muted")
+        else:
+            self._unsaved_chip.set_text("Saving…")
+            self._unsaved_chip.set_tone("muted")
+        others = [f for f in self.dirty_files() if f is not file and f.unsaved]
+        self._elsewhere_chip.setVisible(bool(others))
+        self._elsewhere_chip.set_text(f"{len(others)} more not saved" if len(others) > 1 else "1 more not saved")
+        self._elsewhere_chip.setToolTip("Click to show the next file whose edits could not be saved.")
+        self._find_button.setEnabled(has)
+        self._spell_button.setVisible(has and file.spell_check is not None)
+        self._spell_button.set_active(spell_check.spell_check_on())
+        self._spell_button.set_faint(not spell_check.spell_check_on())
+        self._spell_button.setToolTip(self._spell_tip(file))
+        self._version_button.setVisible(has and file.is_current_slide and self._version_here)
+        hint = (self.version_hint(file.path, file.id_slug, file.editor.text(), dirty=file.dirty)
+                if has and file.is_current_slide else None)
+        enabled = bool(hint and hint.changes and not read_only)
+        self._version_button.setEnabled(enabled)
+        self._version_button.setToolTip(hint.why_not if hint and not hint.changes else VERSION_TIP)
+        if hint:
+            self._set_revert_menu(file, enabled)
+        self.version_state.emit(hint if not read_only else None)
+        # Formatting is for slides: a deck's source and SlideMage.bib are edited as plain text.
+        self._format_row.setVisible(not has or file.is_slide)
+        self._format_row.setEnabled(has and not read_only)
+        self._save_button.setVisible(has and not file.is_slide and not autosave_on())
+        self._save_button.setEnabled(has and file.dirty and not read_only)
+        self._tools_button.setEnabled(has)
+        frozen = has and file.is_slide and not file.is_current_slide
+        self._frozen_bar.setVisible(frozen)
+        self._unlock_button.setEnabled(read_only)
+        self._jump_bar.setVisible(has and file.is_bib)
+
+    @staticmethod
+    def version_hint(path: Path, slug: str, text: str, *, dirty: bool) -> VersionState:
+        base = slide_versioning.parse_version(text) or slide_versioning.DEFAULT_BASELINE
+        why = ""
+        if not dirty:
+            try:
+                new, _ = slide_versioning.update_hint(path, slug, text, "patch")
+                if new == base:
+                    why = f"No changes since v{slide_versioning.format_dot(base)}."
+            except (OSError, ValueError) as exc:
+                why = str(exc)
+        return VersionState(slug, slide_versioning.format_dot(base), not why, why)
+
+    def show_find(self, replace: bool = False) -> None:
+        """The find bar of the file shown, with the replace field when `replace` (Edit → Find / Replace in source)."""
+        self._with_file(lambda f: f.find_bar.show_replace() if replace else f.find_bar.show_find())
+
+    def _with_file(self, action: Callable[[SourceFile], None]) -> None:
+        if self._current is not None:
+            action(self._current)
+
+    def _edit(self, action: Callable) -> None:
+        if self._current is not None and not self._current.editor.is_read_only():
+            action(self._current.editor)
+
+    def _wrap(self, macro: str) -> None:
+        if self._current is not None and self._current.is_slide:
+            self._edit(lambda editor: editor.wrap_macro(macro))
+
+    def _unlock(self) -> None:
+        self._with_file(SourceFile.unlock)
+        self._update_toolbar()
+
+    def _show_other_dirty(self) -> None:
+        others = [f for f in self.blocked_files() if f is not self._current]
+        if others:
+            self.file_requested.emit(others[0].path)
+
+    def _jump_to_letter(self, letter: str) -> None:
+        if self._current is not None and not self._current.jump_to_bib_letter(letter):
+            self.app.log(f"No .bib entry with a citation key starting with '{letter}'")
+
+    def save(self) -> bool:
+        """Ctrl+S: write the file shown now and render it. Whether it is saved."""
+        file = self._current
+        return file is not None and file.write_now(explicit=True)
+
+    def flush_all(self) -> bool:
+        """Write every file's edits now (before a run reads the files, or the window closes).
+        Whether all are saved; one in conflict with a change on disk is not."""
+        return all([file.write_now() for file in list(self._files.values())])
+
+    def _set_revert_menu(self, file: SourceFile, can_update: bool = True) -> None:
+        """The caret's menu: "Revert to vX.Y.Z…", X.Y.Z the version the slide was changed from, and the update at
+        each level ("Update as patch · v1.0.1") without asking which one (`can_update`: there is something to freeze)."""
+        marker = slide_versioning.parse_marker(file.editor.text())
+        base = marker[0] if marker is not None else slide_versioning.DEFAULT_BASELINE
+        version = slide_versioning.format_dot(base)
+        label = f"Revert to v{version}…"
+        if (label, can_update) == self._revert_label:
+            return
+        self._revert_label = (label, can_update)
+        menu = PopoverMenu(self, min_width=220)
+        menu.add_item("revert", label, tip="Throw away the changes since this version and restore it")
+        menu.add_separator()
+        for level in ("patch", "minor", "major"):
+            new = slide_versioning.format_dot(slide_versioning.bump(base, level))
+            menu.add_item(f"level:{level}", f"Update as {level} · v{new}", enabled=can_update,
+                          tip=f"Freeze the slide as version {new}, a {level} change")
+
+        def picked(key: str) -> None:
+            if key == "revert":
+                if self._current is not None and self._current.is_current_slide:
+                    self.revert_requested.emit(self._current.path)
+            elif key.startswith("level:") and self._current is not None and self._current.is_current_slide:
+                self.version_level_requested.emit(self._current.path, key.partition(":")[2])
+
+        menu.triggered.connect(picked)
+        self._version_button.set_menu(menu)
+
+    def set_version_here(self, here: bool) -> None:
+        """Whether the toolbar carries the Update version button (the Source view alone); the Preview's buttons
+        replace it where the Preview is on show."""
+        if here != self._version_here:
+            self._version_here = here
+            self._update_toolbar()
+
+    def update_version(self) -> None:
+        file = self._current
+        if file is not None and file.is_current_slide:
+            self.version_requested.emit(file.path)
+
+    # -- menus -------------------------------------------------------------------------
+
+    def _popup(self, menu: PopoverMenu, anchor: QWidget) -> None:
+        menu.closed.connect(menu.deleteLater)
+        menu.popup_below(anchor)
+
+    def _deck_swatches(self) -> dict[str, str]:
+        """The Color menu's colors under the open deck's theme and color mode in the view shown (the project's
+        render template in its base mode with no deck), read when the menu opens, so a switched deck, view, mode or
+        theme shows at once."""
+        state = getattr(self.app, "state", None)
+        deck = getattr(state, "deck", None)
+        project = self.app.project
+        mode = ""
+        if deck is not None:
+            view = getattr(state, "view", None)
+            template = view_themes.template_for(deck.text, view)
+            mode = view_themes.mode_for(deck.text, view)
+        else:
+            template = slide_templates.render_template(project)
+        return theme_colors.swatches(template, project.root, mode)
+
+    def _open_color_menu(self) -> None:
+        menu = PopoverMenu(self, min_width=300)
+        swatches = self._deck_swatches()
+        roles = [name for name in swatches if theme_colors.role_hint(name)]
+        if roles:
+            menu.add_header("Follows the color mode")
+            for name in roles:
+                menu.add_item(name, name, meta=theme_colors.role_hint(name), swatch=swatches[name])
+            menu.add_header("Palette")
+        for name, swatch in swatches.items():
+            if name not in roles:
+                menu.add_item(name, name, swatch=swatch)
+        menu.add_separator()
+        menu.add_item(CUSTOM_COLOR, "Custom color…", meta="any color, as \\textcolor[HTML]{RRGGBB}",
+                      tip="Pick any color, or type its hex code in the dialog's HTML field. It is written into the "
+                          "slide as it is, so it does not follow the theme or the color mode.")
+        menu.triggered.connect(self._on_color_chosen)
+        self._popup(menu, self._color_button)
+
+    def _on_color_chosen(self, name: str) -> None:
+        if name != CUSTOM_COLOR:
+            self._wrap(f"textcolor{{{name}}}")
+            return
+        if self._current is None or not self._current.is_slide or self._current.editor.is_read_only():
+            return
+        chosen = choose_color(self)
+        if chosen is not None:
+            self._wrap(f"textcolor[HTML]{{{chosen.name().removeprefix('#').upper()}}}")
+
+    # The Insert menu's sections (2026-11-24, direct request): the menu key prefix and the entries of each.
+    INSERT_SECTIONS = {"ext": INSERT_EXTERNAL_COMMANDS, "list": INSERT_LIST_COMMANDS, "block": INSERT_BLOCK_COMMANDS,
+                       "vis": INSERT_VISIBILITY_COMMANDS, "place": INSERT_PLACEMENT_COMMANDS}
+
+    def _open_insert_menu(self) -> None:
+        """External elements (the three that ask first), the Lists and Blocks submenus, Visibility, then the
+        placement and text commands; every row has its hover text."""
+        menu = PopoverMenu(self, min_width=340)
+        codes = languages.project_languages(self.app.project).codes
+
+        def add(menu: PopoverMenu, prefix: str) -> None:
+            for i, insert in enumerate(self.INSERT_SECTIONS[prefix]):
+                insert = multilingual_for(insert, codes)
+                menu.add_item(f"{prefix}:{i}", insert.label, meta=insert.hint, tip=insert.tip)
+
+        def flyout(prefix: str):
+            def build(parent: PopoverMenu) -> PopoverMenu:
+                sub = PopoverMenu(parent, min_width=300)
+                add(sub, prefix)
+                return sub
+            return build
+
+        menu.add_header("External elements")
+        add(menu, "ext")
+        menu.add_separator()
+        menu.add_submenu("sub:list", "Lists", flyout("list"),
+                         tip="Bulleted and numbered lists, and items with extra room for a stacked fraction")
+        menu.add_submenu("sub:block", "Blocks", flyout("block"),
+                         tip="Blocks with a title bar, and floating blocks of a given width")
+        menu.add_header("Visibility")
+        add(menu, "vis")
+        menu.add_separator()
+        add(menu, "place")
+        menu.triggered.connect(self._on_insert_chosen)
+        self._popup(menu, self._insert_button)
+
+    def _on_insert_chosen(self, key: str) -> None:
+        prefix, _, index = key.partition(":")
+        if prefix in self.INSERT_SECTIONS:
+            self.insert(self.INSERT_SECTIONS[prefix][int(index)])
+
+    def insert(self, insert: Insert) -> None:
+        """Insert at the cursor; hyperlink and code file ask in a popover under the Insert button first, a QR code
+        in its sheet."""
+        if self._current is None or self._current.editor.is_read_only():
+            return
+        editor = self._current.editor
+        if insert.kind not in ASKS:
+            editor.apply_insert(multilingual_for(insert, languages.project_languages(self.app.project).codes))
+        elif insert.kind == "hyperlink":
+            self._ask(LinkPopover(editor.selected_text()), self._insert_button)
+        elif insert.kind == "qr":
+            self._open_qr_dialog()
+        else:
+            self._ask(CodeFilePopover(self.app.project, self._current.bare_id), self._insert_button)
+
+    def _open_citation_popover(self) -> None:
+        if self._current is not None and not self._current.editor.is_read_only():
+            popover = CitationPopover(self.app.project)
+            popover.add_reference_requested.connect(self.add_reference)
+            self._ask(popover, self._cite_button)
+
+    def _open_qr_dialog(self) -> None:
+        """The QR code sheet; its call replaces the selection, or, to update a code, the call it was opened on."""
+        if self._current is None or self._current.editor.is_read_only():
+            return
+        editor = self._current.editor
+        text, (start, end) = editor.text(), editor.selection_range()
+        existing = qr_dialog.existing_call(self.app.project, text, start, end)
+        dialog = qr_dialog.QRCodeDialog(self, self.app.project, existing)
+        if dialog.exec() != dialog.DialogCode.Accepted:
+            return
+        if existing is not None:
+            # Qt counts UTF-16 units, selection_range() characters.
+            cursor = editor.textCursor()
+            cursor.setPosition(latex_edit.utf16_len(text[:existing.start]))
+            cursor.setPosition(latex_edit.utf16_len(text[:existing.end]), QTextCursor.MoveMode.KeepAnchor)
+            editor.setTextCursor(cursor)
+        editor.replace_selection(dialog.snippet)
+
+    def _ask(self, popover: Popover, anchor: QWidget) -> None:
+        """Show `popover` under `anchor`; what it chooses replaces the selection."""
+        popover.setParent(self, popover.windowFlags())     # owned by the view, not garbage collected
+        popover.chosen.connect(self._current.editor.replace_selection)
+        popover.closed.connect(popover.deleteLater)
+        popover.popup_below(anchor)
+
+    def _open_tools_menu(self) -> None:
+        file = self._current
+        menu = PopoverMenu(self, min_width=240)
+        menu.add_item("reindent", "Reindent", meta=REINDENT_META.get(file.reindent_kind, ""),
+                      tip="Indent the file's lines by their nesting again",
+                      enabled=file.reindent_kind is not None and not file.editor.is_read_only())
+        if routes.all():
+            menu.add_item("chat", "Ask the chat…", meta="about this slide", enabled=file.is_slide,
+                          tip="Ask the AI chat a question about this slide")
+        menu.add_item("color", "Pick color from screen…", meta="hex to clipboard",
+                      tip="Click any pixel on the screen: its hex color is shown and copied to the clipboard. "
+                          "Arrow keys move one pixel, Esc cancels.")
+        menu.triggered.connect(self._on_tool_chosen)
+        self._popup(menu, self._tools_button)
+
+    def _on_tool_chosen(self, key: str) -> None:
+        if key == "reindent":
+            self.reindent()
+        elif key == "chat":
+            self.app.focus_chat()
+        elif key == "color":
+            self.pick_color()
+
+    def pick_color(self) -> None:
+        """Tools → Pick color from screen: the picked pixel's "#RRGGBB" is copied to the clipboard and said."""
+        def done(color: Optional[str]) -> None:
+            self._color_picker = None
+            if color is None:
+                return
+            QGuiApplication.clipboard().setText(color)
+            self.app.log(f"Picked color {color} (copied to the clipboard)")
+            self.app.toast.show_message(f"{color} copied to the clipboard", timeout_ms=6000)
+
+        self._color_picker = color_picker.pick_color(done)     # kept alive until it ends
+
+    def reindent(self) -> None:
+        file = self._current
+        if file.reindent_kind is None or file.editor.is_read_only():
+            return
+        self.app.log(f"Reindented {file.path.name}" if file.editor.reindent(file.reindent_kind)
+                     else f"{file.path.name}: indentation already correct")
+
+    def _on_context_menu(self, pos: QPoint) -> None:
+        """Right-click in the editor (`pos` is in the viewport's coordinates, which start right of the line numbers): the edit commands and, in a slide, Rewrite selection and Proofread selection
+        (enabled when the selection can be worked on)."""
+        editor = self._current.editor
+        selected, writable = editor.textCursor().hasSelection(), not editor.is_read_only()
+        menu = PopoverMenu(self, min_width=240)
+        if self._current.spell_check is not None:    # also with a selection: a double-clicked word is selected
+            self._current.spell_check.add_menu_rows(menu, editor.offset_at(pos))
+        menu.add_item("undo", "Undo", meta="Ctrl+Z", enabled=writable)
+        menu.add_item("redo", "Redo", meta="Ctrl+Y", enabled=writable)
+        menu.add_separator()
+        menu.add_item("cut", "Cut", meta="Ctrl+X", enabled=selected and writable)
+        menu.add_item("copy", "Copy", meta="Ctrl+C", enabled=selected)
+        menu.add_item("paste", "Paste", meta="Ctrl+V", enabled=writable)
+        menu.add_item("selectAll", "Select all", meta="Ctrl+A")
+        if self._current.is_slide:
+            menu.add_separator()
+            try:
+                self.selection()
+                usable = True
+            except SelectionError:
+                usable = False
+            add_menu_items(menu, usable)
+        menu.triggered.connect(self._on_context_chosen)
+        self._popup_at(menu, editor.viewport().mapToGlobal(pos))
+
+    def _on_context_chosen(self, key: str) -> None:
+        if self._current is not None and self._current.spell_check is not None \
+                and self._current.spell_check.handle_choice(key):
+            return
+        if key == PROOFREAD:
+            self.app.assistant.proofread_selection()
+        elif key.startswith(REWRITE):
+            self.app.assistant.rewrite_selection(key.removeprefix(REWRITE))
+        else:
+            getattr(self._current.editor, key)()
+
+    def popup_at_selection(self, popup: Popover) -> None:
+        """Show `popup` under the cursor, which is at one end of the selection."""
+        editor = self._current.editor
+        popup.setParent(self, popup.windowFlags())     # owned by the view, not garbage collected
+        self._popup_at(popup, editor.viewport().mapToGlobal(editor.cursorRect().bottomLeft()))
+
+    @staticmethod
+    def _popup_at(popup: Popover, point: QPoint) -> None:
+        popup.closed.connect(popup.deleteLater)
+        popup.popup_at(point)
+
+    # -- references --------------------------------------------------------------------
+
+    def add_reference(self, key: str = "") -> None:
+        """Add an entry to SlideMage.bib (with the citation key `key`, if one is missing).
+        The dialog writes the file on disk, not a buffer: edits of the .bib are written first,
+        or the two would overwrite each other, and an open buffer is reloaded afterwards."""
+        bib = self._files.get(self.app.project.bibliography_path)
+        if bib is not None and not bib.write_now(force=True):
+            QMessageBox.warning(self, "Add reference",
+                                "SlideMage.bib has edits that could not be saved (it changed on disk). "
+                                "Resolve that first, so the new reference and your edits can't overwrite each other.")
+            return
+        dialog = CitationDialog(self.app, key)
+        if dialog.exec() != CitationDialog.DialogCode.Accepted:
+            return
+        self.reference_added.emit()
+        if bib is None:
+            return
+        bib.reload()
+        if dialog.new_key:
+            bib.show_bib_key(dialog.new_key)

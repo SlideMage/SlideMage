@@ -1,0 +1,614 @@
+# SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""The Housekeeping sheet (UI_REDESIGN_PLAN.md, step 9): the clean-up and update jobs of a project in one place.
+
+Empty pdf/, remove temp files (.build/, leftover wrappers, .temp/), archive unused slides and media, archive decks
+(tick them on a page of their own), update the slide previews, reestablish translation links. Each row
+says what there is to do and has one button; the buttons run the window's own actions
+(ui/workspace/maintenance.py), which ask before they delete. "Archive unused content" has a page
+of its own, where the files the scan found can be ticked before anything moves, and, below them, the image
+descriptions no slide references (they go to the alt-text archive; those whose file is gone are ticked, the others
+may belong to a new image and are not); the move runs on a thread that the sheet waits for when it closes. A file
+whose name archive/ already holds with other content stays unticked, and "Compare with the archived copy" (or a double
+click on its row) opens a third page with the difference of the two, where one of them can be kept in archive/ (the
+other goes to the Recycle Bin, unused_content.settle_archived_copy()) or both left as they are. Update previews is a long compile: the sheet closes
+and the caller starts it (`update_previews`). The sheet opens at once: its rows say "Counting…" while one worker scans.
+"""
+from __future__ import annotations
+
+from typing import Callable, NamedTuple
+
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QScrollArea,
+    QSizePolicy,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
+)
+
+from ... import alt_archive, archive as archive_mod, deck_snapshot, housekeeping, unused_content
+from ...progress import Progress
+from .. import background
+from ..kit import kit_qss as q
+from ..kit.tokens import SPACE
+from ..kit.widgets import BusyIndicator, Button, ModalSheet, Surface, caption, clear_layout
+from ..text import plural
+from ..workspace.chat.format import diff_rows
+
+LIST_PAGE, ARCHIVE_PAGE, DIFF_PAGE, DECKS_PAGE = 0, 1, 2, 3
+DIFF_CONTEXT = 3           # unchanged lines shown around a change on the diff page
+DIFF_SIGNS = {"add": "+ ", "del": "− ", "ctx": "  ", "gap": "⋯"}
+WORKER_WAIT_MS = 10000
+BUSY_NOTE = "A compile run is in progress."
+
+
+class _Row(QFrame):
+    """A job: its name, what there is to do, and the button that does it."""
+
+    def __init__(self, title: str, button: str, on_click: Callable[[], None]) -> None:
+        super().__init__()
+        self.setObjectName(q.PANEL_ROW)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, SPACE.md, 0, SPACE.md)
+        texts = QVBoxLayout()
+        texts.setSpacing(SPACE.s_2xs)
+        self.title = QLabel(title)
+        self.title.setObjectName(q.SHEET_SECTION)       # a heading, so it does not read like the status line below it
+        self.sub = caption()
+        texts.addWidget(self.title)
+        texts.addWidget(self.sub)
+        layout.addLayout(texts, 1)
+        self.button = Button(button, "secondary", compact=True)
+        self.button.clicked.connect(on_click)
+        layout.addWidget(self.button, 0, Qt.AlignmentFlag.AlignVCenter)
+
+    def show_state(self, sub: str, *, enabled: bool) -> None:
+        self.sub.setText(sub)
+        self.button.setEnabled(enabled)
+
+
+class HousekeepingJobs(NamedTuple):
+    """What the list page runs: the window's own housekeeping actions (workspace/maintenance.py). They run on a
+    worker, so each takes what to do afterwards: `then()`, or `then(files updated)` for the links."""
+    empty_pdf: Callable[[Callable[[], None]], None]
+    remove_temp: Callable[[Callable[[], None]], None]
+    sync_links: Callable[[Callable[[int], None]], None]
+
+
+class HousekeepingSheet(ModalSheet):
+    def __init__(self, app, jobs: HousekeepingJobs, page: int = LIST_PAGE) -> None:
+        """`app` is the window; `jobs` are the actions it runs for the list. `page` is the one to open on
+        (ARCHIVE_PAGE for the archive review)."""
+        super().__init__("Maintenance tasks", app, width=640)
+        self.app = app
+        self.jobs = jobs
+        self.update_previews = False
+        self._worker: background.Handle | None = None
+        self._deck_worker: background.Handle | None = None
+        self._decks_note = ""                  # what the last deck archiving did, shown on the deck row until the next visit
+        self._scan: background.Handle | None = None
+        self._unused: tuple[list, list, list] = ([], [], [])     # media, slides, image descriptions
+        self._described: set[str] = set()      # unused media files (project-relative) whose description goes along
+        self._differ: set = set()              # listed files whose name archive/ holds with other content
+        self._comparing = None                 # the file the diff page shows
+        self._stale = False                    # a file was settled on the diff page: the list page's counts are old
+        self.pages = QStackedWidget()
+        self.pages.addWidget(self._build_list())
+        self.pages.addWidget(self._build_archive())
+        self.pages.addWidget(self._build_diff())
+        self.pages.addWidget(self._build_decks())
+        self.add_tab("", self.pages)
+        self.close_button = self.add_button("Close", kind="primary", role="accept")
+        self.back_button = self.add_button("Cancel")
+        self.back_button.clicked.connect(self._on_back)
+        self.archive_button = self.add_button("Archive", kind="primary")
+        self.archive_button.clicked.connect(self._on_archive)
+        self.archive_decks_button = self.add_button("Archive", kind="primary")
+        self.archive_decks_button.clicked.connect(self._on_archive_decks)
+        self.keep_archived_button = self.add_button("Keep the archived copy")
+        self.keep_archived_button.clicked.connect(lambda: self._on_keep(unused_content.KEEP_ARCHIVED))
+        self.keep_file_button = self.add_button("Keep this file")
+        self.keep_file_button.clicked.connect(lambda: self._on_keep(unused_content.KEEP_FILE))
+        self.refresh()
+        self._show_page(page)
+
+    # -- building --------------------------------------------------------------------------
+
+    def _build_list(self) -> QWidget:
+        page = Surface()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        self.pdf = _Row("Empty the pdf folder", "Empty", self._on_empty_pdf)
+        self.temp = _Row("Remove temp files", "Remove", self._on_remove_temp)
+        self.archive = _Row("Archive unused content", "Review…", lambda: self._show_page(ARCHIVE_PAGE))
+        self.decks_row = _Row("Archive decks", "Choose…", lambda: self._show_page(DECKS_PAGE))
+        self.previews = _Row("Render all previews now", "Render…", self._on_previews)
+        self.links = _Row("Reestablish translation links", "Check", self._on_links)
+        for row in (self.pdf, self.temp, self.archive, self.decks_row, self.previews, self.links):
+            layout.addWidget(row)
+        layout.addStretch(1)
+        return page
+
+    def _build_archive(self) -> QWidget:
+        page = Surface()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(SPACE.lg)
+        self.archive_intro = QLabel()
+        self.archive_intro.setWordWrap(True)
+        layout.addWidget(self.archive_intro)
+        self.archive_result = caption()
+        self.archive_result.setWordWrap(True)
+        self.archive_result.hide()
+        layout.addWidget(self.archive_result)
+        note = caption("A file is listed because nothing \\includegraphics{}s it (media/), or no deck "
+                       "-- archived decks included -- uses it as a slide (slides/). Archived files can be "
+                       "moved back by hand.")
+        layout.addWidget(note)
+        bulk = Surface()
+        bulk_row = QHBoxLayout(bulk)
+        bulk_row.setContentsMargins(0, 0, 0, 0)
+        select_all = Button("Select all", "ghost", compact=True)
+        select_all.clicked.connect(lambda: self._select_all(True))
+        select_none = Button("Select none", "ghost", compact=True)
+        select_none.clicked.connect(lambda: self._select_all(False))
+        bulk_row.addStretch(1)
+        bulk_row.addWidget(select_all)
+        bulk_row.addWidget(select_none)
+        layout.addWidget(bulk)
+        self.files = QListWidget()
+        self.files.setFixedHeight(220)
+        self.files.itemChanged.connect(lambda _item: self._update_archive_button())
+        self.files.currentItemChanged.connect(lambda _item, _previous: self._update_compare_button())
+        self.files.itemDoubleClicked.connect(self._on_compare)
+        layout.addWidget(self.files)
+        self.compare_button = Button("Compare with the archived copy", "ghost", compact=True)
+        self.compare_button.setToolTip("For a file whose name archive/ already holds with other content: "
+                                       "what differs between the two")
+        self.compare_button.clicked.connect(lambda: self._on_compare())
+        layout.addWidget(self.compare_button, 0, Qt.AlignmentFlag.AlignLeft)
+        self.busy = BusyIndicator()
+        layout.addWidget(self.busy)
+        return page
+
+    def _build_decks(self) -> QWidget:
+        page = Surface()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(SPACE.lg)
+        self.decks_intro = QLabel()
+        self.decks_intro.setWordWrap(True)
+        layout.addWidget(self.decks_intro)
+        note = caption("A ticked deck moves to decks/archive/ and its stored previews are removed; it is no longer "
+                       "rendered, and a deck of it that is open closes. No snapshot is made: archive a deck from "
+                       "the Decks menu to snapshot it first.")
+        note.setWordWrap(True)
+        layout.addWidget(note)
+        bulk = Surface()
+        bulk_row = QHBoxLayout(bulk)
+        bulk_row.setContentsMargins(0, 0, 0, 0)
+        select_none = Button("Untick all", "ghost", compact=True)
+        select_none.clicked.connect(lambda: self._select_decks(False))
+        bulk_row.addStretch(1)
+        bulk_row.addWidget(select_none)
+        layout.addWidget(bulk)
+        self.deck_list = QListWidget()
+        self.deck_list.setFixedHeight(260)
+        self.deck_list.itemChanged.connect(lambda _item: self._update_decks_button())
+        layout.addWidget(self.deck_list)
+        self.decks_busy = BusyIndicator()
+        layout.addWidget(self.decks_busy)
+        return page
+
+    def _build_diff(self) -> QWidget:
+        page = Surface()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(SPACE.md)
+        self.diff_title = QLabel()
+        self.diff_title.setWordWrap(True)
+        layout.addWidget(self.diff_title)
+        self.diff_note = caption()
+        self.diff_note.setWordWrap(True)
+        layout.addWidget(self.diff_note)
+        self.diff_lines = QFrame()
+        self.diff_lines.setObjectName(q.CHAT_DIFF)
+        lines = QVBoxLayout(self.diff_lines)
+        lines.setContentsMargins(0, SPACE.md, 0, SPACE.md)
+        lines.setSpacing(0)
+        area = QScrollArea()
+        area.setWidgetResizable(True)
+        area.setFrameShape(QScrollArea.Shape.NoFrame)
+        area.setWidget(self.diff_lines)
+        area.setMinimumHeight(320)
+        layout.addWidget(area, 1)
+        return page
+
+    # -- what there is to do ----------------------------------------------------------------
+
+    def refresh(self, archive_note: str = "") -> None:
+        """The rows say "Counting…" until one worker has scanned pdf/, the temp folders and the unused content;
+        `archive_note` then replaces the archive row's count."""
+        for row in (self.pdf, self.temp, self.archive):
+            row.show_state("Counting…", enabled=False)
+        ctx = self.app.project
+
+        def scan() -> tuple:
+            pdfs = housekeeping.pdf_files(ctx)
+            media = unused_content.find_unused_media(ctx)
+            moving = [path.relative_to(ctx.root).as_posix() for path in media]
+            # A file's description goes with it: no row of its own, the file's row says so.
+            slides = unused_content.find_unused_slides(ctx)
+            # Files whose name archive/ holds already with other content: archiving would leave them where they are.
+            differ = {path for path in media if unused_content.archive_copy_state(
+                          path, ctx.media_dir / "archive") == unused_content.COPY_DIFFERS}
+            differ |= {path for path in slides if unused_content.archive_copy_state(
+                           path, ctx.slides_dir / "archive") == unused_content.COPY_DIFFERS}
+            return (pdfs, sum(p.stat().st_size for p in pdfs), housekeeping.find_temp_files(ctx),
+                    media, slides, alt_archive.unused_descriptions(ctx, moving),
+                    alt_archive.described_images(ctx, moving), differ)
+
+        self._scan = background.run_in_background(
+            scan, lambda found, error: self._show_counts(found, error, archive_note), parent=self)
+
+    def _show_counts(self, found, error, archive_note: str) -> None:
+        self._scan = None
+        if error is not None:
+            for row in (self.pdf, self.temp, self.archive):
+                row.show_state(f"Couldn't count: {error}", enabled=False)
+            return
+        compiling = self.app.compiling
+        pdfs, size, temp, media, slides, descriptions, self._described, self._differ = found
+        self._unused = (media, slides, descriptions)
+        self.pdf.show_state(
+            f"{plural(len(pdfs), 'file')} in pdf/ · {deck_snapshot.format_size(size)}"
+            " · they come back with the next build" if pdfs else "pdf/ is empty", enabled=bool(pdfs))
+        self.temp.show_state(
+            f"{plural(len(temp.build), 'item')} in .build/, {plural(len(temp.wrappers), 'leftover wrapper file')} "
+            f"in decks/, {plural(len(temp.scratch), 'item')} in .temp/ (the workflow scratch folder)"
+            if temp else "Nothing to remove", enabled=bool(temp) and not compiling)
+        described = f" and {plural(len(descriptions), 'image description')}" if descriptions else ""
+        self.archive.show_state(
+            archive_note or (f"{plural(len(slides), 'slide')} and {plural(len(media), 'media file')}{described} "
+                             "nothing uses" if media or slides or descriptions else "No unused slides or media files"),
+            enabled=bool(media or slides or descriptions) and not compiling and self._worker is None)
+        self.previews.show_state(
+            "Renders every deck and view prepared by the background sweep; "
+            "occupies the compile slot" if not compiling else BUSY_NOTE, enabled=not compiling)
+        self.links.show_state("Re-pairs EN and DE files after renames", enabled=True)
+        self._show_deck_count()
+        if self.pages.currentIndex() == ARCHIVE_PAGE:
+            self._fill_archive()
+
+    def _show_page(self, page: int, fill: bool = True) -> None:
+        self.pages.setCurrentIndex(page)
+        archive = page == ARCHIVE_PAGE
+        self.set_title({ARCHIVE_PAGE: "Archive unused content", DIFF_PAGE: "Compare with the archived copy",
+                        DECKS_PAGE: "Archive decks"}.get(page, "Maintenance tasks"))
+        self.close_button.setVisible(page == LIST_PAGE)
+        self.back_button.setVisible(page != LIST_PAGE)
+        self.back_button.setText("Change nothing" if page == DIFF_PAGE else "Cancel")
+        self.archive_button.setVisible(archive)
+        self.archive_decks_button.setVisible(page == DECKS_PAGE)
+        self.keep_archived_button.setVisible(page == DIFF_PAGE)
+        self.keep_file_button.setVisible(page == DIFF_PAGE)
+        if page != ARCHIVE_PAGE:
+            self.archive_result.hide()
+        if archive and fill:
+            self._fill_archive()
+        if page == DECKS_PAGE:
+            self._decks_note = ""
+            self._fill_decks()
+
+    def _on_back(self) -> None:
+        """Back from the diff keeps the ticks of the review; Cancel on the review goes to the list, which counts
+        again when a file was settled on the diff page."""
+        if self.pages.currentIndex() == DIFF_PAGE:
+            self._show_page(ARCHIVE_PAGE, fill=False)
+            return
+        self._show_page(LIST_PAGE)
+        if self._stale:
+            self._stale = False
+            self.refresh()
+
+    # -- the jobs --------------------------------------------------------------------------
+
+    def _on_empty_pdf(self) -> None:
+        self.jobs.empty_pdf(self.refresh)
+
+    def _on_remove_temp(self) -> None:
+        self.jobs.remove_temp(self.refresh)
+
+    def _on_previews(self) -> None:
+        self.update_previews = True
+        self.accept()
+
+    def _on_links(self) -> None:
+        self.jobs.sync_links(lambda changed: self.links.show_state(f"{plural(changed, 'file')} updated", enabled=True))
+
+    # -- archive decks -----------------------------------------------------------------------
+
+    def _active_decks(self) -> list:
+        return [deck for deck in getattr(self.app, "decks", ()) if not deck.archived]
+
+    def _show_deck_count(self) -> None:
+        count = len(self._active_decks())
+        self.decks_row.show_state(self._decks_note or f"{plural(count, 'active deck')}; tick the ones to move to decks/archive/",
+                                  enabled=bool(count) and not self.app.compiling and self._deck_worker is None)
+
+    def _fill_decks(self) -> None:
+        open_deck = getattr(getattr(self.app, "state", None), "deck", None)
+        self.deck_list.blockSignals(True)
+        self.deck_list.clear()
+        for deck in self._active_decks():
+            item = QListWidgetItem(deck.name + ("    (open)" if open_deck is not None and deck.name == open_deck.name else ""))
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Unchecked)
+            item.setData(Qt.ItemDataRole.UserRole, deck)
+            self.deck_list.addItem(item)
+        self.deck_list.blockSignals(False)
+        self._update_decks_button()
+
+    def _ticked_decks(self) -> list:
+        return [self.deck_list.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self.deck_list.count())
+                if self.deck_list.item(i).checkState() == Qt.CheckState.Checked]
+
+    def _select_decks(self, checked: bool) -> None:
+        state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
+        for i in range(self.deck_list.count()):
+            self.deck_list.item(i).setCheckState(state)
+
+    def _update_decks_button(self) -> None:
+        count = len(self._ticked_decks())
+        self.decks_intro.setText(f"<b>{plural(self.deck_list.count(), 'active deck')}</b>, <b>{count} ticked</b>."
+                                 if self.deck_list.count() else "No active decks.")
+        self.archive_decks_button.setText(f"Archive {plural(count, 'deck')}")
+        self.archive_decks_button.setEnabled(bool(count) and self._deck_worker is None and not self.app.compiling)
+
+    def _on_archive_decks(self) -> None:
+        """The moves (git mv in a git working tree) run off the GUI thread; the window then forgets the decks' previews
+        and closes the ones it had open."""
+        chosen = self._ticked_decks()
+        if not chosen or self._deck_worker is not None:
+            return
+        ctx = self.app.project
+
+        def archive(report) -> tuple[list, list]:
+            done, failed = [], []
+            for deck in chosen:
+                try:
+                    archive_mod.archive_deck(ctx, deck)
+                    done.append(deck)
+                    report(f"Archived {deck.name}.tex -> decks/archive/{deck.name}.tex")
+                except Exception as exc:  # noqa: BLE001 -- one deck that cannot move must not stop the others
+                    failed.append((deck.name, str(exc)))
+                    report(f"*** archiving {deck.name} failed: {exc} ***")
+            return done, failed
+
+        self._deck_worker = background.run_in_background_with_progress(
+            archive, self._on_archive_progress, self._on_decks_archived, parent=self)
+        self.archive_decks_button.setEnabled(False)
+        self.back_button.setEnabled(False)
+        self.decks_busy.start("Moving…")
+
+    def _on_decks_archived(self, result: tuple[list, list] | None, error) -> None:
+        self._deck_worker = None
+        self.decks_busy.finish()
+        self.back_button.setEnabled(True)
+        if error is not None:
+            self.app.log(f"*** archiving decks failed: {error} ***")
+            self._update_decks_button()
+            return
+        done, failed = result
+        if getattr(self.app, "background", None) is not None:
+            for deck in done:
+                self.app.background.deck_archived(deck)         # its prepared previews go, and it is no longer prepared
+        if done:
+            self.app.reload_decks(closing=frozenset(deck.name for deck in done))
+        self._decks_note = f"Archived {plural(len(done), 'deck')}" + (
+            f"; {len(failed)} could not move ({failed[0][0]}: {failed[0][1]})" if failed else "")
+        self._show_page(LIST_PAGE)
+        self.refresh()
+
+    # -- archive unused content --------------------------------------------------------------
+
+    def _fill_archive(self) -> None:
+        media, slides, descriptions = self._unused
+        self.files.blockSignals(True)
+        self.files.clear()
+        for kind, paths in (("slide", slides), ("media", media)):
+            for path in paths:
+                along = kind == "media" and path.relative_to(self.app.project.root).as_posix() in self._described
+                differs = path in self._differ
+                item = QListWidgetItem(f"{kind}    {path.name}" + ("    (its description goes along)" if along else "")
+                                       + (f"    (a different file of this name is in {path.parent.name}/archive/: "
+                                          "it would stay)" if differs else ""))
+                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                item.setCheckState(Qt.CheckState.Unchecked if differs else Qt.CheckState.Checked)
+                item.setData(Qt.ItemDataRole.UserRole, (kind, path))
+                self.files.addItem(item)
+        for description in descriptions:
+            state = ("file missing" if description.file_missing else "file exists, no slide shows it") + (
+                "" if description.has_text else ", no text")
+            item = QListWidgetItem(f"description    {description.image}    ({state})")
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Checked if description.suggested else Qt.CheckState.Unchecked)
+            item.setData(Qt.ItemDataRole.UserRole, ("description", description.image))
+            self.files.addItem(item)
+        self.files.blockSignals(False)
+        self._update_archive_button()
+        self._update_compare_button()
+
+    def _checked(self) -> list[tuple[str, object]]:
+        return [self.files.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self.files.count())
+                if self.files.item(i).checkState() == Qt.CheckState.Checked]
+
+    def _select_all(self, checked: bool) -> None:
+        state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
+        for i in range(self.files.count()):
+            self.files.item(i).setCheckState(state)
+
+    def _update_archive_button(self) -> None:
+        count = len(self._checked())
+        described = bool(self._unused[2])
+        noun = "item" if described else "file"
+        self.archive_intro.setText(
+            f"<b>{plural(self.files.count(), noun)}</b> listed, <b>{count} ticked</b>. The ticked ones would be "
+            "moved into media/archive/ or slides/archive/"
+            + (", the descriptions into the alt-text archive (media/archive/alt-text-archive.json), "
+               "where they stay retrievable. A description whose file still exists may belong to "
+               "an image not yet placed on a slide: those are not ticked" if described else "")
+            + ". Untick what should stay." if self.files.count()
+            else "Counting…" if self._scan is not None else "No unused slides or media files.")
+        self.archive_button.setText(f"Archive {plural(count, noun)}")
+        self.archive_button.setEnabled(count > 0 and self._worker is None and not self.app.compiling)
+
+    # -- the archived copy of a file ------------------------------------------------------------
+
+    def _differing(self, item: QListWidgetItem | None = None) -> object | None:
+        """The path of `item` (default: the current row) when archive/ holds a different file of its name."""
+        item = item or self.files.currentItem()
+        data = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
+        return data[1] if data and data[0] in ("media", "slide") and data[1] in self._differ else None
+
+    def _update_compare_button(self) -> None:
+        self.compare_button.setEnabled(self._differing() is not None)
+
+    def _on_compare(self, item: QListWidgetItem | None = None) -> None:
+        path = self._differing(item)
+        if path is None:
+            return
+        self._show_diff(path)
+        self._show_page(DIFF_PAGE)
+
+    def _show_diff(self, path) -> None:
+        """The archived copy (−) against the file (+), or, for files that are not text, their sizes."""
+        archived = path.parent / "archive" / path.name
+        folder = path.parent.name
+        self._comparing = path
+        self.diff_title.setText(f"<b>{path.name}</b>")
+        self.keep_file_button.setText(f"Keep the one from {folder}/")
+        busy = self._worker is not None or self.app.compiling
+        self.keep_archived_button.setEnabled(not busy)
+        self.keep_file_button.setEnabled(not busy)
+        layout = self.diff_lines.layout()
+        clear_layout(layout)
+        try:
+            old, new = archived.read_bytes(), path.read_bytes()
+            rows = diff_rows(old.decode("utf-8"), new.decode("utf-8"), DIFF_CONTEXT)
+        except UnicodeDecodeError:
+            self.diff_note.setText(
+                f"Not a text file, so there are no lines to compare. The copy in {folder}/archive/ has "
+                f"{deck_snapshot.format_size(len(old))}, the one in {folder}/ {deck_snapshot.format_size(len(new))}.")
+            self.diff_lines.hide()
+            return
+        except OSError as exc:
+            self.diff_note.setText(f"Couldn't read the two files: {exc}")
+            self.diff_lines.hide()
+            return
+        self.diff_note.setText(f"− lines only in the copy in {folder}/archive/ · + lines only in the file "
+                               f"in {folder}/. Keep one of the two in {folder}/archive/: the other goes to the "
+                               "Recycle Bin. Or change nothing: the file stays where it is.")
+        for kind, line in rows:
+            label = QLabel(DIFF_SIGNS[kind] + line)
+            label.setObjectName(q.CHAT_DIFF_LINE)
+            label.setProperty("kind", kind)
+            label.setTextFormat(Qt.TextFormat.PlainText)
+            label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            label.setWordWrap(True)
+            label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Minimum)
+            layout.addWidget(label)
+        layout.addStretch(1)
+        self.diff_lines.show()
+
+    def _on_keep(self, keep: str) -> None:
+        """Keep one of the two copies in archive/; the file's row leaves the review, whose other ticks stay."""
+        path = self._comparing
+        if path is None or self._worker is not None or self.app.compiling:
+            return
+        problem = unused_content.settle_archived_copy(self.app.project, path, keep, self.app.log)
+        if problem is not None:
+            self.diff_note.setText(problem)
+            return
+        for i in range(self.files.count()):
+            if self.files.item(i).data(Qt.ItemDataRole.UserRole)[1] == path:
+                self.files.takeItem(i)
+                break
+        for paths in self._unused[:2]:
+            if path in paths:
+                paths.remove(path)
+        self._differ.discard(path)
+        self._comparing = None
+        self._stale = True
+        folder = path.parent.name
+        self._show_page(ARCHIVE_PAGE, fill=False)
+        self.archive_result.setText(
+            f"{path.name}: kept the copy that was in {folder}/archive/, the one from {folder}/ is in the Recycle Bin"
+            if keep == unused_content.KEEP_ARCHIVED else
+            f"{path.name}: moved into {folder}/archive/, the copy that was there is in the Recycle Bin")
+        self.archive_result.show()
+        self._update_archive_button()
+        self._update_compare_button()
+
+    def _on_archive(self) -> None:
+        """A move inside a synced folder can be slow: archive off the GUI thread."""
+        chosen = self._checked()
+        if not chosen or self._worker is not None:
+            return
+        ctx = self.app.project
+        media, slides = [p for kind, p in chosen if kind == "media"], [p for kind, p in chosen if kind == "slide"]
+        descriptions = [p for kind, p in chosen if kind == "description"]
+
+        def archive(report) -> tuple[int, int, int]:
+            moved = unused_content.archive_files(ctx, media, slides, report, on_progress=report)
+            if descriptions:
+                alt_archive.archive_images(ctx, descriptions, alt_archive.REASON_UNUSED)
+                report(f"Moved {plural(len(descriptions), 'image description')} to the alt-text archive")
+            return (*moved, len(descriptions))
+
+        self._worker = background.run_in_background_with_progress(
+            archive, self._on_archive_progress, self._on_archived, parent=self)
+        self.archive_button.setEnabled(False)
+        self.back_button.setEnabled(False)
+        self.busy.start("Moving…")
+
+    def _on_archive_progress(self, value: str | Progress) -> None:
+        """The worker reports log lines (str) and the bar (Progress) on one channel."""
+        if isinstance(value, Progress):
+            self.busy.show_progress(value)
+        else:
+            self.app.log(value)
+
+    def _on_archived(self, moved: tuple[int, int, int] | None, error) -> None:
+        self._worker = None
+        self.busy.finish()
+        self.back_button.setEnabled(True)
+        if error is not None:
+            self.app.log(f"*** archiving failed: {error} ***")
+            self._update_archive_button()
+            return
+        media, slides, descriptions = moved
+        self._show_page(LIST_PAGE)
+        self.refresh(f"Moved {plural(media, 'media file')} to media/archive/ and "
+                     f"{plural(slides, 'slide')} to slides/archive/"
+                     + (f" and {plural(descriptions, 'image description')} to the alt-text archive"
+                        if descriptions else ""))
+
+    def done(self, result: int) -> None:
+        """Closing the sheet gives a running move a moment; its thread is kept until it has ended."""
+        worker, self._worker = self._worker, None
+        if worker is not None:
+            worker.stop(wait_ms=WORKER_WAIT_MS)
+        deck_worker, self._deck_worker = self._deck_worker, None
+        if deck_worker is not None:
+            deck_worker.stop(wait_ms=WORKER_WAIT_MS)
+        if self._scan is not None:
+            self._scan.stop()
+        super().done(result)

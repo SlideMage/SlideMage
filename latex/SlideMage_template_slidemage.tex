@@ -1,0 +1,58 @@
+% SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+% SPDX-License-Identifier: LPPL-1.3c+
+% SlideMage modes: light, dark=Dark slides
+% Template of the generic SlideMage look (2026-10-03, direct
+% instruction): the look of SlideMage itself rather than of an institution --
+% the SlideMage logo, the app's own colors, dark title and footer boxes with
+% white text (the splash screen's look), the app's button blue as highlight
+% color. Meant as the default for anyone without an institution template of
+% their own; the catalog defaults of SlideMage_setup.tex. A deck picks it by
+% \input{}ing this file instead of an institution's.
+%
+% Part of the framework (latex/, since SlideMage v5.9.0; it was in example/
+% in v5.7.0-v5.8.x), not of a project: every project finds it on the TeX
+% search path its .latexmkrc sets up, the same way it finds
+% SlideMage_base.tex, so it needs no copy in the project. A
+% project's own SlideMage_template_slidemage.tex, if it has one, wins.
+%
+\input{SlideMage_setup}
+
+% Everything else -- the palette, the logo (slidemage-logo.pdf, next to this
+% file: the app icon, src/slidemage/assets/icon.svg, converted to PDF and
+% cropped to its ink; slidemage-logo.svg is the untouched source), the dark
+% title and footer boxes with white text, the bullets in the highlight blue --
+% is SlideMage_setup.tex's catalog default: this template is the default look.
+
+% Code panels (\SMCodeFile), 2026-10-05: commands in the highlight blue,
+% comments dark gray, on a lighter panel than the block bodies -- 4.9:1 and
+% 5.6:1 contrast (the defaults, blue and c_primary_gray on c_tertiary_gray,
+% were 4.4:1 and 4.0:1).
+\colorlet{SMCodeKeywordColor}{c_primary_highlight}
+\definecolor{SMCodeCommentColor}{HTML}{5f5f5f}
+\definecolor{SMCodeBackgroundColor}{HTML}{f0f0f0}
+
+% ---------------------------------------------------------------------------
+% Color modes (SlideMage_setup.tex, 'Color modes and role colors'): light, the colors
+% above, is the base mode; dark starts from the framework's dark preset (canvas #444444 from
+% c_primary_dark, white text). On it the highlight blue and the custom colors, which slides
+% write as text and lines (\textcolor{c_primary_highlight}, \textcolor{c_custom_red}), are too
+% dark (1.7:1 to 2.2:1), so dark mode gives them lighter values, each at least 4.4:1 on the
+% canvas (v0.16.5); bullets, rules, image borders and markers follow, as they are made of them.
+% No slide uses these colors as a fill behind white text (a node that does writes text=c_canvas,
+% white in light mode). Code keywords keep the dark blue: \colorlet above copies it before the
+% mode applies, and the code panel stays light. A deck picks the mode in Deck settings -> Colors.
+% ---------------------------------------------------------------------------
+\SMDeclareMode{light}{}
+\SMDeclareMode{dark}{dark}
+\SMSetColor{c_primary_highlight}{dark}{HTML}{8BBCEC}      % 4.9:1 on the dark canvas
+\SMSetColor{c_custom_red}{dark}{HTML}{FF9090}             % 4.5:1
+\SMSetColor{c_custom_green}{dark}{HTML}{7FD07F}           % 5.2:1
+\SMSetColor{c_custom_brown}{dark}{HTML}{E0B060}           % 4.9:1
+\SMSetRole{alert}{dark}{c_secondary_orange}                % ffb74d, 5.6:1
+
+\input{SlideMage_base}
+
+% Bibliography (SlideMage v0.13.0, step 18c): the citation format is the catalog's \SMCitationFormat
+% (default: the house format, latex/SlideMage_citation_default.tex), which the base loads; this template
+% needs no line for it. A deck calls \SMUseBibliography; it can set another \SMCitationFormat or redefine
+% \SMBiblatexOptions / \SMBibliographyStyle before that call.
